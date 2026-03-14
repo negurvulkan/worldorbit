@@ -1,90 +1,42 @@
 # WorldOrbit
 
-WorldOrbit is a Mermaid-like Markdown DSL and parser pipeline for fictional star systems, orbital structures, and text-first worldbuilding.
+WorldOrbit is a text-first DSL and rendering pipeline for fictional orbital systems.
 
-Current release: `v0.8`
+`v1.0.0` turns the former single-package prototype into three publishable packages:
 
-The `v0.8` release includes:
+- `@worldorbit/core`: parser, schema, normalization, validation, formatting, and scene generation
+- `@worldorbit/viewer`: SVG rendering, interactive browser viewer, themes, and embed helpers
+- `@worldorbit/markdown`: Remark/Rehype integration for static or interactive Markdown embeds
 
-- a hand-written parser with line/column-aware errors
-- normalization into a stable document model
-- semantic validation for ids and placement references
-- a scene-based SVG renderer
-- a browser-side interactive viewer API with zoom, pan, rotate, fit, and selection
-- a browser demo in [demo/index.html](/demo/index.html)
+The `core` package is the stable contract for the `v1` line. `viewer` and `markdown` are released as documented preview APIs inside `v1.x`, with migration notes when they evolve.
 
-## Goals
-
-WorldOrbit is designed to be:
-
-- easy to author in Markdown
-- easy to parse and validate
-- easy to render later in 2D and 3D
-- flexible enough for fictional systems, not only realistic astronomy
-
-## Installation
+## Quick Start
 
 ```bash
 npm install
-```
-
-The project keeps runtime dependencies at zero and uses a lightweight test stack for browser-smoke coverage.
-
-## Scripts
-
-```bash
 npm run build
 npm test
 ```
 
-- `npm run build` compiles the library to `dist/`
-- `npm test` builds first and then runs the Node test suite in `test/`
+The root workspace builds all packages into:
 
-## Example
+- `packages/core/dist`
+- `packages/viewer/dist`
+- `packages/markdown/dist`
 
-```worldorbit
-system Iyath
-  title "Iyath System"
-  view topdown
-  scale compressed
+For local package-style imports during development, the build also writes lightweight package shims into `node_modules/@worldorbit/...`.
 
-star Iyath
-  class G2
-  radius 1.08sol
-  mass 1.02sol
+## Package Overview
 
-planet Naar
-  orbit Iyath
-  semiMajor 1.18au
-  eccentricity 0.03
-  period 412d
-  tags habitable homeworld
+### @worldorbit/core
 
-  info
-    faction "Veyrathische Republik"
-    description "Heimatwelt der Enari."
-
-moon Leth
-  orbit Naar
-  distance 220000km
-  period 18d
-
-structure L4-Relay
-  kind relay
-  at Naar:L4
-```
-
-A richer sample lives in [examples/iyath.worldorbit](/examples/iyath.worldorbit).
-
-## Library Usage
+Use `core` when you need the language and model layer only.
 
 ```ts
 import {
-  createInteractiveViewer,
+  formatDocument,
   parse,
   renderDocumentToScene,
-  renderDocumentToSvg,
-  renderSourceToSvg,
 } from "@worldorbit/core";
 
 const source = `
@@ -95,66 +47,91 @@ planet Naar orbit Iyath distance 1.18au
 
 const result = parse(source);
 const scene = renderDocumentToScene(result.document);
-const svg = renderDocumentToSvg(result.document);
+const canonical = formatDocument(result.document);
+```
 
-// or in one step
-const svgDirect = renderSourceToSvg(source);
+Core exports include:
 
-// browser-side viewer
+- `parse(source)`
+- `parseWorldOrbit(source)`
+- `normalizeDocument(ast)`
+- `validateDocument(document)`
+- `renderDocumentToScene(document, options?)`
+- `formatDocument(document)`
+- `extractWorldOrbitBlocks(markdown)`
+
+### @worldorbit/viewer
+
+Use `viewer` for SVG output, themes, embeds, and browser-side interactivity.
+
+```ts
+import { parse, renderDocumentToScene } from "@worldorbit/core";
+import {
+  createInteractiveViewer,
+  renderSceneToSvg,
+} from "@worldorbit/viewer";
+
+const result = parse(source);
+const scene = renderDocumentToScene(result.document);
+const svg = renderSceneToSvg(scene, {
+  theme: "atlas",
+});
+
 const viewer = createInteractiveViewer(document.getElementById("preview"), {
-  document: result.document,
+  scene,
+  theme: "atlas",
 });
 ```
 
-### Parse Result
+Viewer features in `v1.0`:
+
+- scene-based SVG rendering
+- theme presets: `atlas`, `nightglass`, `ember`
+- layer controls for guides, orbits, labels, structures, and metadata
+- interactive camera controls: zoom, pan, rotate, fit, reset, focus
+- selection and hover callbacks
+- hydration helpers:
+  - `createWorldOrbitEmbedMarkup(...)`
+  - `mountWorldOrbitEmbeds(...)`
+
+### @worldorbit/markdown
+
+Use `markdown` to turn fenced `worldorbit` blocks into static or interactive output.
 
 ```ts
-type ParseResult = {
-  ast: AstDocument;
-  document: WorldOrbitDocument;
-};
+import rehypeStringify from "rehype-stringify";
+import remarkParse from "remark-parse";
+import remarkRehype from "remark-rehype";
+import { unified } from "unified";
+
+import { remarkWorldOrbit } from "@worldorbit/markdown";
+
+const html = String(
+  await unified()
+    .use(remarkParse)
+    .use(remarkWorldOrbit, { mode: "interactive" })
+    .use(remarkRehype, { allowDangerousHtml: true })
+    .use(rehypeStringify, { allowDangerousHtml: true })
+    .process(markdownSource),
+);
 ```
 
-`WorldOrbitDocument` separates system metadata, normalized object properties, placements, and free-form `info`.
+Markdown output modes:
 
-## Renderer And Viewer
+- `static`: inline SVG
+- `interactive`: serialized scene payload plus hydration target
 
-The renderer targets SVG and intentionally stays simple:
+In the browser, hydrate generated interactive embeds with:
 
-- orbiting objects are laid out in a readable top-down diagram
-- `surface`, `free`, and `at` placements are visualized distinctly
-- `Naar:L4` and `Iyath-Naar:L2` normalize into explicit Lagrange references
-- belts and rings render as orbit bands
+```ts
+import { mountWorldOrbitEmbeds } from "@worldorbit/viewer";
 
-The rendering stack now has three levels:
+mountWorldOrbitEmbeds(document, {
+  mode: "interactive",
+});
+```
 
-- normalized document
-- `RenderScene`
-- SVG output
-
-The interactive viewer sits on top of `RenderScene` and adds:
-
-- wheel / trackpad zoom
-- drag pan
-- rotate left / right
-- fit-to-system
-- object selection and focus helpers
-- keyboard shortcuts for the camera
-
-## Demo
-
-After building the project, open [demo/index.html](/demo/index.html).
-
-The demo provides:
-
-- a live DSL editor
-- an interactive SVG viewer
-- the normalized JSON model
-- direct SVG export
-
-If your browser blocks ES modules from `file://`, serve the repository once with any static file server and open `demo/index.html` through `http://localhost/...`.
-
-## Current Scope
+## DSL Scope
 
 Supported object types:
 
@@ -176,16 +153,43 @@ Supported placement modes:
 - `surface`
 - `free`
 
-## Validation and Errors
+## v1.0 Model Changes
 
-The parser and normalization layer now report clearer failures for:
+- normalized documents now use `version: "1.0"`
+- field parsing is schema-driven rather than based on a loose known-key list
+- validation now checks:
+  - field compatibility by object type
+  - unit-family compatibility by field
+  - invalid surface targets
+  - invalid anchor references
+  - malformed special positions such as `L8`
 
-- unknown object types
-- unclosed quotes
-- duplicate fields
-- duplicate info keys
-- invalid numeric or unit values
-- invalid Lagrange syntax
-- unknown placement references
+## Examples
 
-Errors include line and column information when they originate from source syntax.
+WorldOrbit examples live in:
+
+- [examples/minimal.worldorbit](/H:/Projekte/worldorbit/examples/minimal.worldorbit)
+- [examples/iyath.worldorbit](/H:/Projekte/worldorbit/examples/iyath.worldorbit)
+- [examples/markdown/static.md](/H:/Projekte/worldorbit/examples/markdown/static.md)
+- [examples/markdown/interactive.md](/H:/Projekte/worldorbit/examples/markdown/interactive.md)
+- [examples/markdown/build.mjs](/H:/Projekte/worldorbit/examples/markdown/build.mjs)
+
+The browser demo is available at [demo/index.html](/H:/Projekte/worldorbit/demo/index.html).
+
+Serve the repository root with a simple static server and open:
+
+```text
+http://localhost:8022/demo/
+```
+
+## Documentation
+
+- migration guide: [docs/migration-v0.8-to-v1.0.md](/H:/Projekte/worldorbit/docs/migration-v0.8-to-v1.0.md)
+- API inventory: [docs/api-inventory.md](/H:/Projekte/worldorbit/docs/api-inventory.md)
+- changelog: [docs/changelog.md](/H:/Projekte/worldorbit/docs/changelog.md)
+
+## Development Notes
+
+- `npm run build` compiles all packages and refreshes local package shims
+- `npm test` rebuilds first, then runs the Node and jsdom-based test suite
+- the repository still favors a parser-first architecture: rendering sits downstream of parse, normalize, and validate

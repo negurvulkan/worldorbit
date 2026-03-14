@@ -3,7 +3,8 @@ import test from "node:test";
 
 import { JSDOM } from "jsdom";
 
-import { createInteractiveViewer, parse } from "../dist/index.js";
+import { parse } from "@worldorbit/core";
+import { createInteractiveViewer } from "@worldorbit/viewer";
 
 const source = `
 system Iyath
@@ -43,13 +44,14 @@ function installDomGlobals(window) {
   };
 }
 
-test("interactive viewer mounts, updates, selects, and destroys cleanly", () => {
+test("interactive viewer mounts, updates, selects, exports, and destroys cleanly", () => {
   const dom = new JSDOM(`<div id="preview"></div>`, {
     pretendToBeVisual: true,
   });
   const restoreGlobals = installDomGlobals(dom.window);
   const preview = dom.window.document.getElementById("preview");
   const selections = [];
+  const hovers = [];
   const views = [];
 
   preview.getBoundingClientRect = () => ({
@@ -74,6 +76,9 @@ test("interactive viewer mounts, updates, selects, and destroys cleanly", () => 
       onSelectionChange(selection) {
         selections.push(selection?.objectId ?? null);
       },
+      onHoverChange(selection) {
+        hovers.push(selection?.objectId ?? null);
+      },
       onViewChange(state) {
         views.push(state);
       },
@@ -84,17 +89,17 @@ test("interactive viewer mounts, updates, selects, and destroys cleanly", () => 
     assert.ok(views.length > 0);
 
     viewer.setDocument(parse(source).document);
-    assert.ok(preview.querySelector('[data-object-id="Naar"]'));
+    viewer.focusObject("Naar");
+    assert.equal(viewer.getState().selectedObjectId, "Naar");
 
-    preview
-      .querySelector('[data-object-id="Naar"]')
-      ?.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+    const target = preview.querySelector('[data-object-id="Naar"]');
+    target?.dispatchEvent(new dom.window.MouseEvent("mouseover", { bubbles: true }));
+    target?.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
 
+    assert.equal(hovers.at(-1), "Naar");
     assert.equal(selections.at(-1), "Naar");
-    assert.match(
-      preview.querySelector('[data-object-id="Naar"]')?.getAttribute("class") ?? "",
-      /wo-object-selected/,
-    );
+    assert.match(target?.getAttribute("class") ?? "", /wo-object-selected/);
+    assert.match(viewer.exportSvg(), /wo-object-selected/);
 
     const selectionCount = selections.length;
     viewer.destroy();

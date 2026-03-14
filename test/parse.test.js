@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  extractWorldOrbitBlocks,
+  formatDocument,
   parse,
-  renderSourceToSvg,
   tokenizeLine,
-} from "../dist/index.js";
+} from "@worldorbit/core";
+import { renderSourceToSvg } from "@worldorbit/viewer";
 
 test("tokenizer keeps quoted strings and escaped quotes intact", () => {
   assert.deepEqual(tokenizeLine('description "The \\"Blue\\" Home"'), [
@@ -14,10 +16,11 @@ test("tokenizer keeps quoted strings and escaped quotes intact", () => {
   ]);
 });
 
-test("parser supports rich documents, info blocks, and normalized at references", () => {
+test("parser supports rich documents, info blocks, and normalized anchor references", () => {
   const input = `
 system Iyath
   title "Iyath System"
+  view topdown
 
 star Iyath
   class G2
@@ -36,7 +39,7 @@ planet Naar
     description "Heimatwelt der Enari."
 
 moon Leth orbit Naar distance 220000km period 18d
-structure Relay kind relay at Naar:L4
+structure Relay kind relay at Naar:port
 structure Skyhook kind elevator surface Naar
 structure OuterGate kind gate free deep-space
 `.trim();
@@ -46,6 +49,7 @@ structure OuterGate kind gate free deep-space
   const relay = result.document.objects.find((object) => object.id === "Relay");
   const gate = result.document.objects.find((object) => object.id === "OuterGate");
 
+  assert.equal(result.document.version, "1.0");
   assert.equal(result.document.system?.properties.title, "Iyath System");
   assert.equal(planet?.properties.culture, "Enari");
   assert.deepEqual(planet?.properties.tags, ["habitable", "homeworld"]);
@@ -53,11 +57,11 @@ structure OuterGate kind gate free deep-space
   assert.equal(planet?.placement?.mode, "orbit");
 
   if (relay?.placement?.mode === "at") {
-    assert.equal(relay.placement.reference.kind, "lagrange");
-    assert.equal(relay.placement.reference.primary, "Naar");
-    assert.equal(relay.placement.reference.point, "L4");
+    assert.equal(relay.placement.reference.kind, "anchor");
+    assert.equal(relay.placement.reference.objectId, "Naar");
+    assert.equal(relay.placement.reference.anchor, "port");
   } else {
-    assert.fail("Relay should normalize to an at placement");
+    assert.fail("Relay should normalize to an anchor at placement");
   }
 
   if (gate?.placement?.mode === "free") {
@@ -65,6 +69,49 @@ structure OuterGate kind gate free deep-space
   } else {
     assert.fail("OuterGate should normalize to a free placement");
   }
+});
+
+test("formatDocument emits canonical worldorbit output", () => {
+  const input = `
+system Iyath
+  title "Iyath System"
+
+star Iyath
+
+planet Naar
+  orbit Iyath
+  distance 1.18au
+  tags habitable homeworld
+`.trim();
+
+  const result = parse(input);
+  const formatted = formatDocument(result.document);
+
+  assert.match(formatted, /^system Iyath/m);
+  assert.match(formatted, /title "Iyath System"/);
+  assert.match(formatted, /planet Naar/);
+  assert.match(formatted, /tags habitable homeworld/);
+});
+
+test("markdown fence extraction finds worldorbit blocks", () => {
+  const markdown = `
+# Atlas
+
+\`\`\`worldorbit
+system Iyath
+star Iyath
+\`\`\`
+
+\`\`\`js
+console.log("skip");
+\`\`\`
+`.trim();
+
+  const blocks = extractWorldOrbitBlocks(markdown);
+
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].startLine, 3);
+  assert.match(blocks[0].source, /star Iyath/);
 });
 
 test("parser reports invalid object types with precise line and column data", () => {

@@ -1,9 +1,13 @@
-import { createInteractiveViewer, parse } from "../dist/index.js";
+import { parse, renderDocumentToScene } from "../packages/core/dist/index.js";
+import {
+  createInteractiveViewer,
+  createWorldOrbitEmbedMarkup,
+} from "../packages/viewer/dist/index.js";
 
 const sampleSource = `system Iyath
   title "Iyath System"
   view topdown
-  scale compressed
+  scale presentation
 
 star Iyath
   class G2
@@ -13,6 +17,7 @@ star Iyath
 
 planet Naar
   class terrestrial
+  culture Enari
   orbit Iyath
   semiMajor 1.18au
   eccentricity 0.03
@@ -55,6 +60,7 @@ const preview = document.querySelector("#preview");
 const errorPanel = document.querySelector("#error");
 const errorText = document.querySelector("#error-text");
 const modelOutput = document.querySelector("#model");
+const embedOutput = document.querySelector("#embed");
 const summary = document.querySelector("#summary");
 const resetSourceButton = document.querySelector("#load-example");
 const downloadButton = document.querySelector("#download-svg");
@@ -64,10 +70,12 @@ const rotateLeftButton = document.querySelector("#rotate-left");
 const rotateRightButton = document.querySelector("#rotate-right");
 const fitButton = document.querySelector("#fit-view");
 const resetViewButton = document.querySelector("#reset-view");
+const themeSelect = document.querySelector("#theme");
 
 let viewer = null;
 let currentDocument = null;
 let currentSelection = null;
+let currentScene = null;
 let renderTimer = 0;
 
 sourceField.value = sampleSource;
@@ -82,12 +90,15 @@ function render() {
     const result = parse(sourceField.value);
     currentDocument = result.document;
     currentSelection = null;
+    currentScene = renderDocumentToScene(currentDocument, {
+      width: 1080,
+      height: 720,
+    });
 
     if (!viewer) {
       viewer = createInteractiveViewer(preview, {
-        document: currentDocument,
-        width: 1080,
-        height: 720,
+        scene: currentScene,
+        theme: themeSelect.value,
         onSelectionChange(selection) {
           currentSelection = selection;
           updateSummary();
@@ -98,11 +109,13 @@ function render() {
         },
       });
     } else {
-      viewer.setDocument(currentDocument);
+      viewer.setScene(currentScene);
+      viewer.setState({ selectedObjectId: null });
     }
 
     updateSummary();
     updateModelPanel();
+    updateEmbedPanel();
     updateDownloadState();
     errorPanel.hidden = true;
     downloadButton.disabled = false;
@@ -110,8 +123,10 @@ function render() {
   } catch (error) {
     currentDocument = null;
     currentSelection = null;
+    currentScene = null;
     preview.innerHTML = "";
     modelOutput.textContent = "";
+    embedOutput.textContent = "";
     summary.textContent = "Render fehlgeschlagen";
     errorText.textContent = error instanceof Error ? error.message : String(error);
     errorPanel.hidden = false;
@@ -120,13 +135,43 @@ function render() {
   }
 }
 
+function rebuildViewerTheme() {
+  if (!viewer || !currentScene) {
+    return;
+  }
+
+  const state = viewer.getState();
+  const selectedObjectId = state.selectedObjectId;
+  viewer.destroy();
+  viewer = createInteractiveViewer(preview, {
+    scene: currentScene,
+    theme: themeSelect.value,
+    onSelectionChange(selection) {
+      currentSelection = selection;
+      updateSummary();
+      updateModelPanel();
+    },
+    onViewChange() {
+      updateDownloadState();
+    },
+  });
+
+  if (selectedObjectId) {
+    viewer.focusObject(selectedObjectId);
+  } else {
+    viewer.setState(state);
+  }
+
+  updateEmbedPanel();
+}
+
 function updateSummary() {
-  if (!currentDocument) {
+  if (!currentDocument || !currentScene) {
     summary.textContent = "Keine Szene geladen";
     return;
   }
 
-  const base = `${currentDocument.objects.length} Objekte gerendert`;
+  const base = `${currentDocument.objects.length} Objekte · ${currentScene.layoutPreset} layout`;
   summary.textContent = currentSelection
     ? `${base} · Auswahl: ${currentSelection.objectId}`
     : base;
@@ -150,11 +195,31 @@ function updateModelPanel() {
         documentSummary: {
           system: currentDocument.system?.id ?? null,
           objectCount: currentDocument.objects.length,
+          schemaVersion: currentDocument.version,
         },
       }
     : currentDocument;
 
   modelOutput.textContent = JSON.stringify(payload, null, 2);
+}
+
+function updateEmbedPanel() {
+  if (!currentScene) {
+    embedOutput.textContent = "";
+    return;
+  }
+
+  embedOutput.textContent = createWorldOrbitEmbedMarkup(
+    {
+      version: "1.0",
+      mode: "interactive",
+      scene: currentScene,
+    },
+    {
+      theme: themeSelect.value,
+      className: "worldorbit-embed demo-sample",
+    },
+  );
 }
 
 function updateDownloadState() {
@@ -175,18 +240,17 @@ function enableViewerButtons(enabled) {
 }
 
 function downloadSvg() {
-  const svgElement = preview.querySelector("svg");
-  if (!svgElement) {
+  if (!viewer) {
     return;
   }
 
-  const blob = new Blob([svgElement.outerHTML], {
+  const blob = new Blob([viewer.exportSvg()], {
     type: "image/svg+xml;charset=utf-8",
   });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "worldorbit-preview.svg";
+  link.download = "worldorbit-v1-scene.svg";
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -203,5 +267,6 @@ rotateLeftButton.addEventListener("click", () => viewer?.rotateBy(-15));
 rotateRightButton.addEventListener("click", () => viewer?.rotateBy(15));
 fitButton.addEventListener("click", () => viewer?.fitToSystem());
 resetViewButton.addEventListener("click", () => viewer?.resetView());
+themeSelect.addEventListener("change", rebuildViewerTheme);
 
 render();

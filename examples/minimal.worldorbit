@@ -1,0 +1,10 @@
+system Solara
+  title "Solara"
+  view topdown
+  scale balanced
+
+star Solara
+
+planet Aster
+  orbit Solara
+  distance 1.0au

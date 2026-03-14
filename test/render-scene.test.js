@@ -1,15 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  parse,
-  renderDocumentToScene,
-  renderSceneToSvg,
-} from "../dist/index.js";
+import { parse, renderDocumentToScene } from "@worldorbit/core";
+import { renderSceneToSvg } from "@worldorbit/viewer";
 
 const source = `
 system Iyath
   title "Iyath System"
+  view topdown
+  scale presentation
 
 star Iyath
   radius 1.08sol
@@ -32,7 +31,7 @@ structure HiddenGate
   free 8.4au
 `.trim();
 
-test("scene creation exposes objects, visuals, and visible-content bounds", () => {
+test("scene creation exposes objects, visuals, visible-content bounds, and metadata", () => {
   const result = parse(source);
   const scene = renderDocumentToScene(result.document, {
     width: 960,
@@ -44,6 +43,9 @@ test("scene creation exposes objects, visuals, and visible-content bounds", () =
   const hiddenGate = scene.objects.find((object) => object.objectId === "HiddenGate");
 
   assert.equal(scene.title, "Iyath System");
+  assert.equal(scene.subtitle, "Topdown view · Presentation layout");
+  assert.equal(scene.viewMode, "topdown");
+  assert.equal(scene.layoutPreset, "presentation");
   assert.equal(scene.width, 960);
   assert.ok(scene.contentBounds.width > 0);
   assert.ok(scene.contentBounds.height > 0);
@@ -63,12 +65,19 @@ test("scene creation exposes objects, visuals, and visible-content bounds", () =
   );
 });
 
-test("scene svg keeps a dedicated transformable world layer", () => {
+test("scene svg keeps a dedicated transformable world layer and configurable layers", () => {
   const result = parse(source);
   const scene = renderDocumentToScene(result.document);
-  const svg = renderSceneToSvg(scene);
+  const svg = renderSceneToSvg(scene, {
+    layers: {
+      metadata: true,
+      labels: true,
+      structures: false,
+    },
+  });
 
   assert.match(svg, /id="worldorbit-camera-root"/);
   assert.match(svg, /data-object-id="Naar"/);
-  assert.match(svg, /wo-object-selected/);
+  assert.doesNotMatch(svg, /data-object-id="HiddenGate"/);
+  assert.match(svg, /Topdown view/);
 });

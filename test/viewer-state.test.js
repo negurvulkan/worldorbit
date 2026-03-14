@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parse, renderDocumentToScene } from "../dist/index.js";
+import { parse, renderDocumentToScene } from "@worldorbit/core";
 import {
   DEFAULT_VIEWER_STATE,
   composeViewerTransform,
@@ -10,7 +10,7 @@ import {
   panViewerState,
   rotateViewerState,
   zoomViewerStateAt,
-} from "../dist/viewer-state.js";
+} from "@worldorbit/viewer/viewer-state";
 
 const constraints = {
   minScale: 0.2,
