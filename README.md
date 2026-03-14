@@ -2,7 +2,7 @@
 
 WorldOrbit is a text-first DSL and rendering pipeline for fictional orbital systems.
 
-`v1.0.0` turns the former single-package prototype into three publishable packages:
+`v1.1.1` builds on the package split with object textures across core scenes, SVG rendering, the interactive viewer, and Markdown embeds.
 
 - `@worldorbit/core`: parser, schema, normalization, validation, formatting, and scene generation
 - `@worldorbit/viewer`: SVG rendering, interactive browser viewer, themes, and embed helpers
@@ -94,6 +94,39 @@ Viewer features in `v1.0`:
   - `createWorldOrbitEmbedMarkup(...)`
   - `mountWorldOrbitEmbeds(...)`
 
+#### Object textures
+
+WorldOrbit objects can now declare an `image` field for PNG-style body textures:
+
+```worldorbit
+planet Naar
+  image assets/naar-map.png
+  orbit Iyath
+  distance 1.18au
+```
+
+Texture support is available on:
+
+- `star`
+- `planet`
+- `moon`
+- `asteroid`
+- `comet`
+- `structure`
+- `phenomenon`
+
+`belt`, `ring`, and `system` intentionally reject `image`.
+
+Accepted image source forms:
+
+- relative paths like `assets/naar-map.png`
+- root-relative paths like `/demo/assets/naar-map.png`
+- absolute `http:` and `https:` URLs
+
+Unsupported schemes such as `javascript:`, `data:`, and `file:` are rejected during normalization.
+
+Image paths are passed through unchanged. Relative and root-relative paths resolve against the hosting HTML page URL, not against the `.worldorbit` source file path. If an image cannot be loaded, the renderer keeps the normal SVG body fill and outline as a fallback.
+
 ### @worldorbit/markdown
 
 Use `markdown` to turn fenced `worldorbit` blocks into static or interactive output.
@@ -175,6 +208,10 @@ WorldOrbit examples live in:
 - [examples/markdown/build.mjs](/H:/Projekte/worldorbit/examples/markdown/build.mjs)
 
 The browser demo is available at [demo/index.html](/H:/Projekte/worldorbit/demo/index.html).
+
+The demo includes an in-page `importmap`, so the browser can resolve
+`@worldorbit/core`, `@worldorbit/viewer`, and `@worldorbit/markdown`
+directly from the built package outputs without a bundler.
 
 Serve the repository root with a simple static server and open:
 

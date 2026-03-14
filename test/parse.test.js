@@ -79,6 +79,8 @@ system Iyath
 star Iyath
 
 planet Naar
+  color #72b7ff
+  image /demo/assets/naar-map.png
   orbit Iyath
   distance 1.18au
   tags habitable homeworld
@@ -90,7 +92,30 @@ planet Naar
   assert.match(formatted, /^system Iyath/m);
   assert.match(formatted, /title "Iyath System"/);
   assert.match(formatted, /planet Naar/);
+  assert.match(
+    formatted,
+    /planet Naar\s+orbit Iyath\s+distance 1\.18au\s+tags habitable homeworld\s+color #72b7ff\s+image \/demo\/assets\/naar-map\.png/s,
+  );
   assert.match(formatted, /tags habitable homeworld/);
+});
+
+test("parser supports image fields in inline and block forms", () => {
+  const input = `
+system Iyath
+star Iyath
+planet Naar orbit Iyath distance 1.18au image assets/naar-map.png
+moon Leth
+  orbit Naar
+  distance 220000km
+  image https://cdn.example.test/leth.png
+`.trim();
+
+  const result = parse(input);
+  const planet = result.document.objects.find((object) => object.id === "Naar");
+  const moon = result.document.objects.find((object) => object.id === "Leth");
+
+  assert.equal(planet?.properties.image, "assets/naar-map.png");
+  assert.equal(moon?.properties.image, "https://cdn.example.test/leth.png");
 });
 
 test("markdown fence extraction finds worldorbit blocks", () => {
@@ -140,7 +165,7 @@ test("renderer produces an svg document from valid source", () => {
   const input = `
 system Iyath
 star Iyath
-planet Naar orbit Iyath distance 1.18au period 412d
+planet Naar orbit Iyath distance 1.18au period 412d image assets/naar-map.png
 moon Leth orbit Naar distance 220000km
 structure Relay kind relay at Naar:L4
 `.trim();

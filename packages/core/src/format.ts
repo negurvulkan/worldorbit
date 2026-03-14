@@ -16,6 +16,7 @@ const CANONICAL_FIELD_ORDER = [
   "class",
   "tags",
   "color",
+  "image",
   "hidden",
   "orbit",
   "distance",

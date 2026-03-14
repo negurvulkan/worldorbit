@@ -8,7 +8,7 @@ system Iyath
   view topdown
 
 star Iyath
-planet Naar orbit Iyath distance 1.18au
+planet Naar orbit Iyath distance 1.18au image /demo/assets/naar-map.png
 moon Leth orbit Naar distance 220000km
 structure Skyhook kind elevator surface Naar
 ```

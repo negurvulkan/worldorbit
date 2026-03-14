@@ -11,6 +11,7 @@ star Iyath
 
 planet Naar
   class terrestrial
+  image /demo/assets/naar-map.png
   orbit Iyath
   semiMajor 1.18au
   eccentricity 0.03

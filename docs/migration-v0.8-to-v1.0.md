@@ -58,6 +58,17 @@ These can emit:
 - static inline SVG
 - interactive embed containers with serialized scene payloads for hydration
 
+## Object textures
+
+v1.0 adds an `image` field for textured object rendering in SVG, the interactive viewer, and Markdown embeds.
+
+- supported on `star`, `planet`, `moon`, `asteroid`, `comet`, `structure`, and `phenomenon`
+- rejected on `system`, `belt`, and `ring`
+- accepts relative paths, root-relative paths, and `http:` / `https:` URLs
+- rejects unsupported schemes such as `javascript:`, `data:`, and `file:`
+
+Image URLs are emitted unchanged into SVG and embed payloads. Relative paths resolve in the browser against the hosting page URL.
+
 ## Validation tightening
 
 v1.0 rejects more invalid input than v0.8, especially around:

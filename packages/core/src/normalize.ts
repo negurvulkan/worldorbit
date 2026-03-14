@@ -29,6 +29,7 @@ const BOOLEAN_VALUES = new Map<string, boolean>([
   ["yes", true],
   ["no", false],
 ]);
+const URL_SCHEME_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*:/;
 
 export function normalizeDocument(ast: AstDocument): WorldOrbitDocument {
   let system: WorldOrbitSystem | null = null;
@@ -232,12 +233,53 @@ function normalizeProperties(
         result[key] = parseUnitValue(singleFieldValue(field), field.location, key);
         break;
       case "string":
-        result[key] = field.values.join(" ");
+        result[key] = normalizeStringValue(key, field);
         break;
     }
   }
 
   return result;
+}
+
+function normalizeStringValue(key: string, field: AstFieldNode): string {
+  const value = field.values.join(" ").trim();
+
+  if (key === "image") {
+    validateImageSource(value, field.location);
+  }
+
+  return value;
+}
+
+function validateImageSource(
+  value: string,
+  location: AstFieldNode["location"],
+): void {
+  if (!value) {
+    throw WorldOrbitError.fromLocation('Field "image" must not be empty', location);
+  }
+
+  if (value.startsWith("//")) {
+    throw WorldOrbitError.fromLocation(
+      'Field "image" must use a relative path, root-relative path, or an http/https URL',
+      location,
+    );
+  }
+
+  const schemeMatch = value.match(URL_SCHEME_PATTERN);
+
+  if (!schemeMatch) {
+    return;
+  }
+
+  const scheme = schemeMatch[0].slice(0, -1).toLowerCase();
+
+  if (scheme !== "http" && scheme !== "https") {
+    throw WorldOrbitError.fromLocation(
+      `Field "image" does not support the "${scheme}" scheme`,
+      location,
+    );
+  }
 }
 
 function normalizeInfo(entries: AstInfoEntryNode[]): Record<string, string> {

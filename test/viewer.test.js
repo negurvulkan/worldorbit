@@ -9,7 +9,7 @@ import { createInteractiveViewer } from "@worldorbit/viewer";
 const source = `
 system Iyath
 star Iyath
-planet Naar orbit Iyath distance 1.18au
+planet Naar orbit Iyath distance 1.18au image assets/naar-map.png
 moon Leth orbit Naar distance 220000km
 structure Relay kind relay at Naar:L4
 `.trim();
@@ -100,6 +100,7 @@ test("interactive viewer mounts, updates, selects, exports, and destroys cleanly
     assert.equal(selections.at(-1), "Naar");
     assert.match(target?.getAttribute("class") ?? "", /wo-object-selected/);
     assert.match(viewer.exportSvg(), /wo-object-selected/);
+    assert.match(viewer.exportSvg(), /assets\/naar-map\.png/);
 
     const selectionCount = selections.length;
     viewer.destroy();

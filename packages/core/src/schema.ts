@@ -20,6 +20,15 @@ const ALL_OBJECTS: WorldOrbitObjectType[] = [
 const NON_SYSTEM_OBJECTS: WorldOrbitObjectType[] = ALL_OBJECTS.filter(
   (objectType) => objectType !== "system",
 ) as Exclude<WorldOrbitObjectType, "system">[];
+const IMAGE_OBJECTS: WorldOrbitObjectType[] = [
+  "star",
+  "planet",
+  "moon",
+  "asteroid",
+  "comet",
+  "structure",
+  "phenomenon",
+];
 
 const ANCHORED_OBJECTS: WorldOrbitObjectType[] = ["structure", "phenomenon"];
 const ORBITAL_OBJECTS: WorldOrbitObjectType[] = [
@@ -161,6 +170,12 @@ export const WORLDORBIT_FIELD_SCHEMAS: ReadonlyMap<string, WorldOrbitFieldSchema
         placement: false,
         arity: "single",
         objectTypes: ALL_OBJECTS,
+      }),
+      createField("image", {
+        kind: "string",
+        placement: false,
+        arity: "single",
+        objectTypes: IMAGE_OBJECTS,
       }),
       createField("hidden", {
         kind: "boolean",

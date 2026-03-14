@@ -216,7 +216,7 @@ export function renderDocumentToScene(
     title:
       String(document.system?.properties.title ?? document.system?.id ?? "WorldOrbit") ||
       "WorldOrbit",
-    subtitle: `${capitalizeLabel(viewMode)} view · ${capitalizeLabel(layoutPreset)} layout`,
+    subtitle: `${capitalizeLabel(viewMode)} view - ${capitalizeLabel(layoutPreset)} layout`,
     systemId,
     viewMode,
     layoutPreset,
@@ -293,6 +293,10 @@ function createSceneObject(position: PositionedObject): RenderSceneObject {
     secondaryLabel:
       object.type === "structure" ? String(object.properties.kind ?? object.type) : object.type,
     fillColor: customColorFor(object.properties.color),
+    imageHref:
+      typeof object.properties.image === "string" && object.properties.image.trim()
+        ? object.properties.image
+        : undefined,
     hidden: object.properties.hidden === true,
   };
 }
@@ -359,8 +363,7 @@ function calculateContentBounds(
 
   for (const object of objects) {
     if (object.hidden) continue;
-    include(object.x - object.visualRadius - 24, object.y - object.visualRadius - 12);
-    include(object.x + object.visualRadius + 24, object.y + object.visualRadius + 34);
+    includeObjectBounds(object, height, include);
   }
 
   if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
@@ -386,6 +389,31 @@ function createBounds(
     centerX: minX + (maxX - minX) / 2,
     centerY: minY + (maxY - minY) / 2,
   };
+}
+
+function includeObjectBounds(
+  object: RenderSceneObject,
+  sceneHeight: number,
+  include: (x: number, y: number) => void,
+): void {
+  const labelDirection = object.y > sceneHeight * 0.62 ? -1 : 1;
+  const labelY = object.y + labelDirection * (object.radius + 18);
+  const secondaryY = labelY + labelDirection * 15;
+  const labelHalfWidth = estimateLabelHalfWidth(object);
+
+  include(
+    object.x - Math.max(object.visualRadius + 24, labelHalfWidth),
+    object.y - object.visualRadius - 12,
+  );
+  include(
+    object.x + Math.max(object.visualRadius + 24, labelHalfWidth),
+    object.y + object.visualRadius + 34,
+  );
+
+  include(object.x - labelHalfWidth, labelY - 16);
+  include(object.x + labelHalfWidth, labelY + 6);
+  include(object.x - labelHalfWidth, secondaryY - 12);
+  include(object.x + labelHalfWidth, secondaryY + 6);
 }
 
 function placeObject(
@@ -765,6 +793,12 @@ function createRenderId(objectId: string): string {
 
 function customColorFor(value: NormalizedValue | undefined): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function estimateLabelHalfWidth(object: RenderSceneObject): number {
+  const primaryWidth = object.label.length * 4.6 + 18;
+  const secondaryWidth = object.secondaryLabel.length * 3.9 + 18;
+  return Math.max(primaryWidth, secondaryWidth, object.visualRadius + 18);
 }
 
 function capitalizeLabel(value: string): string {

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>WorldOrbit v1.0 Demo</title>
+    <title>WorldOrbit v1.1.1 Demo</title>
     <style>
       :root {
         --bg: #071019;
@@ -97,16 +97,19 @@
         display: grid;
         grid-template-columns: minmax(340px, 430px) minmax(0, 1fr);
         gap: 20px;
+        align-items: start;
       }
 
       .panel {
         background: var(--panel);
+        min-width: 0;
       }
 
       .panel-header {
         display: flex;
         justify-content: space-between;
-        align-items: center;
+        align-items: flex-start;
+        flex-wrap: wrap;
         gap: 14px;
         padding: 18px 22px;
         border-bottom: 1px solid var(--line);
@@ -117,6 +120,8 @@
         display: flex;
         flex-direction: column;
         gap: 3px;
+        flex: 1 1 240px;
+        min-width: 0;
       }
 
       .panel-title strong {
@@ -135,6 +140,9 @@
         gap: 10px;
         flex-wrap: wrap;
         align-items: center;
+        justify-content: flex-end;
+        flex: 1 1 360px;
+        min-width: 0;
       }
 
       button,
@@ -185,10 +193,12 @@
       .viewer {
         display: grid;
         grid-template-rows: minmax(420px, 1fr) minmax(180px, 240px) minmax(160px, 220px);
+        min-width: 0;
       }
 
       .preview-shell {
         position: relative;
+        min-width: 0;
         padding: 18px;
         background:
           radial-gradient(circle at top left, rgba(240, 180, 100, 0.08), transparent 26%),
@@ -197,7 +207,9 @@
 
       #preview {
         display: grid;
-        place-items: center;
+        align-items: center;
+        justify-items: stretch;
+        min-width: 0;
         min-height: 420px;
         border: 1px solid var(--line);
         border-radius: 24px;
@@ -208,6 +220,7 @@
 
       #preview svg {
         width: min(100%, 1080px);
+        max-width: 100%;
         height: auto;
         display: block;
       }
@@ -244,6 +257,9 @@
         min-height: 180px;
         padding: 22px;
         overflow: auto;
+        max-width: 100%;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
       }
 
       code {
@@ -264,11 +280,11 @@
   <body>
     <main>
       <section class="hero">
-        <span class="eyebrow">WorldOrbit v1.0</span>
+        <span class="eyebrow">WorldOrbit v1.1.1</span>
         <h1>Core + Viewer + Markdown</h1>
         <p>
           Diese Demo laeuft direkt auf den neuen Paketen <code>@worldorbit/core</code>
-          und <code>@worldorbit/viewer</code>. Sie zeigt die v1.0-Pipeline vom DSL
+          und <code>@worldorbit/viewer</code>. Sie zeigt die v1.1.1-Pipeline vom DSL
           ueber das normalisierte Modell zur Render-Scene, zum interaktiven SVG-Viewer
           und bis zu einem hydratisierbaren Embed-Snippet fuer Markdown.
         </p>
@@ -339,6 +355,16 @@
       </section>
     </main>
 
+    <script type="importmap">
+      {
+        "imports": {
+          "@worldorbit/core": "../packages/core/dist/index.js",
+          "@worldorbit/viewer": "../packages/viewer/dist/index.js",
+          "@worldorbit/viewer/viewer-state": "../packages/viewer/dist/viewer-state.js",
+          "@worldorbit/markdown": "../packages/markdown/dist/index.js"
+        }
+      }
+    </script>
     <script type="module" src="./demo.js"></script>
   </body>
 </html>

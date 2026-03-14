@@ -18,6 +18,10 @@ export function renderSceneToSvg(scene: RenderScene, options: SvgRenderOptions =
   const theme = resolveTheme(options.theme);
   const layers = resolveLayers(options.layers);
   const subtitle = options.subtitle ?? scene.subtitle;
+  const visibleObjects = scene.objects
+    .filter((object) => !object.hidden)
+    .filter((object) => layers.structures || !isStructureLike(object.object));
+  const imageDefinitions = buildImageDefinitions(visibleObjects);
 
   const orbitMarkup = layers.orbits
     ? scene.orbitVisuals
@@ -39,9 +43,7 @@ export function renderSceneToSvg(scene: RenderScene, options: SvgRenderOptions =
         .join("")
     : "";
 
-  const objectMarkup = scene.objects
-    .filter((object) => !object.hidden)
-    .filter((object) => layers.structures || !isStructureLike(object.object))
+  const objectMarkup = visibleObjects
     .map((object) => renderSceneObject(scene, object, options.selectedObjectId ?? null, layers.labels))
     .join("");
 
@@ -57,9 +59,9 @@ export function renderSceneToSvg(scene: RenderScene, options: SvgRenderOptions =
   ${layers.guides ? renderBackdrop(scene.width, scene.height) : ""}`
     : "";
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${scene.width} ${scene.height}" role="img" aria-labelledby="worldorbit-title worldorbit-desc">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${scene.width}" height="${scene.height}" viewBox="0 0 ${scene.width} ${scene.height}" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="worldorbit-title worldorbit-desc">
   <title id="worldorbit-title">${escapeXml(scene.title)}</title>
-  <desc id="worldorbit-desc">A ${escapeXml(scene.viewMode)} WorldOrbit render with ${scene.objects.filter((object) => !object.hidden).length} visible objects.</desc>
+  <desc id="worldorbit-desc">A ${escapeXml(scene.viewMode)} WorldOrbit render with ${visibleObjects.length} visible objects.</desc>
   <defs>
     <linearGradient id="wo-bg" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="${theme.backgroundStart}" />
@@ -73,6 +75,7 @@ export function renderSceneToSvg(scene: RenderScene, options: SvgRenderOptions =
       <stop offset="0%" stop-color="${theme.backgroundGlow}" />
       <stop offset="100%" stop-color="transparent" />
     </radialGradient>
+    ${imageDefinitions}
   </defs>
   <style>
     .wo-bg { fill: url(#wo-bg); }
@@ -93,6 +96,7 @@ export function renderSceneToSvg(scene: RenderScene, options: SvgRenderOptions =
     .wo-object-selected .wo-label { fill: ${theme.accent}; }
     .wo-object-selected .wo-label-secondary { fill: ${theme.selected}; }
     .wo-selection-ring { display: none; fill: none; stroke: ${theme.selected}; stroke-width: 2; stroke-dasharray: 6 5; }
+    .wo-object-image { pointer-events: none; }
     .wo-star-core { fill: ${theme.starCore}; stroke: ${theme.starStroke}; stroke-width: 2; }
     .wo-star-glow { fill: url(#wo-star-glow); }
     .wo-planet { fill: #72b7ff; stroke: #d8efff; stroke-width: 1.5; }
@@ -103,6 +107,7 @@ export function renderSceneToSvg(scene: RenderScene, options: SvgRenderOptions =
     .wo-ring { fill: #e59f7d; stroke: #fff0d3; stroke-width: 1.2; }
     .wo-structure { fill: ${theme.accentStrong}; stroke: #fff2ea; stroke-width: 1.2; }
     .wo-phenomenon { fill: #78ffd7; stroke: #e9fff7; stroke-width: 1.2; }
+    .wo-outline { fill: transparent; }
   </style>
   ${backgroundMarkup}
   ${metadataMarkup}
@@ -132,6 +137,13 @@ export function renderSourceToSvg(source: string, options: SvgRenderOptions = {}
   return renderDocumentToSvg(document, options);
 }
 
+function buildImageDefinitions(objects: RenderSceneObject[]): string {
+  return objects
+    .filter((object) => Boolean(object.imageHref))
+    .map((object) => renderImageClipPath(object))
+    .join("");
+}
+
 function renderSceneObject(
   scene: RenderScene,
   sceneObject: RenderSceneObject,
@@ -143,10 +155,16 @@ function renderSceneObject(
   const labelY = y + labelDirection * (radius + 18);
   const secondaryY = labelY + labelDirection * 15;
   const selectionClass = selectedObjectId === sceneObject.objectId ? " wo-object-selected" : "";
+  const imageMarkup = renderObjectImage(sceneObject);
+  const outlineMarkup = imageMarkup
+    ? renderObjectBody(object, x, y, radius, fillColor, { outlineOnly: true })
+    : "";
 
   return `<g class="wo-object wo-object-${object.type}${selectionClass}" data-object-id="${escapeXml(sceneObject.objectId)}" data-render-id="${escapeXml(sceneObject.renderId)}" tabindex="0" role="button" aria-label="${escapeXml(`${object.type} ${sceneObject.objectId}`)}">
     <circle class="wo-selection-ring" cx="${x}" cy="${y}" r="${visualRadius + 8}" />
     ${renderObjectBody(object, x, y, radius, fillColor)}
+    ${imageMarkup}
+    ${outlineMarkup}
     ${showLabels ? `<text class="wo-label" x="${x}" y="${labelY}" text-anchor="middle">${escapeXml(label)}</text>
     <text class="wo-label-secondary" x="${x}" y="${secondaryY}" text-anchor="middle">${escapeXml(secondaryLabel)}</text>` : ""}
   </g>`;
@@ -158,28 +176,115 @@ function renderObjectBody(
   y: number,
   radius: number,
   fillColor?: string,
+  options: { outlineOnly?: boolean } = {},
 ): string {
+  const fillAttribute = options.outlineOnly ? ' fill="transparent"' : fillColor ? ` fill="${fillColor}"` : "";
+  const outlineClass = options.outlineOnly ? " wo-outline" : "";
+
   switch (object.type) {
     case "star":
-      return `<circle class="wo-star-glow" cx="${x}" cy="${y}" r="${radius * 2.4}" />
-<circle class="wo-star-core" cx="${x}" cy="${y}" r="${radius}"${fillColor ? ` fill="${fillColor}"` : ""} />`;
+      return options.outlineOnly
+        ? `<circle class="wo-star-core${outlineClass}" cx="${x}" cy="${y}" r="${radius}"${fillAttribute} />`
+        : `<circle class="wo-star-glow" cx="${x}" cy="${y}" r="${radius * 2.4}" />
+<circle class="wo-star-core" cx="${x}" cy="${y}" r="${radius}"${fillAttribute} />`;
     case "planet":
-      return `<circle class="wo-planet" cx="${x}" cy="${y}" r="${radius}"${fillColor ? ` fill="${fillColor}"` : ""} />`;
+      return `<circle class="wo-planet${outlineClass}" cx="${x}" cy="${y}" r="${radius}"${fillAttribute} />`;
     case "moon":
-      return `<circle class="wo-moon" cx="${x}" cy="${y}" r="${radius}"${fillColor ? ` fill="${fillColor}"` : ""} />`;
+      return `<circle class="wo-moon${outlineClass}" cx="${x}" cy="${y}" r="${radius}"${fillAttribute} />`;
     case "belt":
-      return `<circle class="wo-belt" cx="${x}" cy="${y}" r="${radius}"${fillColor ? ` fill="${fillColor}"` : ""} />`;
+      return `<circle class="wo-belt${outlineClass}" cx="${x}" cy="${y}" r="${radius}"${fillAttribute} />`;
     case "asteroid":
-      return `<circle class="wo-asteroid" cx="${x}" cy="${y}" r="${radius}"${fillColor ? ` fill="${fillColor}"` : ""} />`;
+      return `<circle class="wo-asteroid${outlineClass}" cx="${x}" cy="${y}" r="${radius}"${fillAttribute} />`;
     case "comet":
-      return `<path class="wo-comet" d="M ${x - radius * 1.8} ${y + radius * 1.2} Q ${x - radius * 0.6} ${y + radius * 0.2} ${x - radius * 0.4} ${y}" /><circle class="wo-comet" cx="${x}" cy="${y}" r="${radius}"${fillColor ? ` fill="${fillColor}"` : ""} />`;
+      return options.outlineOnly
+        ? `<circle class="wo-comet${outlineClass}" cx="${x}" cy="${y}" r="${radius}"${fillAttribute} />`
+        : `<path class="wo-comet" d="M ${x - radius * 1.8} ${y + radius * 1.2} Q ${x - radius * 0.6} ${y + radius * 0.2} ${x - radius * 0.4} ${y}" /><circle class="wo-comet" cx="${x}" cy="${y}" r="${radius}"${fillAttribute} />`;
     case "ring":
-      return `<circle class="wo-ring" cx="${x}" cy="${y}" r="${radius}"${fillColor ? ` fill="${fillColor}"` : ""} />`;
+      return `<circle class="wo-ring${outlineClass}" cx="${x}" cy="${y}" r="${radius}"${fillAttribute} />`;
     case "structure":
-      return `<polygon class="wo-structure" points="${x},${y - radius} ${x + radius},${y} ${x},${y + radius} ${x - radius},${y}"${fillColor ? ` fill="${fillColor}"` : ""} />`;
+      return `<polygon class="wo-structure${outlineClass}" points="${diamondPoints(x, y, radius)}"${fillAttribute} />`;
     case "phenomenon":
-      return `<polygon class="wo-phenomenon" points="${x},${y - radius * 1.2} ${x + radius * 0.9},${y - radius * 0.3} ${x + radius * 1.2},${y + radius * 0.8} ${x},${y + radius * 1.2} ${x - radius * 1.1},${y + radius * 0.3} ${x - radius * 0.8},${y - radius * 0.8}"${fillColor ? ` fill="${fillColor}"` : ""} />`;
+      return `<polygon class="wo-phenomenon${outlineClass}" points="${phenomenonPoints(x, y, radius)}"${fillAttribute} />`;
   }
+}
+
+function renderObjectImage(sceneObject: RenderSceneObject): string {
+  if (!sceneObject.imageHref) {
+    return "";
+  }
+
+  const bounds = imageBoundsForObject(sceneObject);
+  return `<image class="wo-object-image" x="${bounds.x}" y="${bounds.y}" width="${bounds.width}" height="${bounds.height}" href="${escapeAttribute(sceneObject.imageHref)}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${escapeAttribute(getObjectClipPathId(sceneObject))})" />`;
+}
+
+function renderImageClipPath(sceneObject: RenderSceneObject): string {
+  const { x, y, radius } = sceneObject;
+  let content = "";
+
+  switch (sceneObject.object.type) {
+    case "star":
+    case "planet":
+    case "moon":
+    case "asteroid":
+    case "comet":
+      content = `<circle cx="${x}" cy="${y}" r="${radius}" />`;
+      break;
+    case "structure":
+      content = `<polygon points="${diamondPoints(x, y, radius)}" />`;
+      break;
+    case "phenomenon":
+      content = `<polygon points="${phenomenonPoints(x, y, radius)}" />`;
+      break;
+    default:
+      return "";
+  }
+
+  return `<clipPath id="${escapeAttribute(getObjectClipPathId(sceneObject))}" clipPathUnits="userSpaceOnUse">${content}</clipPath>`;
+}
+
+function imageBoundsForObject(sceneObject: RenderSceneObject): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  const { object, x, y, radius } = sceneObject;
+
+  switch (object.type) {
+    case "structure":
+      return {
+        x: x - radius,
+        y: y - radius,
+        width: radius * 2,
+        height: radius * 2,
+      };
+    case "phenomenon":
+      return {
+        x: x - radius * 1.2,
+        y: y - radius * 1.2,
+        width: radius * 2.4,
+        height: radius * 2.4,
+      };
+    default:
+      return {
+        x: x - radius,
+        y: y - radius,
+        width: radius * 2,
+        height: radius * 2,
+      };
+  }
+}
+
+function getObjectClipPathId(sceneObject: RenderSceneObject): string {
+  return `${sceneObject.renderId}-clip`;
+}
+
+function diamondPoints(x: number, y: number, radius: number): string {
+  return `${x},${y - radius} ${x + radius},${y} ${x},${y + radius} ${x - radius},${y}`;
+}
+
+function phenomenonPoints(x: number, y: number, radius: number): string {
+  return `${x},${y - radius * 1.2} ${x + radius * 0.9},${y - radius * 0.3} ${x + radius * 1.2},${y + radius * 0.8} ${x},${y + radius * 1.2} ${x - radius * 1.1},${y + radius * 0.3} ${x - radius * 0.8},${y - radius * 0.8}`;
 }
 
 function renderBackdrop(width: number, height: number): string {
@@ -201,7 +306,7 @@ function renderMetadata(scene: RenderScene): string {
     `${scene.layoutPreset} layout`,
     `${scene.viewMode} view`,
     `schema ${scene.metadata.version ?? "1.0"}`,
-  ].join(" · ");
+  ].join(" - ");
 }
 
 function isStructureLike(object: WorldOrbitObject): boolean {
@@ -215,4 +320,8 @@ function escapeXml(value: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll("\"", "&quot;")
     .replaceAll("'", "&apos;");
+}
+
+function escapeAttribute(value: string): string {
+  return escapeXml(value);
 }

@@ -1,8 +1,5 @@
-import { parse, renderDocumentToScene } from "../packages/core/dist/index.js";
-import {
-  createInteractiveViewer,
-  createWorldOrbitEmbedMarkup,
-} from "../packages/viewer/dist/index.js";
+import { parse, renderDocumentToScene } from "@worldorbit/core";
+import { createInteractiveViewer, createWorldOrbitEmbedMarkup } from "@worldorbit/viewer";
 
 const sampleSource = `system Iyath
   title "Iyath System"
@@ -18,6 +15,7 @@ star Iyath
 planet Naar
   class terrestrial
   culture Enari
+  image assets/naar-map.png
   orbit Iyath
   semiMajor 1.18au
   eccentricity 0.03

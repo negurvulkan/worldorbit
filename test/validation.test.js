@@ -82,3 +82,45 @@ structure Relay kind relay surface Ember
     message: /Surface target "Ember" on "Relay" is not surface-capable/,
   });
 });
+
+test("validation rejects image on unsupported object types", () => {
+  const input = `
+system Iyath
+star Iyath
+belt Ember orbit Iyath distance 2.7au image assets/ember.png
+`.trim();
+
+  assert.throws(() => parse(input), {
+    name: "WorldOrbitError",
+    message: /Field "image" is not valid on "belt"/,
+  });
+});
+
+test("validation rejects unsupported image URL schemes", () => {
+  const input = `
+system Iyath
+star Iyath
+planet Naar orbit Iyath distance 1.18au image javascript:alert(1)
+`.trim();
+
+  assert.throws(() => parse(input), {
+    name: "WorldOrbitError",
+    message: /Field "image" does not support the "javascript" scheme/,
+  });
+});
+
+test("validation accepts relative and https image sources", () => {
+  const input = `
+system Iyath
+star Iyath
+planet Naar orbit Iyath distance 1.18au image assets/naar-map.png
+moon Leth orbit Naar distance 220000km image https://cdn.example.test/leth.png
+`.trim();
+
+  const result = parse(input);
+  const planet = result.document.objects.find((object) => object.id === "Naar");
+  const moon = result.document.objects.find((object) => object.id === "Leth");
+
+  assert.equal(planet?.properties.image, "assets/naar-map.png");
+  assert.equal(moon?.properties.image, "https://cdn.example.test/leth.png");
+});

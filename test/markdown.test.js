@@ -11,6 +11,7 @@ import {
   remarkWorldOrbit,
   renderWorldOrbitBlock,
 } from "@worldorbit/markdown";
+import { deserializeWorldOrbitEmbedPayload } from "@worldorbit/viewer";
 
 const markdown = `
 # Atlas
@@ -19,7 +20,7 @@ const markdown = `
 system Iyath
   title "Iyath System"
 star Iyath
-planet Naar orbit Iyath distance 1.18au
+planet Naar orbit Iyath distance 1.18au image /demo/assets/naar-map.png
 \`\`\`
 `.trim();
 
@@ -28,13 +29,14 @@ test("renderWorldOrbitBlock emits inline svg for static mode", () => {
     `
 system Iyath
 star Iyath
-planet Naar orbit Iyath distance 1.18au
+planet Naar orbit Iyath distance 1.18au image /demo/assets/naar-map.png
 `.trim(),
     { mode: "static" },
   );
 
   assert.match(html, /<svg/);
   assert.match(html, /Iyath/);
+  assert.match(html, /\/demo\/assets\/naar-map\.png/);
 });
 
 test("renderWorldOrbitBlock emits a hydration payload for interactive mode", () => {
@@ -42,13 +44,21 @@ test("renderWorldOrbitBlock emits a hydration payload for interactive mode", () 
     `
 system Iyath
 star Iyath
-planet Naar orbit Iyath distance 1.18au
+planet Naar orbit Iyath distance 1.18au image /demo/assets/naar-map.png
 `.trim(),
     { mode: "interactive" },
   );
 
   assert.match(html, /data-worldorbit-embed="true"/);
   assert.match(html, /data-worldorbit-payload=/);
+
+  const payloadMatch = html.match(/data-worldorbit-payload="([^"]+)"/);
+  assert.ok(payloadMatch);
+
+  const payload = deserializeWorldOrbitEmbedPayload(payloadMatch[1]);
+  const planet = payload.scene.objects.find((object) => object.objectId === "Naar");
+
+  assert.equal(planet?.imageHref, "/demo/assets/naar-map.png");
 });
 
 test("remark plugin transforms fenced blocks into static markup", async () => {

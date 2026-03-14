@@ -9,7 +9,7 @@ system Iyath
   scale presentation
 
 star Iyath
-planet Naar orbit Iyath distance 1.18au
+planet Naar orbit Iyath distance 1.18au image /demo/assets/naar-map.png
 moon Leth orbit Naar distance 220000km
 structure Relay kind relay at Naar:L4
 structure OuterGate kind gate free 8.4au

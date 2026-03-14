@@ -199,6 +199,7 @@ export interface RenderSceneObject {
   label: string;
   secondaryLabel: string;
   fillColor?: string;
+  imageHref?: string;
   hidden: boolean;
 }
 
