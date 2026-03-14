@@ -1,0 +1,847 @@
+## 1. TypeScript-Typen für `worldorbit` v0.1
+
+Zuerst die kleinste saubere Typbasis.
+
+```ts
+export type WorldOrbitObjectType =
+  | "system"
+  | "star"
+  | "planet"
+  | "moon"
+  | "belt"
+  | "asteroid"
+  | "comet"
+  | "ring"
+  | "structure"
+  | "phenomenon";
+
+export type PlacementMode = "orbit" | "at" | "surface" | "free";
+
+export type Unit =
+  | "au"
+  | "km"
+  | "re"
+  | "sol"
+  | "me"
+  | "d"
+  | "y"
+  | "h"
+  | "deg";
+
+export interface UnitValue {
+  value: number;
+  unit: Unit | null;
+}
+```
+
+Dann die AST-Typen.
+Die AST soll noch nah an der Eingabe bleiben und nicht zu früh interpretieren.
+
+```ts
+export interface AstDocument {
+  type: "document";
+  objects: AstObjectNode[];
+}
+
+export interface AstObjectNode {
+  type: "object";
+  objectType: WorldOrbitObjectType;
+  name: string;
+  inlineFields: AstFieldNode[];
+  blockFields: AstFieldNode[];
+  infoEntries: AstInfoEntryNode[];
+  location: AstSourceLocation;
+}
+
+export interface AstFieldNode {
+  type: "field";
+  key: string;
+  values: string[];
+  location: AstSourceLocation;
+}
+
+export interface AstInfoEntryNode {
+  type: "info-entry";
+  key: string;
+  value: string;
+  location: AstSourceLocation;
+}
+
+export interface AstSourceLocation {
+  line: number;
+  column: number;
+}
+```
+
+Jetzt das normalisierte Modell, das nach dem AST entsteht und vom Renderer verwendet wird.
+
+```ts
+export interface WorldOrbitDocument {
+  format: "worldorbit";
+  version: "0.1";
+  system: WorldOrbitSystem | null;
+  objects: WorldOrbitObject[];
+}
+
+export interface WorldOrbitSystem {
+  type: "system";
+  id: string;
+  properties: Record<string, NormalizedValue>;
+  info: Record<string, string>;
+}
+
+export interface WorldOrbitObject {
+  type: Exclude<WorldOrbitObjectType, "system">;
+  id: string;
+  properties: Record<string, NormalizedValue>;
+  placement: Placement | null;
+  info: Record<string, string>;
+}
+
+export type NormalizedValue =
+  | string
+  | number
+  | boolean
+  | string[]
+  | UnitValue;
+
+export type Placement =
+  | OrbitPlacement
+  | AtPlacement
+  | SurfacePlacement
+  | FreePlacement;
+
+export interface OrbitPlacement {
+  mode: "orbit";
+  target: string;
+  distance?: UnitValue;
+  semiMajor?: UnitValue;
+  eccentricity?: number;
+  period?: UnitValue;
+  angle?: UnitValue;
+  inclination?: UnitValue;
+  phase?: UnitValue;
+}
+
+export interface AtPlacement {
+  mode: "at";
+  target: string;
+}
+
+export interface SurfacePlacement {
+  mode: "surface";
+  target: string;
+}
+
+export interface FreePlacement {
+  mode: "free";
+  distance?: UnitValue;
+}
+```
+
+## 2. Feldklassifikation
+
+Damit der Parser später nicht chaotisch wird, braucht er eine feste Feldklassifikation.
+
+```ts
+export const OBJECT_TYPES: ReadonlySet<string> = new Set([
+  "system",
+  "star",
+  "planet",
+  "moon",
+  "belt",
+  "asteroid",
+  "comet",
+  "ring",
+  "structure",
+  "phenomenon",
+]);
+
+export const UNIT_VALUE_KEYS: ReadonlySet<string> = new Set([
+  "distance",
+  "semiMajor",
+  "inner",
+  "outer",
+  "radius",
+  "mass",
+  "gravity",
+  "temperature",
+  "period",
+  "angle",
+  "inclination",
+  "phase",
+  "cycle",
+]);
+
+export const STRING_KEYS: ReadonlySet<string> = new Set([
+  "orbit",
+  "at",
+  "surface",
+  "free",
+  "kind",
+  "class",
+  "color",
+  "view",
+  "scale",
+  "units",
+  "title",
+  "on",
+  "source",
+  "hidden",
+]);
+
+export const LIST_KEYS: ReadonlySet<string> = new Set([
+  "tags",
+]);
+
+export const NUMBER_KEYS: ReadonlySet<string> = new Set([
+  "eccentricity",
+  "albedo",
+]);
+```
+
+`free` ist hier absichtlich noch als String geführt, weil die DSL sowohl `free 8.4au` als auch später vielleicht `free deep-space` erlauben könnte.
+Für v0.1 würde ich aber in der Normalisierung `free 8.4au` bevorzugen.
+
+## 3. Tokenizer-Strategie
+
+Die Sprache ist einfach genug, dass du keinen komplexen Parsergenerator brauchst.
+Ein handgeschriebener Parser reicht völlig.
+
+Der erste Schritt ist ein zeilenbasierter Pre-Parser:
+
+* Text in Zeilen aufteilen
+* Leerzeilen überspringen
+* Einrückung pro Zeile bestimmen
+* Quotes respektieren
+* jede Zeile in Tokens zerlegen
+
+Wichtig ist die Tokenisierung von Zeilen wie:
+
+```txt
+planet Naar orbit Iyath distance 1.18au period 412d
+```
+
+Das sollte werden zu:
+
+```ts
+["planet", "Naar", "orbit", "Iyath", "distance", "1.18au", "period", "412d"]
+```
+
+Aber mit Quotes:
+
+```txt
+description "Heimatwelt der Enari."
+```
+
+muss zu
+
+```ts
+["description", "Heimatwelt der Enari."]
+```
+
+werden.
+
+Dafür reicht ein kleiner Scanner, der zeichenweise durchgeht und zwischen normalem Modus und Quote-Modus umschaltet.
+
+Beispiel:
+
+```ts
+export function tokenizeLine(input: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (!inQuotes && /\s/.test(ch)) {
+      if (current.length > 0) {
+        tokens.push(current);
+        current = "";
+      }
+      continue;
+    }
+
+    current += ch;
+  }
+
+  if (current.length > 0) {
+    tokens.push(current);
+  }
+
+  return tokens;
+}
+```
+
+## 4. Parser-Strategie
+
+Der Parser selbst kann sehr einfach als zustandsbasierter Einrückungsparser gebaut werden.
+
+Regeln:
+
+Eine nicht eingerückte Zeile beginnt immer ein neues Objekt.
+Eine eingerückte Zeile gehört zum aktuellen Objekt.
+Eine eingerückte Zeile mit exakt `info` öffnet den `info`-Block.
+Weiter eingerückte Zeilen innerhalb von `info` sind Info-Einträge.
+
+Dafür reicht ein Zustand wie:
+
+```ts
+interface ParseState {
+  currentObject: AstObjectNode | null;
+  inInfoBlock: boolean;
+  infoIndent: number | null;
+}
+```
+
+Dann grob:
+
+```ts
+export function parseWorldOrbit(source: string): AstDocument {
+  const lines = source.split(/\r?\n/);
+  const objects: AstObjectNode[] = [];
+
+  let currentObject: AstObjectNode | null = null;
+  let inInfoBlock = false;
+  let infoIndent: number | null = null;
+
+  for (let index = 0; index < lines.length; index++) {
+    const rawLine = lines[index];
+    const lineNumber = index + 1;
+
+    if (!rawLine.trim()) continue;
+
+    const indent = rawLine.match(/^\s*/)?.[0].length ?? 0;
+    const content = rawLine.trim();
+    const tokens = tokenizeLine(content);
+
+    if (indent === 0) {
+      inInfoBlock = false;
+      infoIndent = null;
+
+      const objectNode = parseObjectHeader(tokens, lineNumber);
+      objects.push(objectNode);
+      currentObject = objectNode;
+      continue;
+    }
+
+    if (!currentObject) {
+      throw new Error(`Indented line without object at line ${lineNumber}`);
+    }
+
+    if (content === "info") {
+      inInfoBlock = true;
+      infoIndent = indent;
+      continue;
+    }
+
+    if (inInfoBlock) {
+      if (indent <= (infoIndent ?? 0)) {
+        inInfoBlock = false;
+      }
+    }
+
+    if (inInfoBlock) {
+      currentObject.infoEntries.push(parseInfoEntry(tokens, lineNumber));
+    } else {
+      currentObject.blockFields.push(parseField(tokens, lineNumber));
+    }
+  }
+
+  return {
+    type: "document",
+    objects,
+  };
+}
+```
+
+Jetzt die Hilfsfunktionen.
+
+```ts
+export function parseObjectHeader(
+  tokens: string[],
+  line: number
+): AstObjectNode {
+  if (tokens.length < 2) {
+    throw new Error(`Invalid object declaration at line ${line}`);
+  }
+
+  const [objectType, name, ...rest] = tokens;
+
+  if (!OBJECT_TYPES.has(objectType)) {
+    throw new Error(`Unknown object type "${objectType}" at line ${line}`);
+  }
+
+  const inlineFields = parseInlineFields(rest, line);
+
+  return {
+    type: "object",
+    objectType: objectType as WorldOrbitObjectType,
+    name,
+    inlineFields,
+    blockFields: [],
+    infoEntries: [],
+    location: { line, column: 1 },
+  };
+}
+
+export function parseInlineFields(tokens: string[], line: number): AstFieldNode[] {
+  const fields: AstFieldNode[] = [];
+  let i = 0;
+
+  while (i < tokens.length) {
+    const key = tokens[i];
+    i++;
+
+    const values: string[] = [];
+    while (i < tokens.length && !looksLikeFieldKey(tokens[i])) {
+      values.push(tokens[i]);
+      i++;
+    }
+
+    if (values.length === 0) {
+      throw new Error(`Missing value for field "${key}" at line ${line}`);
+    }
+
+    fields.push({
+      type: "field",
+      key,
+      values,
+      location: { line, column: 1 },
+    });
+  }
+
+  return fields;
+}
+```
+
+Der Knackpunkt ist `looksLikeFieldKey`.
+Da die DSL offen bleiben soll, würde ich für v0.1 eine Whitelist für bekannte Feldnamen nutzen.
+
+```ts
+export const KNOWN_FIELD_KEYS: ReadonlySet<string> = new Set([
+  "orbit",
+  "distance",
+  "semiMajor",
+  "eccentricity",
+  "period",
+  "angle",
+  "inclination",
+  "phase",
+  "at",
+  "surface",
+  "free",
+  "kind",
+  "class",
+  "tags",
+  "color",
+  "hidden",
+  "radius",
+  "mass",
+  "density",
+  "gravity",
+  "temperature",
+  "albedo",
+  "atmosphere",
+  "inner",
+  "outer",
+  "view",
+  "scale",
+  "units",
+  "title",
+  "on",
+  "source",
+  "cycle",
+]);
+
+export function looksLikeFieldKey(token: string): boolean {
+  return KNOWN_FIELD_KEYS.has(token);
+}
+```
+
+Einzelne eingerückte Feldzeilen sind leichter:
+
+```ts
+export function parseField(tokens: string[], line: number): AstFieldNode {
+  if (tokens.length < 2) {
+    throw new Error(`Invalid field at line ${line}`);
+  }
+
+  return {
+    type: "field",
+    key: tokens[0],
+    values: tokens.slice(1),
+    location: { line, column: 1 },
+  };
+}
+
+export function parseInfoEntry(tokens: string[], line: number): AstInfoEntryNode {
+  if (tokens.length < 2) {
+    throw new Error(`Invalid info entry at line ${line}`);
+  }
+
+  return {
+    type: "info-entry",
+    key: tokens[0],
+    value: tokens.slice(1).join(" "),
+    location: { line, column: 1 },
+  };
+}
+```
+
+## 5. AST zu normalisiertem Modell
+
+Jetzt die zweite Stufe: AST in das eigentliche Modell umwandeln.
+
+```ts
+export function normalizeDocument(ast: AstDocument): WorldOrbitDocument {
+  let system: WorldOrbitSystem | null = null;
+  const objects: WorldOrbitObject[] = [];
+
+  for (const node of ast.objects) {
+    const normalized = normalizeObject(node);
+
+    if (node.objectType === "system") {
+      if (system) {
+        throw new Error(`Only one system object is allowed`);
+      }
+      system = normalized as WorldOrbitSystem;
+    } else {
+      objects.push(normalized as WorldOrbitObject);
+    }
+  }
+
+  return {
+    format: "worldorbit",
+    version: "0.1",
+    system,
+    objects,
+  };
+}
+```
+
+Dann die Objekt-Normalisierung:
+
+```ts
+export function normalizeObject(
+  node: AstObjectNode
+): WorldOrbitSystem | WorldOrbitObject {
+  const mergedFields = [...node.inlineFields, ...node.blockFields];
+  const fieldMap = collectFields(mergedFields);
+
+  const placement = extractPlacement(fieldMap);
+  const properties = normalizeProperties(fieldMap);
+  const info = normalizeInfo(node.infoEntries);
+
+  if (node.objectType === "system") {
+    return {
+      type: "system",
+      id: node.name,
+      properties,
+      info,
+    };
+  }
+
+  return {
+    type: node.objectType as Exclude<WorldOrbitObjectType, "system">,
+    id: node.name,
+    properties,
+    placement,
+    info,
+  };
+}
+```
+
+Hilfsfunktion zum Zusammenführen:
+
+```ts
+export function collectFields(
+  fields: AstFieldNode[]
+): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+
+  for (const field of fields) {
+    map.set(field.key, field.values);
+  }
+
+  return map;
+}
+```
+
+## 6. Placement extrahieren
+
+```ts
+export function extractPlacement(
+  fieldMap: Map<string, string[]>
+): Placement | null {
+  const hasOrbit = fieldMap.has("orbit");
+  const hasAt = fieldMap.has("at");
+  const hasSurface = fieldMap.has("surface");
+  const hasFree = fieldMap.has("free");
+
+  const modes = [hasOrbit, hasAt, hasSurface, hasFree].filter(Boolean).length;
+  if (modes > 1) {
+    throw new Error(`Object has multiple placement modes`);
+  }
+
+  if (hasOrbit) {
+    return {
+      mode: "orbit",
+      target: firstValue(fieldMap, "orbit"),
+      distance: parseOptionalUnitValue(fieldMap, "distance"),
+      semiMajor: parseOptionalUnitValue(fieldMap, "semiMajor"),
+      eccentricity: parseOptionalNumber(fieldMap, "eccentricity"),
+      period: parseOptionalUnitValue(fieldMap, "period"),
+      angle: parseOptionalUnitValue(fieldMap, "angle"),
+      inclination: parseOptionalUnitValue(fieldMap, "inclination"),
+      phase: parseOptionalUnitValue(fieldMap, "phase"),
+    };
+  }
+
+  if (hasAt) {
+    return {
+      mode: "at",
+      target: firstValue(fieldMap, "at"),
+    };
+  }
+
+  if (hasSurface) {
+    return {
+      mode: "surface",
+      target: firstValue(fieldMap, "surface"),
+    };
+  }
+
+  if (hasFree) {
+    const raw = firstValue(fieldMap, "free");
+    const parsed = tryParseUnitValue(raw);
+
+    return {
+      mode: "free",
+      distance: parsed ?? undefined,
+    };
+  }
+
+  return null;
+}
+```
+
+## 7. Properties normalisieren
+
+Platzierungsfelder müssen rausgefiltert werden, damit sie nicht doppelt landen.
+
+```ts
+const PLACEMENT_KEYS = new Set([
+  "orbit",
+  "at",
+  "surface",
+  "free",
+  "distance",
+  "semiMajor",
+  "eccentricity",
+  "period",
+  "angle",
+  "inclination",
+  "phase",
+]);
+
+export function normalizeProperties(
+  fieldMap: Map<string, string[]>
+): Record<string, NormalizedValue> {
+  const result: Record<string, NormalizedValue> = {};
+
+  for (const [key, values] of fieldMap.entries()) {
+    if (PLACEMENT_KEYS.has(key)) continue;
+
+    if (LIST_KEYS.has(key)) {
+      result[key] = values;
+      continue;
+    }
+
+    if (NUMBER_KEYS.has(key)) {
+      result[key] = Number(values[0]);
+      continue;
+    }
+
+    if (UNIT_VALUE_KEYS.has(key)) {
+      result[key] = parseUnitValue(values[0]);
+      continue;
+    }
+
+    result[key] = values.join(" ");
+  }
+
+  return result;
+}
+```
+
+## 8. Info normalisieren
+
+```ts
+export function normalizeInfo(
+  entries: AstInfoEntryNode[]
+): Record<string, string> {
+  const info: Record<string, string> = {};
+
+  for (const entry of entries) {
+    info[entry.key] = entry.value;
+  }
+
+  return info;
+}
+```
+
+## 9. Unit Parsing
+
+```ts
+const UNIT_PATTERN =
+  /^(-?\d+(?:\.\d+)?)(au|km|re|sol|me|d|y|h|deg)?$/;
+
+export function parseUnitValue(input: string): UnitValue {
+  const match = input.match(UNIT_PATTERN);
+  if (!match) {
+    throw new Error(`Invalid unit value: ${input}`);
+  }
+
+  return {
+    value: Number(match[1]),
+    unit: (match[2] as Unit | undefined) ?? null,
+  };
+}
+
+export function tryParseUnitValue(input: string): UnitValue | null {
+  const match = input.match(UNIT_PATTERN);
+  if (!match) return null;
+
+  return {
+    value: Number(match[1]),
+    unit: (match[2] as Unit | undefined) ?? null,
+  };
+}
+
+export function parseOptionalUnitValue(
+  fieldMap: Map<string, string[]>,
+  key: string
+): UnitValue | undefined {
+  if (!fieldMap.has(key)) return undefined;
+  return parseUnitValue(firstValue(fieldMap, key));
+}
+
+export function parseOptionalNumber(
+  fieldMap: Map<string, string[]>,
+  key: string
+): number | undefined {
+  if (!fieldMap.has(key)) return undefined;
+  return Number(firstValue(fieldMap, key));
+}
+
+export function firstValue(
+  fieldMap: Map<string, string[]>,
+  key: string
+): string {
+  const values = fieldMap.get(key);
+  if (!values || values.length === 0) {
+    throw new Error(`Missing value for key "${key}"`);
+  }
+  return values[0];
+}
+```
+
+## 10. Minimaler Einstiegspunkt
+
+So könnte die öffentliche API für den Anfang aussehen:
+
+```ts
+export interface ParseResult {
+  ast: AstDocument;
+  document: WorldOrbitDocument;
+}
+
+export function parse(source: string): ParseResult {
+  const ast = parseWorldOrbit(source);
+  const document = normalizeDocument(ast);
+
+  return { ast, document };
+}
+```
+
+## 11. Beispiel
+
+Eingabe:
+
+```worldorbit
+system Iyath
+  view topdown
+  scale compressed
+
+star Iyath
+  class G2
+  radius 1.08sol
+  mass 1.02sol
+
+planet Naar
+  orbit Iyath
+  semiMajor 1.18au
+  eccentricity 0.03
+  period 412d
+  tags habitable homeworld
+
+  info
+    faction "Veyrathische Republik"
+    description "Heimatwelt der Enari."
+```
+
+Erwarteter normalisierter Output:
+
+```ts
+{
+  format: "worldorbit",
+  version: "0.1",
+  system: {
+    type: "system",
+    id: "Iyath",
+    properties: {
+      view: "topdown",
+      scale: "compressed"
+    },
+    info: {}
+  },
+  objects: [
+    {
+      type: "star",
+      id: "Iyath",
+      properties: {
+        class: "G2",
+        radius: { value: 1.08, unit: "sol" },
+        mass: { value: 1.02, unit: "sol" }
+      },
+      placement: null,
+      info: {}
+    },
+    {
+      type: "planet",
+      id: "Naar",
+      properties: {
+        tags: ["habitable", "homeworld"]
+      },
+      placement: {
+        mode: "orbit",
+        target: "Iyath",
+        semiMajor: { value: 1.18, unit: "au" },
+        eccentricity: 0.03,
+        period: { value: 412, unit: "d" }
+      },
+      info: {
+        faction: "Veyrathische Republik",
+        description: "Heimatwelt der Enari."
+      }
+    }
+  ]
+}
+```

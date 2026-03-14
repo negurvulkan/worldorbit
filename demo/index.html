@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WorldOrbit Renderer Demo</title>
+    <style>
+      :root {
+        --bg: #071019;
+        --bg-soft: rgba(11, 26, 38, 0.85);
+        --panel: rgba(10, 22, 34, 0.82);
+        --panel-strong: rgba(17, 34, 49, 0.94);
+        --line: rgba(166, 206, 240, 0.18);
+        --accent: #f0b464;
+        --accent-strong: #ff7f5f;
+        --ink: #edf6ff;
+        --muted: rgba(237, 246, 255, 0.7);
+        --ok: #9de6ca;
+        --danger: #ff8a8a;
+        --shadow: 0 20px 60px rgba(0, 0, 0, 0.32);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        font-family: "Segoe UI Variable", "Bahnschrift", sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(240, 180, 100, 0.16), transparent 28%),
+          radial-gradient(circle at top right, rgba(120, 255, 215, 0.12), transparent 24%),
+          linear-gradient(160deg, #03070c 0%, #0a1824 45%, #071019 100%);
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        background-size: 48px 48px;
+        mask-image: radial-gradient(circle at center, black 35%, transparent 85%);
+        pointer-events: none;
+      }
+
+      main {
+        width: min(1420px, calc(100vw - 32px));
+        margin: 24px auto;
+        display: grid;
+        gap: 20px;
+      }
+
+      .hero {
+        padding: 28px 30px;
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        background: linear-gradient(135deg, rgba(8, 20, 31, 0.92), rgba(10, 29, 44, 0.76));
+        box-shadow: var(--shadow);
+      }
+
+      .eyebrow {
+        display: inline-block;
+        margin-bottom: 10px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: rgba(240, 180, 100, 0.12);
+        color: var(--accent);
+        font-size: 12px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        font-family: "Bahnschrift", "Segoe UI Variable", sans-serif;
+        font-size: clamp(32px, 4vw, 54px);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .hero p {
+        max-width: 74ch;
+        margin: 12px 0 0;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: minmax(340px, 430px) minmax(0, 1fr);
+        gap: 20px;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+        backdrop-filter: blur(16px);
+      }
+
+      .panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 14px;
+        padding: 18px 22px;
+        border-bottom: 1px solid var(--line);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent);
+      }
+
+      .panel-title {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+
+      .panel-title strong {
+        font-size: 16px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .panel-title span {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .button-row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      button {
+        appearance: none;
+        border: 1px solid rgba(240, 180, 100, 0.2);
+        border-radius: 999px;
+        padding: 10px 16px;
+        color: var(--ink);
+        background: rgba(240, 180, 100, 0.08);
+        font: inherit;
+        cursor: pointer;
+        transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+      }
+
+      button:hover:not(:disabled) {
+        transform: translateY(-1px);
+        border-color: rgba(240, 180, 100, 0.45);
+        background: rgba(240, 180, 100, 0.16);
+      }
+
+      button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      textarea,
+      pre {
+        margin: 0;
+        width: 100%;
+        min-height: 0;
+        border: 0;
+        color: var(--ink);
+        background: transparent;
+        font: 14px/1.6 "Cascadia Code", "Consolas", monospace;
+      }
+
+      textarea {
+        min-height: 640px;
+        padding: 22px;
+        resize: vertical;
+        outline: none;
+      }
+
+      .viewer {
+        display: grid;
+        grid-template-rows: minmax(420px, 1fr) minmax(180px, 240px);
+      }
+
+      .preview-shell {
+        position: relative;
+        padding: 18px;
+        background:
+          radial-gradient(circle at top left, rgba(240, 180, 100, 0.08), transparent 26%),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent);
+      }
+
+      #preview {
+        display: grid;
+        place-items: center;
+        min-height: 420px;
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        background: var(--panel-strong);
+        overflow: auto;
+        outline: none;
+      }
+
+      #preview svg {
+        width: min(100%, 1080px);
+        height: auto;
+        display: block;
+      }
+
+      #preview:focus-visible {
+        box-shadow: inset 0 0 0 2px rgba(240, 180, 100, 0.55);
+      }
+
+      .summary {
+        color: var(--ok);
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .shortcut-hint {
+        margin: 14px 6px 0;
+        color: var(--muted);
+        font-size: 12px;
+        letter-spacing: 0.04em;
+      }
+
+      .error {
+        margin: 0 18px 18px;
+        padding: 14px 16px;
+        border-radius: 18px;
+        border: 1px solid rgba(255, 138, 138, 0.32);
+        background: rgba(83, 19, 29, 0.44);
+        color: var(--danger);
+        font: 13px/1.5 "Cascadia Code", "Consolas", monospace;
+      }
+
+      pre {
+        min-height: 180px;
+        padding: 22px;
+        overflow: auto;
+      }
+
+      @media (max-width: 1100px) {
+        .workspace {
+          grid-template-columns: 1fr;
+        }
+
+        textarea {
+          min-height: 420px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <span class="eyebrow">WorldOrbit v0.1</span>
+        <h1>Renderer Demo</h1>
+        <p>
+          Diese erste HTML-Datei hängt direkt an die WorldOrbit-Pipeline an:
+          Text eingeben, parsen, normalisieren, validieren und als SVG-Systemansicht
+          rendern. Die Demo ist absichtlich pragmatisch gehalten, damit sie als
+          Ausgangspunkt für weitere Renderer und Markdown-Integrationen dienen kann.
+        </p>
+      </section>
+
+      <section class="workspace">
+        <article class="panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <strong>DSL Editor</strong>
+              <span>WorldOrbit-Quelle in Echtzeit bearbeiten</span>
+            </div>
+            <div class="button-row">
+              <button id="load-example" type="button">Beispiel laden</button>
+            </div>
+          </div>
+          <textarea id="source" spellcheck="false"></textarea>
+        </article>
+
+        <article class="panel viewer">
+          <div class="preview-shell">
+            <div class="panel-header">
+              <div class="panel-title">
+                <strong>SVG Vorschau</strong>
+                <span id="summary" class="summary">Initialisiere Viewer</span>
+              </div>
+              <div class="button-row">
+                <button id="zoom-in" type="button">Zoom +</button>
+                <button id="zoom-out" type="button">Zoom -</button>
+                <button id="rotate-left" type="button">Rotate -</button>
+                <button id="rotate-right" type="button">Rotate +</button>
+                <button id="fit-view" type="button">Fit</button>
+                <button id="reset-view" type="button">Reset</button>
+                <button id="download-svg" type="button">SVG laden</button>
+              </div>
+            </div>
+            <div id="preview"></div>
+            <p class="shortcut-hint">
+              Shortcuts: <code>+</code>/<code>-</code> zoomen, Pfeiltasten pannen,
+              <code>[</code>/<code>]</code> rotieren, <code>f</code> fit, <code>0</code> reset
+            </p>
+          </div>
+          <div>
+            <div class="panel-header">
+              <div class="panel-title">
+                <strong>Normalisiertes Modell</strong>
+                <span>Direkt aus Parser, Normalisierung und Validierung</span>
+              </div>
+            </div>
+            <pre id="model"></pre>
+          </div>
+          <p id="error" class="error" hidden><span id="error-text"></span></p>
+        </article>
+      </section>
+    </main>
+
+    <script type="module" src="./demo.js"></script>
+  </body>
+</html>
