@@ -4,3 +4,4 @@ packages/*/dist/
 packages/*/src/*.js
 packages/*/src/*.d.ts
 packages/*/tsconfig.tsbuildinfo
+Thumbs.db
