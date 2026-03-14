@@ -2,7 +2,9 @@
 
 WorldOrbit is a Mermaid-like Markdown DSL and parser pipeline for fictional star systems, orbital structures, and text-first worldbuilding.
 
-The repository now includes:
+Current release: `v0.8`
+
+The `v0.8` release includes:
 
 - a hand-written parser with line/column-aware errors
 - normalization into a stable document model

@@ -197,7 +197,7 @@ export function renderSceneToSvg(scene) {
   <rect class="wo-bg" x="0" y="0" width="${width}" height="${height}" rx="28" ry="28" />
   ${renderBackdrop(width, height)}
   <text class="wo-title" x="56" y="64">${escapeXml(title)}</text>
-  <text class="wo-subtitle" x="56" y="88">WorldOrbit v0.1 render preview</text>
+  <text class="wo-subtitle" x="56" y="88">WorldOrbit v0.8 interactive preview</text>
   <g data-worldorbit-world>
     <g data-worldorbit-camera-root="${WORLD_LAYER_ID}" id="${WORLD_LAYER_ID}">
       <g data-worldorbit-world-content="true">
