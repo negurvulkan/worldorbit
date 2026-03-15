@@ -1,6 +1,6 @@
 {
   "name": "@worldorbit/viewer",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "type": "module",
   "exports": {
     ".": {
@@ -13,6 +13,6 @@
     }
   },
   "dependencies": {
-    "@worldorbit/core": "2.4.0"
+    "@worldorbit/core": "2.5.0"
   }
 }

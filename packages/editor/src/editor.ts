@@ -4,6 +4,7 @@ import {
   formatDocument,
   getAtlasDocumentNode,
   loadWorldOrbitSourceWithDiagnostics,
+  materializeAtlasDocument,
   removeAtlasDocumentNode,
   resolveAtlasDiagnostics,
   rotatePoint,
@@ -51,13 +52,36 @@ interface LoadedEditorState {
 interface DragState {
   kind: "orbit-phase" | "orbit-radius" | "at-reference" | "surface-target" | "free-distance";
   objectId: string;
+  pointerId: number;
+  startedFrom: HistoryEntry;
+  changed: boolean;
+}
+
+interface DiagnosticBucket {
+  errors: number;
+  warnings: number;
 }
 
 const STYLE_ID = "worldorbit-editor-style";
+const SOURCE_INPUT_DEBOUNCE_MS = 120;
+const PREVIEW_BATCH_DELAY_MS = 16;
 const FREE_DISTANCE_PIXEL_FACTOR = 96;
 const AU_IN_KM = 149_597_870.7;
 const EARTH_RADIUS_IN_KM = 6_371;
 const SOLAR_RADIUS_IN_KM = 695_700;
+const PLACEMENT_DIAGNOSTIC_FIELDS = new Set([
+  "placement",
+  "target",
+  "reference",
+  "distance",
+  "semiMajor",
+  "eccentricity",
+  "period",
+  "angle",
+  "inclination",
+  "phase",
+  "descriptor",
+]);
 const SURFACE_TARGET_TYPES = new Set<WorldOrbitObject["type"]>([
   "star",
   "planet",
@@ -109,6 +133,7 @@ export function createWorldOrbitEditor(
   let atlasDocument = initial.atlasDocument;
   let canonicalSource = initial.source;
   let sourceText = canonicalSource;
+  let savedSource = canonicalSource;
   let diagnostics = initial.diagnostics;
   let selection: AtlasDocumentPath | null = atlasDocument.objects[0]
     ? { kind: "object", id: atlasDocument.objects[0].id }
@@ -118,13 +143,22 @@ export function createWorldOrbitEditor(
   let dragState: DragState | null = null;
   let ignoreViewerSelection = false;
   let destroyed = false;
+  let dirty = false;
+  let sourceInputTimer: number | null = null;
+  let previewTimer: number | null = null;
+  let lastPreviewSvg = "";
+  let lastPreviewMarkup = "";
 
   const showTextPane = options.showTextPane ?? true;
   const showInspector = options.showInspector ?? true;
   const showPreview = options.showPreview ?? true;
+  const shortcutsEnabled = options.shortcuts ?? true;
 
   container.classList.add("wo-editor");
-  container.innerHTML = buildEditorMarkup(showInspector, showTextPane, showPreview);
+  container.dataset.woShowInspector = String(showInspector);
+  container.dataset.woShowTextPane = String(showTextPane);
+  container.dataset.woShowPreview = String(showPreview);
+  container.innerHTML = buildEditorMarkup();
 
   const toolbar = queryRequired<HTMLElement>(container, "[data-editor-toolbar]");
   const outline = queryRequired<HTMLElement>(container, "[data-editor-outline]");
@@ -132,10 +166,13 @@ export function createWorldOrbitEditor(
   const stage = queryRequired<HTMLElement>(container, "[data-editor-stage]");
   const overlay = queryRequired<HTMLElement>(container, "[data-editor-overlay]");
   const diagnosticsPanel = queryRequired<HTMLElement>(container, "[data-editor-diagnostics]");
-  const inspector = container.querySelector<HTMLElement>("[data-editor-inspector]");
-  const sourcePane = container.querySelector<HTMLTextAreaElement>("[data-editor-source]");
-  const previewVisual = container.querySelector<HTMLElement>("[data-editor-preview-visual]");
-  const previewMarkup = container.querySelector<HTMLElement>("[data-editor-preview-markup]");
+  const sourceDiagnostics = queryRequired<HTMLElement>(container, "[data-editor-source-diagnostics]");
+  const statusBar = queryRequired<HTMLElement>(container, "[data-editor-status]");
+  const liveRegion = queryRequired<HTMLElement>(container, "[data-editor-live]");
+  const inspector = queryRequired<HTMLElement>(container, "[data-editor-inspector]");
+  const sourcePane = queryRequired<HTMLTextAreaElement>(container, "[data-editor-source]");
+  const previewVisual = queryRequired<HTMLElement>(container, "[data-editor-preview-visual]");
+  const previewMarkup = queryRequired<HTMLElement>(container, "[data-editor-preview-markup]");
 
   let viewer: WorldOrbitViewer | null = null;
   viewer = createInteractiveViewer(stage, {
@@ -169,15 +206,23 @@ export function createWorldOrbitEditor(
   sourcePane?.addEventListener("input", handleSourceInput);
   sourcePane?.addEventListener("change", handleSourceCommit);
   sourcePane?.addEventListener("blur", handleSourceCommit);
+  container.addEventListener("keydown", handleEditorKeyDown);
   window.addEventListener("pointermove", handleWindowPointerMove);
   window.addEventListener("pointerup", handleWindowPointerUp);
+  window.addEventListener("pointercancel", handleWindowPointerUp);
 
   const api: WorldOrbitEditor = {
     setSource(nextSource: string): void {
-      applySourceText(nextSource, true);
+      const applied = applySourceText(nextSource, false);
+      if (applied) {
+        resetHistory();
+        renderToolbar();
+      }
     },
     setAtlasDocument(document: WorldOrbitAtlasDocument): void {
-      replaceAtlasDocument(document, true, selection);
+      replaceAtlasDocument(document, false, selection, false);
+      resetHistory();
+      renderToolbar();
     },
     getSource(): string {
       return canonicalSource;
@@ -190,6 +235,12 @@ export function createWorldOrbitEditor(
     },
     getSelection(): WorldOrbitEditorSelection | null {
       return selection ? { path: { ...selection } } : null;
+    },
+    isDirty(): boolean {
+      return dirty;
+    },
+    markSaved(): void {
+      markSavedInternal(true);
     },
     selectPath(path: AtlasDocumentPath | null): void {
       setSelection(path, true, true);
@@ -293,7 +344,7 @@ export function createWorldOrbitEditor(
       return viewer!.exportSvg();
     },
     exportEmbedMarkup(): string {
-      return buildEmbedMarkup(canonicalSource, atlasDocument);
+      return buildEmbedMarkup(getCurrentSourceForExport(), atlasDocument);
     },
     destroy(): void {
       if (destroyed) {
@@ -309,15 +360,20 @@ export function createWorldOrbitEditor(
       sourcePane?.removeEventListener("input", handleSourceInput);
       sourcePane?.removeEventListener("change", handleSourceCommit);
       sourcePane?.removeEventListener("blur", handleSourceCommit);
+      container.removeEventListener("keydown", handleEditorKeyDown);
       window.removeEventListener("pointermove", handleWindowPointerMove);
       window.removeEventListener("pointerup", handleWindowPointerUp);
+      window.removeEventListener("pointercancel", handleWindowPointerUp);
+      clearSourceInputTimer();
+      clearPreviewTimer();
       viewer!.destroy();
       container.innerHTML = "";
       container.classList.remove("wo-editor");
     },
   };
 
-  renderAll();
+  renderAll(true);
+  updateDirtyState(true);
   return api;
 
   function createHistoryEntry(): HistoryEntry {
@@ -328,14 +384,63 @@ export function createWorldOrbitEditor(
     };
   }
 
+  function resetHistory(): void {
+    history.length = 0;
+    future.length = 0;
+    renderToolbar();
+  }
+
+  function clearSourceInputTimer(): void {
+    if (sourceInputTimer !== null) {
+      window.clearTimeout(sourceInputTimer);
+      sourceInputTimer = null;
+    }
+  }
+
+  function clearPreviewTimer(): void {
+    if (previewTimer !== null) {
+      window.clearTimeout(previewTimer);
+      previewTimer = null;
+    }
+  }
+
+  function getCurrentSourceForExport(): string {
+    if (dragState?.changed) {
+      return formatDocument(atlasDocument, { schema: "2.0" });
+    }
+    return canonicalSource;
+  }
+
+  function updateDirtyState(forceEmit = false): void {
+    const nextDirty =
+      sourceText !== savedSource || canonicalSource !== savedSource || dragState?.changed === true;
+    if (!forceEmit && nextDirty === dirty) {
+      return;
+    }
+
+    dirty = nextDirty;
+    renderStatusBar();
+    options.onDirtyChange?.(dirty);
+  }
+
+  function markSavedInternal(emit = false): void {
+    sourceText = canonicalSource;
+    renderSourcePane();
+    savedSource = canonicalSource;
+    updateDirtyState(emit);
+  }
+
   function restoreHistoryEntry(entry: HistoryEntry): void {
+    clearSourceInputTimer();
     atlasDocument = cloneAtlasDocument(entry.atlasDocument);
     canonicalSource = entry.source;
     sourceText = canonicalSource;
     diagnostics = collectDocumentDiagnostics(atlasDocument);
-    syncViewer();
-    setSelection(entry.selection, false, false);
+    selection = normalizeSelection(entry.selection);
+    syncViewer({ preserveCamera: true, applyViewpointSelection: selection?.kind === "viewpoint" });
+    setSelection(selection, false, false);
     renderAll();
+    updateDirtyState();
     emitSnapshot();
   }
 
@@ -350,15 +455,21 @@ export function createWorldOrbitEditor(
       future.length = 0;
     }
 
+    clearSourceInputTimer();
     atlasDocument = cloneAtlasDocument(nextDocument);
     canonicalSource = formatDocument(atlasDocument, { schema: "2.0" });
     if (!preserveSourceText) {
       sourceText = canonicalSource;
     }
     diagnostics = collectDocumentDiagnostics(atlasDocument);
-    syncViewer();
-    setSelection(nextSelection, false, false);
+    selection = normalizeSelection(nextSelection);
+    syncViewer({
+      preserveCamera: selection?.kind !== "viewpoint",
+      applyViewpointSelection: selection?.kind === "viewpoint",
+    });
+    setSelection(selection, false, false);
     renderAll();
+    updateDirtyState();
     emitSnapshot();
   }
 
@@ -375,6 +486,12 @@ export function createWorldOrbitEditor(
         path: null,
       }));
       renderDiagnostics();
+      renderSourceDiagnostics();
+      renderOutline();
+      renderInspector();
+      renderStatusBar();
+      updateLiveRegion();
+      updateDirtyState();
       options.onDiagnosticsChange?.(diagnostics.map(cloneResolvedDiagnostic));
       return false;
     }
@@ -392,24 +509,47 @@ export function createWorldOrbitEditor(
     atlasDocument = cloneAtlasDocument(nextDocument);
     canonicalSource = formatDocument(atlasDocument, { schema: "2.0" });
     diagnostics = mergeDiagnostics(loadedDiagnostics, collectDocumentDiagnostics(atlasDocument));
-    syncViewer();
     selection = normalizeSelection(selection);
+    syncViewer({
+      preserveCamera: selection?.kind !== "viewpoint",
+      applyViewpointSelection: selection?.kind === "viewpoint",
+    });
     renderAll();
+    updateDirtyState();
     emitSnapshot();
     return true;
   }
 
-  function syncViewer(): void {
+  function syncViewer(options: {
+    preserveCamera?: boolean;
+    applyViewpointSelection?: boolean;
+  } = {}): void {
     if (!viewer) {
       return;
     }
-    ignoreViewerSelection = true;
-    viewer.setSource(canonicalSource);
 
-    if (selection?.kind === "object" && selection.id) {
-      viewer!.focusObject(selection.id);
-    } else if (selection?.kind === "viewpoint" && selection.id) {
-      viewer!.goToViewpoint(selection.id);
+    const previousState = viewer.getState();
+    const currentRenderOptions = viewer.getRenderOptions();
+    const nextPreset = atlasDocument.system?.defaults.preset ?? "atlas-card";
+
+    ignoreViewerSelection = true;
+    if (currentRenderOptions.preset !== nextPreset || currentRenderOptions.projection !== "document") {
+      viewer.setRenderOptions({
+        preset: nextPreset,
+        projection: "document",
+      });
+    }
+    viewer.setDocument(materializeAtlasDocument(atlasDocument));
+
+    if (options.applyViewpointSelection && selection?.kind === "viewpoint" && selection.id) {
+      viewer.goToViewpoint(selection.id);
+    } else if (options.preserveCamera !== false) {
+      viewer.setState({
+        ...previousState,
+        selectedObjectId: selection?.kind === "object" ? selection.id ?? null : null,
+      });
+    } else if (selection?.kind === "object" && selection.id) {
+      viewer.focusObject(selection.id);
     }
 
     ignoreViewerSelection = false;
@@ -445,9 +585,12 @@ export function createWorldOrbitEditor(
       ignoreViewerSelection = false;
     }
 
+    renderToolbar();
     renderOutline();
     renderInspector();
     renderStageOverlay();
+    renderStatusBar();
+    updateLiveRegion();
 
     if (emit) {
       options.onSelectionChange?.(selection ? { path: { ...selection } } : null);
@@ -469,14 +612,17 @@ export function createWorldOrbitEditor(
     return nextSelection;
   }
 
-  function renderAll(): void {
+  function renderAll(immediatePreview = false): void {
     renderToolbar();
     renderOutline();
     renderDiagnostics();
+    renderSourceDiagnostics();
     renderInspector();
     renderSourcePane();
-    renderPreview();
+    renderPreview(immediatePreview);
     renderStageOverlay();
+    renderStatusBar();
+    updateLiveRegion();
   }
 
   function renderToolbar(): void {
@@ -506,21 +652,24 @@ export function createWorldOrbitEditor(
 
   function renderOutline(): void {
     const activeKey = selectionKey(selection);
+    const diagnosticBuckets = buildDiagnosticBuckets(diagnostics);
     const metadataEntries = Object.entries(atlasDocument.system?.atlasMetadata ?? {}).sort(([left], [right]) =>
       left.localeCompare(right),
     );
     outline.innerHTML = `
       <div class="wo-editor-outline-section">
         <h3>Atlas</h3>
-        ${renderOutlineButton({ kind: "system" }, "System", activeKey)}
-        ${renderOutlineButton({ kind: "defaults" }, "Defaults", activeKey)}
+        ${renderOutlineButton({ kind: "system" }, "System", activeKey, diagnosticBuckets)}
+        ${renderOutlineButton({ kind: "defaults" }, "Defaults", activeKey, diagnosticBuckets)}
       </div>
       <div class="wo-editor-outline-section">
         <h3>Metadata</h3>
         ${
           metadataEntries.length > 0
             ? metadataEntries
-                .map(([key]) => renderOutlineButton({ kind: "metadata", key }, key, activeKey))
+                .map(([key]) =>
+                  renderOutlineButton({ kind: "metadata", key }, key, activeKey, diagnosticBuckets),
+                )
                 .join("")
             : `<p class="wo-editor-empty">No atlas metadata yet.</p>`
         }
@@ -531,7 +680,12 @@ export function createWorldOrbitEditor(
           (atlasDocument.system?.viewpoints.length ?? 0) > 0
             ? atlasDocument.system?.viewpoints
                 .map((viewpoint) =>
-                  renderOutlineButton({ kind: "viewpoint", id: viewpoint.id }, viewpoint.label, activeKey),
+                  renderOutlineButton(
+                    { kind: "viewpoint", id: viewpoint.id },
+                    viewpoint.label,
+                    activeKey,
+                    diagnosticBuckets,
+                  ),
                 )
                 .join("")
             : `<p class="wo-editor-empty">No viewpoints yet.</p>`
@@ -543,7 +697,12 @@ export function createWorldOrbitEditor(
           (atlasDocument.system?.annotations.length ?? 0) > 0
             ? atlasDocument.system?.annotations
                 .map((annotation) =>
-                  renderOutlineButton({ kind: "annotation", id: annotation.id }, annotation.label, activeKey),
+                  renderOutlineButton(
+                    { kind: "annotation", id: annotation.id },
+                    annotation.label,
+                    activeKey,
+                    diagnosticBuckets,
+                  ),
                 )
                 .join("")
             : `<p class="wo-editor-empty">No annotations yet.</p>`
@@ -559,6 +718,7 @@ export function createWorldOrbitEditor(
                     { kind: "object", id: object.id },
                     `${object.id} - ${object.type}`,
                     activeKey,
+                    diagnosticBuckets,
                   ),
                 )
                 .join("")
@@ -575,9 +735,27 @@ export function createWorldOrbitEditor(
         : diagnostics
             .map((entry) => {
               const pathLabel = entry.path ? describePath(entry.path) : "Source";
+              const location = formatDiagnosticLocation(entry);
               return `<article class="wo-editor-diagnostic wo-editor-diagnostic-${escapeHtml(entry.diagnostic.severity)}">
                 <strong>${escapeHtml(entry.diagnostic.severity.toUpperCase())}</strong>
-                <span>${escapeHtml(pathLabel)}</span>
+                <span>${escapeHtml(pathLabel)}${location ? ` · ${escapeHtml(location)}` : ""}</span>
+                <p>${escapeHtml(entry.diagnostic.message)}</p>
+              </article>`;
+            })
+            .join("");
+  }
+
+  function renderSourceDiagnostics(): void {
+    const sourceEntries = diagnostics.filter((entry) => !entry.path || entry.diagnostic.line !== undefined);
+    sourceDiagnostics.innerHTML =
+      sourceEntries.length === 0
+        ? `<p class="wo-editor-empty">No source diagnostics.</p>`
+        : sourceEntries
+            .map((entry) => {
+              const location = formatDiagnosticLocation(entry) ?? "Source";
+              return `<article class="wo-editor-diagnostic wo-editor-diagnostic-${escapeHtml(entry.diagnostic.severity)}">
+                <strong>${escapeHtml(entry.diagnostic.severity.toUpperCase())}</strong>
+                <span>${escapeHtml(location)}</span>
                 <p>${escapeHtml(entry.diagnostic.message)}</p>
               </article>`;
             })
@@ -601,24 +779,32 @@ export function createWorldOrbitEditor(
       return;
     }
 
+    const diagnosticSummary = renderInspectorDiagnosticSummary(selection, diagnostics);
+
     switch (selection.kind) {
       case "system":
-        inspector.innerHTML = renderSystemInspector(formState);
+        inspector.innerHTML = diagnosticSummary + renderSystemInspector(formState);
+        decorateInspectorDiagnostics(selection, diagnostics);
         return;
       case "defaults":
-        inspector.innerHTML = renderDefaultsInspector(formState);
+        inspector.innerHTML = diagnosticSummary + renderDefaultsInspector(formState);
+        decorateInspectorDiagnostics(selection, diagnostics);
         return;
       case "metadata":
-        inspector.innerHTML = renderMetadataInspector(formState, selection.key ?? "");
+        inspector.innerHTML = diagnosticSummary + renderMetadataInspector(formState, selection.key ?? "");
+        decorateInspectorDiagnostics(selection, diagnostics);
         return;
       case "viewpoint":
-        inspector.innerHTML = renderViewpointInspector(formState, selection.id ?? "");
+        inspector.innerHTML = diagnosticSummary + renderViewpointInspector(formState, selection.id ?? "");
+        decorateInspectorDiagnostics(selection, diagnostics);
         return;
       case "annotation":
-        inspector.innerHTML = renderAnnotationInspector(formState, selection.id ?? "");
+        inspector.innerHTML = diagnosticSummary + renderAnnotationInspector(formState, selection.id ?? "");
+        decorateInspectorDiagnostics(selection, diagnostics);
         return;
       case "object":
-        inspector.innerHTML = renderObjectInspector(formState, selection.id ?? "");
+        inspector.innerHTML = diagnosticSummary + renderObjectInspector(formState, selection.id ?? "");
+        decorateInspectorDiagnostics(selection, diagnostics);
         return;
     }
   }
@@ -633,17 +819,13 @@ export function createWorldOrbitEditor(
     }
   }
 
-  function renderPreview(): void {
-    if (!viewer) {
+  function renderPreview(immediate = false): void {
+    if (immediate) {
+      renderPreviewNow();
       return;
     }
-    if (previewVisual) {
-      previewVisual.innerHTML = viewer.exportSvg();
-    }
 
-    if (previewMarkup) {
-      previewMarkup.textContent = buildEmbedMarkup(canonicalSource, atlasDocument);
-    }
+    schedulePreviewRender();
   }
 
   function renderStageOverlay(): void {
@@ -728,6 +910,25 @@ export function createWorldOrbitEditor(
       badge.className = "wo-editor-hint wo-editor-hint-note";
       badge.textContent = "Drag horizontally to change free offset.";
       overlay.append(badge);
+    }
+
+    const placementDiagnostics = getPlacementDiagnosticsForSelection(selection, diagnostics).slice(0, 3);
+    if (placementDiagnostics.length > 0) {
+      const panel = document.createElement("div");
+      panel.className = "wo-editor-overlay-diagnostics";
+      panel.setAttribute("role", "status");
+      panel.setAttribute("aria-live", "polite");
+      panel.innerHTML = placementDiagnostics
+        .map(
+          (entry) => `<article class="wo-editor-overlay-diagnostic wo-editor-overlay-diagnostic-${escapeHtml(
+            entry.diagnostic.severity,
+          )}">
+              <strong>${escapeHtml(entry.diagnostic.severity.toUpperCase())}</strong>
+              <p>${escapeHtml(entry.diagnostic.message)}</p>
+            </article>`,
+        )
+        .join("");
+      overlay.append(panel);
     }
   }
 
@@ -824,8 +1025,10 @@ export function createWorldOrbitEditor(
         api.redo();
         return;
       case "format":
+        clearSourceInputTimer();
         sourceText = canonicalSource;
         renderSourcePane();
+        updateDirtyState();
         return;
     }
   }
@@ -883,13 +1086,48 @@ export function createWorldOrbitEditor(
   }
 
   function handleSourceInput(): void {
-    applySourceText(sourcePane?.value ?? "", false);
+    sourceText = sourcePane?.value ?? "";
+    updateDirtyState();
+    clearSourceInputTimer();
+    sourceInputTimer = window.setTimeout(() => {
+      sourceInputTimer = null;
+      applySourceText(sourceText, false);
+    }, SOURCE_INPUT_DEBOUNCE_MS);
   }
 
   function handleSourceCommit(): void {
+    clearSourceInputTimer();
     const committed = applySourceText(sourcePane?.value ?? "", true);
     if (committed) {
       renderSourcePane();
+    }
+  }
+
+  function handleEditorKeyDown(event: KeyboardEvent): void {
+    if (event.key === "Escape" && dragState) {
+      event.preventDefault();
+      cancelActiveDrag();
+      return;
+    }
+
+    if (!shortcutsEnabled || event.defaultPrevented || shouldIgnoreShortcutEvent(event)) {
+      return;
+    }
+
+    const isUndo = (event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "z";
+    const isRedo =
+      (event.ctrlKey || event.metaKey) &&
+      ((event.shiftKey && event.key.toLowerCase() === "z") || event.key.toLowerCase() === "y");
+
+    if (isUndo) {
+      event.preventDefault();
+      api.undo();
+      return;
+    }
+
+    if (isRedo) {
+      event.preventDefault();
+      api.redo();
     }
   }
 
@@ -910,14 +1148,32 @@ export function createWorldOrbitEditor(
       return;
     }
 
-    dragState = { kind, objectId };
-    history.push(createHistoryEntry());
-    future.length = 0;
+    clearSourceInputTimer();
+    if (sourceText !== canonicalSource) {
+      const committed = applySourceText(sourceText, true);
+      if (!committed) {
+        event.preventDefault();
+        return;
+      }
+    }
+    dragState = {
+      kind,
+      objectId,
+      pointerId: event.pointerId,
+      startedFrom: createHistoryEntry(),
+      changed: false,
+    };
+    handle.setPointerCapture?.(event.pointerId);
     event.preventDefault();
   }
 
   function handleWindowPointerMove(event: PointerEvent): void {
-    if (!dragState || selection?.kind !== "object" || selection.id !== dragState.objectId) {
+    if (
+      !dragState ||
+      dragState.pointerId !== event.pointerId ||
+      selection?.kind !== "object" ||
+      selection.id !== dragState.objectId
+    ) {
       return;
     }
 
@@ -963,11 +1219,61 @@ export function createWorldOrbitEditor(
         break;
     }
 
-    replaceAtlasDocument(nextDocument, false, selection, false);
+    if (nextDocument === atlasDocument) {
+      return;
+    }
+
+    dragState.changed = true;
+    atlasDocument = cloneAtlasDocument(nextDocument);
+    diagnostics = collectDocumentDiagnostics(atlasDocument);
+    syncViewer({ preserveCamera: true, applyViewpointSelection: false });
+    renderDiagnostics();
+    renderSourceDiagnostics();
+    renderOutline();
+    renderInspector();
+    renderStageOverlay();
+    renderStatusBar();
+    updateLiveRegion();
+    schedulePreviewRender();
+    updateDirtyState();
   }
 
-  function handleWindowPointerUp(): void {
+  function handleWindowPointerUp(event: PointerEvent): void {
+    if (!dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    if (!dragState.changed) {
+      dragState = null;
+      return;
+    }
+
+    history.push(dragState.startedFrom);
+    future.length = 0;
+    canonicalSource = formatDocument(atlasDocument, { schema: "2.0" });
+    sourceText = canonicalSource;
     dragState = null;
+    renderAll();
+    updateDirtyState();
+    emitSnapshot();
+  }
+
+  function cancelActiveDrag(): void {
+    if (!dragState) {
+      return;
+    }
+
+    const startedFrom = dragState.startedFrom;
+    dragState = null;
+    atlasDocument = cloneAtlasDocument(startedFrom.atlasDocument);
+    canonicalSource = startedFrom.source;
+    sourceText = canonicalSource;
+    diagnostics = collectDocumentDiagnostics(atlasDocument);
+    setSelection(startedFrom.selection, false, false);
+    syncViewer({ preserveCamera: true, applyViewpointSelection: selection?.kind === "viewpoint" });
+    renderAll();
+    updateDirtyState();
+    emitSnapshot();
   }
 
   function getWorldPointFromClient(clientX: number, clientY: number): CoordinatePoint {
@@ -1170,6 +1476,159 @@ export function createWorldOrbitEditor(
     }
     return updatedDocument;
   }
+
+  function renderStatusBar(): void {
+    const errorCount = diagnostics.filter((entry) => entry.diagnostic.severity === "error").length;
+    const warningCount = diagnostics.filter((entry) => entry.diagnostic.severity === "warning").length;
+    const selectionLabel = selection ? describePath(selection) : "Nothing selected";
+    statusBar.innerHTML = `
+      <span class="wo-editor-status-pill${dirty ? " is-dirty" : " is-clean"}">${dirty ? "Unsaved changes" : "Saved"}</span>
+      <span class="wo-editor-status-pill">Schema ${escapeHtml(atlasDocument.version)}</span>
+      <span class="wo-editor-status-pill${errorCount > 0 ? " is-error" : warningCount > 0 ? " is-warning" : ""}">${errorCount} errors · ${warningCount} warnings</span>
+      <span class="wo-editor-status-pill">${escapeHtml(selectionLabel)}</span>
+    `;
+  }
+
+  function updateLiveRegion(): void {
+    const errorCount = diagnostics.filter((entry) => entry.diagnostic.severity === "error").length;
+    const warningCount = diagnostics.filter((entry) => entry.diagnostic.severity === "warning").length;
+    liveRegion.textContent = `${dirty ? "Unsaved changes." : "Saved."} ${errorCount} errors, ${warningCount} warnings. ${selection ? describePath(selection) : "Nothing selected"}.`;
+  }
+
+  function schedulePreviewRender(): void {
+    if (previewTimer !== null) {
+      return;
+    }
+
+    previewTimer = window.setTimeout(() => {
+      previewTimer = null;
+      renderPreviewNow();
+    }, PREVIEW_BATCH_DELAY_MS);
+  }
+
+  function renderPreviewNow(): void {
+    if (!viewer) {
+      return;
+    }
+
+    const nextSvg = viewer.exportSvg();
+    if (previewVisual && nextSvg !== lastPreviewSvg) {
+      previewVisual.innerHTML = nextSvg;
+      lastPreviewSvg = nextSvg;
+    }
+
+    const nextMarkup = buildEmbedMarkup(getCurrentSourceForExport(), atlasDocument);
+    if (previewMarkup && nextMarkup !== lastPreviewMarkup) {
+      previewMarkup.textContent = nextMarkup;
+      lastPreviewMarkup = nextMarkup;
+    }
+  }
+
+  function shouldIgnoreShortcutEvent(event: KeyboardEvent): boolean {
+    const target = event.target as HTMLElement | null;
+    if (!target) {
+      return false;
+    }
+
+    const tagName = target.tagName.toLowerCase();
+    return target.isContentEditable || tagName === "input" || tagName === "textarea" || tagName === "select";
+  }
+
+  function getSelectionDiagnostics(
+    currentSelection: AtlasDocumentPath | null,
+    entries: AtlasResolvedDiagnostic[],
+  ): AtlasResolvedDiagnostic[] {
+    if (!currentSelection) {
+      return [];
+    }
+
+    const currentKey = selectionKey(currentSelection);
+    return entries.filter((entry) => {
+      const entryKey = selectionKey(entry.path);
+      if (entryKey && entryKey === currentKey) {
+        return true;
+      }
+
+      return currentSelection.kind === "object" && entry.diagnostic.objectId === currentSelection.id;
+    });
+  }
+
+  function getPlacementDiagnosticsForSelection(
+    currentSelection: AtlasDocumentPath | null,
+    entries: AtlasResolvedDiagnostic[],
+  ): AtlasResolvedDiagnostic[] {
+    return getSelectionDiagnostics(currentSelection, entries).filter((entry) => {
+      const field = entry.diagnostic.field ?? "";
+      return (
+        PLACEMENT_DIAGNOSTIC_FIELDS.has(field) ||
+        entry.diagnostic.message.toLowerCase().includes("placement") ||
+        entry.diagnostic.message.toLowerCase().includes("orbit") ||
+        entry.diagnostic.message.toLowerCase().includes("surface") ||
+        entry.diagnostic.message.toLowerCase().includes("lagrange") ||
+        entry.diagnostic.message.toLowerCase().includes("anchor")
+      );
+    });
+  }
+
+  function renderInspectorDiagnosticSummary(
+    currentSelection: AtlasDocumentPath | null,
+    entries: AtlasResolvedDiagnostic[],
+  ): string {
+    const selectionDiagnostics = getSelectionDiagnostics(currentSelection, entries);
+    if (selectionDiagnostics.length === 0) {
+      return "";
+    }
+
+    return `<div class="wo-editor-inspector-summary">
+      ${selectionDiagnostics
+        .slice(0, 4)
+        .map(
+          (entry) => `<article class="wo-editor-diagnostic wo-editor-diagnostic-${escapeHtml(entry.diagnostic.severity)}">
+              <strong>${escapeHtml(entry.diagnostic.severity.toUpperCase())}</strong>
+              <span>${escapeHtml(entry.diagnostic.field ?? describePath(currentSelection!))}</span>
+              <p>${escapeHtml(entry.diagnostic.message)}</p>
+            </article>`,
+        )
+        .join("")}
+    </div>`;
+  }
+
+  function decorateInspectorDiagnostics(
+    currentSelection: AtlasDocumentPath | null,
+    entries: AtlasResolvedDiagnostic[],
+  ): void {
+    if (!inspector || !currentSelection) {
+      return;
+    }
+
+    const selectionDiagnostics = getSelectionDiagnostics(currentSelection, entries);
+    const fieldMap = new Map<string, AtlasResolvedDiagnostic[]>();
+
+    for (const entry of selectionDiagnostics) {
+      for (const inputName of mapDiagnosticFieldToInputNames(currentSelection, entry.diagnostic.field)) {
+        const currentEntries = fieldMap.get(inputName) ?? [];
+        currentEntries.push(entry);
+        fieldMap.set(inputName, currentEntries);
+      }
+    }
+
+    for (const [inputName, fieldDiagnostics] of fieldMap) {
+      const input = inspector.querySelector<HTMLElement>(`[name="${CSS.escape(inputName)}"]`);
+      const field = input?.closest<HTMLElement>(".wo-editor-field, .wo-editor-checkbox");
+      if (!input || !field) {
+        continue;
+      }
+
+      const hasError = fieldDiagnostics.some((entry) => entry.diagnostic.severity === "error");
+      const hasWarning = fieldDiagnostics.some((entry) => entry.diagnostic.severity === "warning");
+      field.classList.add(hasError ? "has-error" : "has-warning");
+      input.setAttribute("aria-invalid", hasError ? "true" : "false");
+      const note = document.createElement("div");
+      note.className = `wo-editor-field-note${hasError ? " is-error" : hasWarning ? " is-warning" : ""}`;
+      note.textContent = fieldDiagnostics[0]?.diagnostic.message ?? "";
+      field.append(note);
+    }
+  }
 }
 
 function resolveInitialEditorState(
@@ -1208,15 +1667,12 @@ function resolveInitialEditorState(
   };
 }
 
-function buildEditorMarkup(
-  showInspector: boolean,
-  showTextPane: boolean,
-  showPreview: boolean,
-): string {
+function buildEditorMarkup(): string {
   return `<section class="wo-editor-shell">
     <div class="wo-editor-toolbar" data-editor-toolbar></div>
+    <div class="wo-editor-status" data-editor-status role="status" aria-live="polite"></div>
     <div class="wo-editor-main">
-      <aside class="wo-editor-sidebar">
+      <aside class="wo-editor-sidebar" data-editor-pane="sidebar">
         <div class="wo-editor-panel">
           <h2>Atlas</h2>
           <div class="wo-editor-outline" data-editor-outline></div>
@@ -1231,31 +1687,35 @@ function buildEditorMarkup(
           <div class="wo-editor-stage" data-editor-stage></div>
           <div class="wo-editor-overlay" data-editor-overlay></div>
         </div>
-        ${
-          showPreview
-            ? `<div class="wo-editor-preview">
-                <div class="wo-editor-panel">
-                  <h2>Static SVG</h2>
-                  <div class="wo-editor-preview-visual" data-editor-preview-visual></div>
-                </div>
-                <div class="wo-editor-panel">
-                  <h2>Embed Markup</h2>
-                  <pre class="wo-editor-preview-markup" data-editor-preview-markup></pre>
-                </div>
-              </div>`
-            : ""
-        }
+        <div class="wo-editor-preview" data-editor-pane="preview">
+          <div class="wo-editor-panel">
+            <h2>Static SVG</h2>
+            <div class="wo-editor-preview-visual" data-editor-preview-visual></div>
+          </div>
+          <div class="wo-editor-panel">
+            <h2>Embed Markup</h2>
+            <pre class="wo-editor-preview-markup" data-editor-preview-markup></pre>
+          </div>
+        </div>
       </div>
-      ${showInspector ? `<aside class="wo-editor-panel wo-editor-inspector" data-editor-inspector></aside>` : ""}
+      <aside class="wo-editor-panel wo-editor-inspector" data-editor-pane="inspector" data-editor-inspector></aside>
     </div>
-    ${
-      showTextPane
-        ? `<div class="wo-editor-panel wo-editor-text-panel">
-            <h2>Source</h2>
-            <textarea class="wo-editor-source" data-editor-source spellcheck="false"></textarea>
-          </div>`
-        : ""
-    }
+    <div class="wo-editor-panel wo-editor-text-panel" data-editor-pane="text">
+      <h2>Source</h2>
+      <textarea
+        class="wo-editor-source"
+        data-editor-source
+        spellcheck="false"
+        aria-describedby="worldorbit-editor-source-diagnostics"
+      ></textarea>
+      <div
+        class="wo-editor-source-diagnostics"
+        id="worldorbit-editor-source-diagnostics"
+        data-editor-source-diagnostics
+        aria-live="polite"
+      ></div>
+    </div>
+    <div class="wo-editor-live-region" data-editor-live aria-live="polite" aria-atomic="true"></div>
   </section>`;
 }
 
@@ -1263,9 +1723,15 @@ function renderOutlineButton(
   path: AtlasDocumentPath,
   label: string,
   activeKey: string | null,
+  diagnosticBuckets: Map<string, DiagnosticBucket>,
 ): string {
   const key = selectionKey(path);
-  return `<button type="button" class="wo-editor-outline-item${key === activeKey ? " is-active" : ""}" data-path-kind="${escapeHtml(path.kind)}"${path.id ? ` data-path-id="${escapeHtml(path.id)}"` : ""}${path.key ? ` data-path-key="${escapeHtml(path.key)}"` : ""}>${escapeHtml(label)}</button>`;
+  const bucket = key ? diagnosticBuckets.get(key) : null;
+  const badge =
+    bucket && (bucket.errors > 0 || bucket.warnings > 0)
+      ? `<span class="wo-editor-outline-badge${bucket.errors > 0 ? " is-error" : " is-warning"}">${bucket.errors > 0 ? bucket.errors : bucket.warnings}</span>`
+      : "";
+  return `<button type="button" class="wo-editor-outline-item${key === activeKey ? " is-active" : ""}" data-path-kind="${escapeHtml(path.kind)}"${path.id ? ` data-path-id="${escapeHtml(path.id)}"` : ""}${path.key ? ` data-path-key="${escapeHtml(path.key)}"` : ""}><span>${escapeHtml(label)}</span>${badge}</button>`;
 }
 
 function renderSystemInspector(formState: WorldOrbitEditorFormState): string {
@@ -2160,6 +2626,146 @@ function mergeDiagnostics(
   return merged;
 }
 
+function buildDiagnosticBuckets(
+  entries: AtlasResolvedDiagnostic[],
+): Map<string, DiagnosticBucket> {
+  const buckets = new Map<string, DiagnosticBucket>();
+
+  for (const entry of entries) {
+    const key =
+      selectionKey(entry.path) ??
+      (entry.diagnostic.objectId ? selectionKey({ kind: "object", id: entry.diagnostic.objectId }) : null);
+    if (!key) {
+      continue;
+    }
+
+    const bucket = buckets.get(key) ?? { errors: 0, warnings: 0 };
+    if (entry.diagnostic.severity === "error") {
+      bucket.errors += 1;
+    } else if (entry.diagnostic.severity === "warning") {
+      bucket.warnings += 1;
+    }
+    buckets.set(key, bucket);
+  }
+
+  return buckets;
+}
+
+function formatDiagnosticLocation(entry: AtlasResolvedDiagnostic): string | null {
+  if (entry.diagnostic.line !== undefined && entry.diagnostic.column !== undefined) {
+    return `Line ${entry.diagnostic.line}:${entry.diagnostic.column}`;
+  }
+
+  if (entry.diagnostic.line !== undefined) {
+    return `Line ${entry.diagnostic.line}`;
+  }
+
+  return null;
+}
+
+function mapDiagnosticFieldToInputNames(
+  selection: AtlasDocumentPath,
+  field: string | undefined,
+): string[] {
+  if (!field) {
+    return [];
+  }
+
+  switch (selection.kind) {
+    case "system":
+      if (field === "id") {
+        return ["system-id"];
+      }
+      if (field === "title") {
+        return ["system-title"];
+      }
+      return [];
+    case "defaults":
+      switch (field) {
+        case "view":
+          return ["defaults-view"];
+        case "scale":
+          return ["defaults-scale"];
+        case "units":
+          return ["defaults-units"];
+        case "preset":
+          return ["defaults-preset"];
+        case "theme":
+          return ["defaults-theme"];
+        default:
+          return [];
+      }
+    case "metadata":
+      return field === "key" ? ["metadata-key"] : ["metadata-value"];
+    case "viewpoint":
+      switch (field) {
+        case "id":
+          return ["viewpoint-id"];
+        case "label":
+          return ["viewpoint-label"];
+        case "summary":
+          return ["viewpoint-summary"];
+        case "focusObjectId":
+          return ["viewpoint-focus"];
+        case "selectedObjectId":
+          return ["viewpoint-select"];
+        case "projection":
+          return ["viewpoint-projection"];
+        case "preset":
+          return ["viewpoint-preset"];
+        case "zoom":
+          return ["viewpoint-zoom"];
+        case "rotationDeg":
+          return ["viewpoint-rotation"];
+        default:
+          return [];
+      }
+    case "annotation":
+      switch (field) {
+        case "id":
+          return ["annotation-id"];
+        case "label":
+          return ["annotation-label"];
+        case "targetObjectId":
+          return ["annotation-target"];
+        case "sourceObjectId":
+          return ["annotation-source"];
+        case "body":
+          return ["annotation-body"];
+        case "tags":
+          return ["annotation-tags"];
+        default:
+          return [];
+      }
+    case "object":
+      if (field === "id") {
+        return ["object-id"];
+      }
+      if (field === "type") {
+        return ["object-type"];
+      }
+      if (field === "placement") {
+        return ["placement-mode"];
+      }
+      if (field === "description") {
+        return ["info-description"];
+      }
+      if (field === "reference") {
+        return ["placement-target"];
+      }
+      if (field === "descriptor") {
+        return ["placement-free"];
+      }
+      if (field === "target") {
+        return ["placement-target"];
+      }
+      if (PLACEMENT_DIAGNOSTIC_FIELDS.has(field)) {
+        return [`placement-${field}`];
+      }
+      return [`prop-${field}`];
+  }
+}
+
 function buildEmbedMarkup(
   source: string,
   document: WorldOrbitAtlasDocument,
@@ -2331,9 +2937,14 @@ function installEditorStyles(): void {
   const style = document.createElement("style");
   style.id = STYLE_ID;
   style.textContent = `
+    .wo-editor {
+      --wo-editor-sidebar-width: 280px;
+      --wo-editor-inspector-width: 360px;
+      --wo-editor-source-height: 280px;
+    }
     .wo-editor-shell { display: grid; gap: 16px; min-width: 0; }
-    .wo-editor-toolbar { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-    .wo-editor-toolbar-group { display: flex; gap: 10px; flex-wrap: wrap; }
+    .wo-editor-toolbar { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; min-width: 0; }
+    .wo-editor-toolbar-group { display: flex; gap: 10px; flex-wrap: wrap; min-width: 0; }
     .wo-editor-toolbar button, .wo-editor-toolbar select {
       border: 1px solid rgba(240, 180, 100, 0.2);
       border-radius: 999px;
@@ -2342,8 +2953,42 @@ function installEditorStyles(): void {
       font: 600 13px/1.4 "Segoe UI Variable", "Segoe UI", sans-serif;
       padding: 10px 14px;
     }
+    .wo-editor button:focus-visible,
+    .wo-editor select:focus-visible,
+    .wo-editor input:focus-visible,
+    .wo-editor textarea:focus-visible {
+      outline: 2px solid rgba(255, 214, 138, 0.95);
+      outline-offset: 2px;
+    }
     .wo-editor-toolbar button:disabled { opacity: 0.45; cursor: not-allowed; }
-    .wo-editor-main { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) minmax(280px, 360px); gap: 16px; min-width: 0; }
+    .wo-editor-status {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      min-width: 0;
+    }
+    .wo-editor-status-pill {
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.04);
+      color: #edf6ff;
+      font: 600 12px/1.4 "Segoe UI Variable", "Segoe UI", sans-serif;
+      padding: 8px 12px;
+    }
+    .wo-editor-status-pill.is-clean { border-color: rgba(120, 255, 195, 0.22); color: #c7ffe5; }
+    .wo-editor-status-pill.is-dirty { border-color: rgba(240, 180, 100, 0.28); color: #ffd58a; }
+    .wo-editor-status-pill.is-warning { border-color: rgba(240, 180, 100, 0.28); color: #ffd58a; }
+    .wo-editor-status-pill.is-error { border-color: rgba(255, 120, 120, 0.3); color: #ffb2b2; }
+    .wo-editor-main {
+      display: grid;
+      grid-template-columns:
+        minmax(220px, var(--wo-editor-sidebar-width))
+        minmax(0, 1fr)
+        minmax(280px, var(--wo-editor-inspector-width));
+      gap: 16px;
+      min-width: 0;
+      align-items: start;
+    }
     .wo-editor-sidebar, .wo-editor-stage-panel, .wo-editor-preview { display: grid; gap: 16px; min-width: 0; }
     .wo-editor-panel {
       border-radius: 24px;
@@ -2359,6 +3004,9 @@ function installEditorStyles(): void {
       text-transform: uppercase;
       letter-spacing: 0.08em;
     }
+    .wo-editor[data-wo-show-inspector="false"] [data-editor-pane="inspector"] { display: none; }
+    .wo-editor[data-wo-show-text-pane="false"] [data-editor-pane="text"] { display: none; }
+    .wo-editor[data-wo-show-preview="false"] [data-editor-pane="preview"] { display: none; }
     .wo-editor-stage-shell {
       position: relative;
       min-width: 0;
@@ -2395,6 +3043,34 @@ function installEditorStyles(): void {
     }
     .wo-editor-hint.is-subtle { background: rgba(18, 39, 58, 0.64); color: rgba(237, 246, 255, 0.78); }
     .wo-editor-hint-note { left: 16px; top: 16px; transform: none; }
+    .wo-editor-overlay-diagnostics {
+      position: absolute;
+      right: 16px;
+      top: 16px;
+      display: grid;
+      gap: 8px;
+      max-width: min(320px, calc(100% - 32px));
+    }
+    .wo-editor-overlay-diagnostic {
+      border-radius: 14px;
+      padding: 10px 12px;
+      background: rgba(10, 20, 32, 0.92);
+      box-shadow: 0 12px 30px rgba(0,0,0,0.28);
+    }
+    .wo-editor-overlay-diagnostic strong {
+      display: block;
+      margin-bottom: 4px;
+      font: 700 11px/1.2 "Segoe UI Variable", "Segoe UI", sans-serif;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .wo-editor-overlay-diagnostic p {
+      margin: 0;
+      color: #edf6ff;
+      font: 500 12px/1.4 "Segoe UI Variable", "Segoe UI", sans-serif;
+    }
+    .wo-editor-overlay-diagnostic-error { border: 1px solid rgba(255, 120, 120, 0.28); }
+    .wo-editor-overlay-diagnostic-warning { border: 1px solid rgba(240, 180, 100, 0.24); }
     .wo-editor-outline { display: grid; gap: 14px; }
     .wo-editor-outline-section { display: grid; gap: 8px; }
     .wo-editor-outline-section h3 {
@@ -2413,11 +3089,28 @@ function installEditorStyles(): void {
       font: 500 13px/1.4 "Segoe UI Variable", "Segoe UI", sans-serif;
       padding: 10px 12px;
       text-align: left;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
     }
     .wo-editor-outline-item.is-active {
       border-color: rgba(255, 214, 138, 0.34);
       background: rgba(255, 214, 138, 0.12);
       color: #ffdda9;
+    }
+    .wo-editor-outline-badge {
+      min-width: 22px;
+      border-radius: 999px;
+      background: rgba(240, 180, 100, 0.16);
+      color: #ffd58a;
+      font: 700 11px/1 "Segoe UI Variable", "Segoe UI", sans-serif;
+      padding: 5px 7px;
+      text-align: center;
+    }
+    .wo-editor-outline-badge.is-error {
+      background: rgba(255, 120, 120, 0.18);
+      color: #ffb2b2;
     }
     .wo-editor-diagnostics { display: grid; gap: 10px; }
     .wo-editor-diagnostic {
@@ -2433,6 +3126,11 @@ function installEditorStyles(): void {
     .wo-editor-diagnostic p { margin: 0; color: rgba(237,246,255,0.82); }
     .wo-editor-diagnostic-warning { border: 1px solid rgba(240, 180, 100, 0.22); }
     .wo-editor-diagnostic-error { border: 1px solid rgba(255, 120, 120, 0.24); }
+    .wo-editor-inspector-summary {
+      display: grid;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
     .wo-editor-form { display: grid; gap: 12px; min-width: 0; }
     .wo-editor-field { display: grid; gap: 6px; }
     .wo-editor-field span, .wo-editor-fieldset legend {
@@ -2452,13 +3150,31 @@ function installEditorStyles(): void {
       padding: 10px 12px;
       box-sizing: border-box;
     }
+    .wo-editor-field.has-error input,
+    .wo-editor-field.has-error select,
+    .wo-editor-field.has-error textarea,
+    .wo-editor-checkbox.has-error {
+      border-color: rgba(255, 120, 120, 0.44);
+    }
+    .wo-editor-field.has-warning input,
+    .wo-editor-field.has-warning select,
+    .wo-editor-field.has-warning textarea,
+    .wo-editor-checkbox.has-warning {
+      border-color: rgba(240, 180, 100, 0.42);
+    }
     .wo-editor-field textarea, .wo-editor-source { min-height: 110px; resize: vertical; }
     .wo-editor-source {
-      min-height: 280px;
+      min-height: var(--wo-editor-source-height);
       font-family: "Cascadia Code", "Consolas", monospace;
       white-space: pre;
       overflow: auto;
     }
+    .wo-editor-field-note {
+      color: rgba(237,246,255,0.72);
+      font: 500 12px/1.45 "Segoe UI Variable", "Segoe UI", sans-serif;
+    }
+    .wo-editor-field-note.is-error { color: #ffb2b2; }
+    .wo-editor-field-note.is-warning { color: #ffd58a; }
     .wo-editor-fieldset {
       display: grid;
       gap: 10px;
@@ -2487,10 +3203,26 @@ function installEditorStyles(): void {
       color: #edf6ff;
       font: 12px/1.5 "Cascadia Code", "Consolas", monospace;
     }
+    .wo-editor-source-diagnostics {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+    }
     .wo-editor-empty {
       margin: 0;
       color: rgba(237,246,255,0.68);
       font: 500 12px/1.5 "Segoe UI Variable", "Segoe UI", sans-serif;
+    }
+    .wo-editor-live-region {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
     }
     @media (max-width: 1280px) {
       .wo-editor-main { grid-template-columns: minmax(220px, 260px) minmax(0, 1fr); }
@@ -2500,6 +3232,7 @@ function installEditorStyles(): void {
     @media (max-width: 960px) {
       .wo-editor-main { grid-template-columns: 1fr; }
       .wo-editor-stage { min-height: 440px; }
+      .wo-editor-status { flex-direction: column; }
     }
   `;
   document.head.append(style);

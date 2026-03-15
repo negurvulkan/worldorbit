@@ -2,7 +2,7 @@
 
 ## @worldorbit/core
 
-Stable `v2.4` APIs:
+Stable `v2.5` APIs:
 
 - `parse(source)`
 - `parseSafe(source)`
@@ -112,6 +112,16 @@ Editor public types include:
 - `WorldOrbitEditorOptions`
 - `WorldOrbitEditorSelection`
 - `WorldOrbitEditorSnapshot`
+
+`WorldOrbitEditor` now includes:
+
+- `isDirty()`
+- `markSaved()`
+
+`WorldOrbitEditorOptions` now includes:
+
+- `onDirtyChange?(dirty)`
+- `shortcuts?`
 
 ## @worldorbit/markdown
 

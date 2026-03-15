@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>WorldOrbit Studio v2.4</title>
+    <title>WorldOrbit Studio v2.5</title>
     <style>
       :root {
         color-scheme: dark;
@@ -29,6 +29,7 @@
         margin: 12px auto 24px;
         display: grid;
         gap: 16px;
+        min-width: 0;
       }
 
       .hero {
@@ -65,17 +66,123 @@
       #studio {
         min-width: 0;
       }
+
+      .studio-app {
+        display: grid;
+        gap: 16px;
+      }
+
+      .studio-toolbar {
+        display: grid;
+        gap: 12px;
+        padding: 18px 20px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 24px;
+        background: rgba(7, 16, 25, 0.72);
+        backdrop-filter: blur(16px);
+      }
+
+      .studio-toolbar-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .studio-toolbar button,
+      .studio-toolbar input[type="range"] {
+        accent-color: #f0b464;
+      }
+
+      .studio-toolbar button {
+        border: 1px solid rgba(240, 180, 100, 0.2);
+        border-radius: 999px;
+        background: rgba(240, 180, 100, 0.08);
+        color: #edf6ff;
+        font: 600 13px/1.4 "Segoe UI Variable", "Segoe UI", sans-serif;
+        padding: 10px 14px;
+      }
+
+      .studio-toolbar button[aria-pressed="true"] {
+        border-color: rgba(255, 214, 138, 0.34);
+        background: rgba(255, 214, 138, 0.12);
+        color: #ffdda9;
+      }
+
+      .studio-toolbar button:focus-visible,
+      .studio-toolbar input:focus-visible {
+        outline: 2px solid rgba(255, 214, 138, 0.95);
+        outline-offset: 2px;
+      }
+
+      .studio-range {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: rgba(237, 246, 255, 0.76);
+        font: 600 12px/1.4 "Segoe UI Variable", "Segoe UI", sans-serif;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .studio-range input {
+        width: 120px;
+      }
+
+      .studio-toolbar-row-meta {
+        justify-content: space-between;
+      }
+
+      .studio-file {
+        color: #edf6ff;
+        font: 700 13px/1.4 "Segoe UI Variable", "Segoe UI", sans-serif;
+        letter-spacing: 0.04em;
+      }
+
+      .studio-file[data-state="dirty"] {
+        color: #ffd58a;
+      }
+
+      .studio-message {
+        color: rgba(237, 246, 255, 0.74);
+        font: 500 13px/1.5 "Segoe UI Variable", "Segoe UI", sans-serif;
+      }
+
+      .studio-message[data-state="error"] {
+        color: #ffb2b2;
+      }
+
+      .studio-message[data-state="warning"] {
+        color: #ffd58a;
+      }
+
+      .studio-message[data-state="clean"] {
+        color: #c7ffe5;
+      }
+
+      .studio-editor-root {
+        min-width: 0;
+      }
+
+      @media (max-width: 960px) {
+        .studio-toolbar-row-meta {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+      }
     </style>
   </head>
   <body>
     <main>
       <section class="hero">
-        <strong>WorldOrbit Studio v2.4.0</strong>
-        <h1>Canvas-First Atlas Editing</h1>
+        <strong>WorldOrbit Studio v2.5.0</strong>
+        <h1>Editor Hardening Release</h1>
         <p>
           Diese Referenz-App verwendet direkt <code>@worldorbit/editor</code> auf Basis von
-          <code>schema 2.0</code>. Sie verbindet Atlas-Outline, Inspector, Live-Source,
-          SVG-/Embed-Vorschau und die erste Orbit-Handle-Bearbeitung in einer Oberfläche.
+          <code>schema 2.0</code>. Sie bringt jetzt Browser-Dateifluss, Dirty-State,
+          lokale Draft-Recovery, SVG-/Embed-Export und eine gehärtete Oberfläche für
+          größere Atlanten zusammen.
         </p>
       </section>
 

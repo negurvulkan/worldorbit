@@ -2,7 +2,7 @@
 
 WorldOrbit is a text-first DSL, atlas viewer, and editor platform for fictional orbital systems.
 
-`v2.4` keeps the stable atlas-oriented schema while adding rich tooltip UX, a first editor package, and the new Studio reference app:
+`v2.5` keeps the stable atlas-oriented schema while turning the editor and Studio into a production-ready authoring baseline:
 
 - `@worldorbit/core`: parsing, normalization, validation, canonical formatting, diagnostics, schema loading, and scene generation
 - `@worldorbit/viewer`: SVG rendering, low-level interactive viewing, high-level atlas viewing, themes, embeds, and custom elements
@@ -184,7 +184,7 @@ const atlasViewer = createAtlasViewer(document.getElementById("atlas"), {
 });
 ```
 
-Viewer capabilities in `v2.4`:
+Viewer capabilities in `v2.5`:
 
 - scene-based SVG rendering
 - theme presets: `atlas`, `nightglass`, `ember`
@@ -215,15 +215,29 @@ const editor = createWorldOrbitEditor(document.getElementById("studio"), {
 });
 ```
 
-Editor capabilities in `v2.4`:
+Editor capabilities in `v2.5`:
 
 - atlas outline for system/defaults/metadata/viewpoints/annotations/objects
 - shared interactive stage built on `createInteractiveViewer(...)`
 - live inspector editing for atlas defaults, viewpoints, annotations, and object properties
-- live source synchronization with canonical `schema 2.0` formatting
-- diagnostics panel plus undo/redo history
+- debounced live source synchronization with canonical `schema 2.0` formatting
+- dirty-state tracking through `isDirty()` and `markSaved()`
+- diagnostics mirrored into the outline, inspector, source pane, stage overlay, and editor status bar
+- undo/redo history plus drag-cancel via `Escape`
 - static SVG and interactive embed preview
-- first orbit editing handles for phase and orbital scale
+- direct handles for `orbit`, `at`, `surface`, and `free` placements
+
+### Studio
+
+`/studio/` is now the hardened browser reference app for `@worldorbit/editor`.
+
+Studio capabilities in `v2.5`:
+
+- `New`, `Open .worldorbit`, `Save/Download .worldorbit`, `Export SVG`, `Export Embed`, and `Load Example`
+- canonical `schema 2.0` save output even when older source was loaded first
+- unsaved-change indicator plus browser `beforeunload` protection
+- local draft recovery through browser storage
+- session-persistent panel visibility and pane sizing for source, preview, inspector, and sidebar widths
 
 ### Atlas viewer
 

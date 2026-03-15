@@ -196,6 +196,57 @@ function dragHandle(window, handle, point) {
   );
 }
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function buildLargeAtlasSource() {
+  const lines = [
+    "schema 2.0",
+    "",
+    "system Atlas",
+    '  title "Large Atlas"',
+    "",
+    "defaults",
+    "  view isometric",
+    "  scale presentation",
+    "  preset atlas-card",
+    "",
+    "object star Primary",
+  ];
+
+  for (let index = 1; index <= 249; index += 1) {
+    lines.push("");
+    lines.push(`object planet P${index}`);
+    lines.push("  orbit Primary");
+    lines.push(`  semiMajor ${(0.8 + index * 0.03).toFixed(2)}au`);
+    lines.push(`  eccentricity ${((index % 9) * 0.01).toFixed(2)}`);
+    lines.push(`  phase ${(index * 17) % 360}deg`);
+    lines.push(`  angle ${(index * 11) % 360}deg`);
+    lines.push(`  inclination ${(index * 3) % 35}deg`);
+    lines.push(`  radius ${(0.6 + (index % 5) * 0.08).toFixed(2)}re`);
+  }
+
+  for (let index = 1; index <= 50; index += 1) {
+    lines.push("");
+    lines.push(`viewpoint vp-${index}`);
+    lines.push(`  label "Viewpoint ${index}"`);
+    lines.push(`  focus P${((index - 1) % 40) + 1}`);
+    lines.push(`  select P${((index - 1) % 40) + 1}`);
+    lines.push(`  zoom ${(1.2 + index * 0.03).toFixed(2)}`);
+  }
+
+  for (let index = 1; index <= 100; index += 1) {
+    lines.push("");
+    lines.push(`annotation ann-${index}`);
+    lines.push(`  label "Annotation ${index}"`);
+    lines.push(`  target P${((index - 1) % 60) + 1}`);
+    lines.push(`  body "Atlas note ${index}"`);
+  }
+
+  return lines.join("\n");
+}
+
 test("editor mounts, edits atlas state, and supports undo/redo", () => {
   const dom = new JSDOM(`<div id="editor"></div>`, {
     pretendToBeVisual: true,
@@ -306,6 +357,140 @@ test("editor stage handles can retarget at and surface placements and update fre
     assert.match(editor.getSource(), /surface Sera/);
     editor.destroy();
   } finally {
+    restoreRects();
+    restoreGlobals();
+    dom.window.close();
+  }
+});
+
+test("editor tracks dirty state, debounced source input, and markSaved", async () => {
+  const dom = new JSDOM(`<div id="editor"></div>`, {
+    pretendToBeVisual: true,
+  });
+  const restoreGlobals = installDomGlobals(dom.window);
+  const restoreRects = installFixedRects(dom.window, 1120, 680);
+  const root = dom.window.document.getElementById("editor");
+  const dirtyLog = [];
+  let editor;
+
+  try {
+    editor = createWorldOrbitEditor(root, {
+      source,
+      onDirtyChange(dirty) {
+        dirtyLog.push(dirty);
+      },
+    });
+
+    assert.equal(editor.isDirty(), false);
+    const sourcePane = root.querySelector("[data-editor-source]");
+    assert.ok(sourcePane, "Expected source pane");
+
+    sourcePane.value = sourcePane.value.replace("Overview", "Deep Overview");
+    sourcePane.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+
+    assert.equal(editor.isDirty(), true);
+    assert.match(root.querySelector("[data-editor-status]").textContent, /Unsaved changes/);
+
+    await delay(160);
+
+    assert.match(editor.getSource(), /label "Deep Overview"/);
+    editor.markSaved();
+    assert.equal(editor.isDirty(), false);
+    assert.match(root.querySelector("[data-editor-status]").textContent, /Saved/);
+    assert.ok(dirtyLog.includes(true));
+    assert.ok(dirtyLog.includes(false));
+  } finally {
+    editor?.destroy();
+    restoreRects();
+    restoreGlobals();
+    dom.window.close();
+  }
+});
+
+test("editor cancels active handle drags with Escape", () => {
+  const dom = new JSDOM(`<div id="editor"></div>`, {
+    pretendToBeVisual: true,
+  });
+  const restoreGlobals = installDomGlobals(dom.window);
+  const restoreRects = installFixedRects(dom.window, 1120, 680);
+  const root = dom.window.document.getElementById("editor");
+  let editor;
+
+  try {
+    editor = createWorldOrbitEditor(root, {
+      source: dragSource,
+    });
+
+    editor.selectPath({ kind: "object", id: "Beacon" });
+    const handle = root.querySelector('[data-handle-kind="free-distance"]');
+    assert.ok(handle, "Expected a free-placement handle");
+    const beaconPoint = getProjectedObjectPoint(root, "Beacon");
+    const beforeSource = editor.getSource();
+
+    handle.dispatchEvent(
+      new dom.window.MouseEvent("pointerdown", {
+        bubbles: true,
+        clientX: beaconPoint.x,
+        clientY: beaconPoint.y,
+        button: 0,
+      }),
+    );
+    dom.window.dispatchEvent(
+      new dom.window.MouseEvent("pointermove", {
+        bubbles: true,
+        clientX: beaconPoint.x - 180,
+        clientY: beaconPoint.y,
+        button: 0,
+      }),
+    );
+
+    assert.equal(editor.isDirty(), true);
+    root.dispatchEvent(
+      new dom.window.KeyboardEvent("keydown", {
+        bubbles: true,
+        key: "Escape",
+      }),
+    );
+
+    assert.equal(editor.isDirty(), false);
+    assert.equal(editor.getSource(), beforeSource);
+    const beacon = editor.getAtlasDocument().objects.find((object) => object.id === "Beacon");
+    assert.equal(beacon?.placement?.mode, "free");
+    assert.equal(beacon?.placement?.distance?.value, 1.5);
+  } finally {
+    editor?.destroy();
+    restoreRects();
+    restoreGlobals();
+    dom.window.close();
+  }
+});
+
+test("editor handles large atlas documents without preview regression", () => {
+  const dom = new JSDOM(`<div id="editor"></div>`, {
+    pretendToBeVisual: true,
+  });
+  const restoreGlobals = installDomGlobals(dom.window);
+  const restoreRects = installFixedRects(dom.window, 1120, 680);
+  const root = dom.window.document.getElementById("editor");
+  let editor;
+
+  try {
+    editor = createWorldOrbitEditor(root, {
+      source: buildLargeAtlasSource(),
+      showInspector: true,
+      showPreview: true,
+      showTextPane: true,
+    });
+
+    assert.equal(editor.getAtlasDocument().objects.length, 250);
+    assert.equal(editor.getAtlasDocument().system?.viewpoints.length, 50);
+    assert.equal(editor.getAtlasDocument().system?.annotations.length, 100);
+    assert.equal(editor.getDiagnostics().filter((entry) => entry.diagnostic.severity === "error").length, 0);
+    assert.ok(root.querySelector("[data-editor-stage] svg"));
+    assert.ok((root.querySelector("[data-editor-preview-markup]")?.textContent ?? "").length > 500);
+    assert.ok(root.querySelectorAll(".wo-editor-outline-item").length > 350);
+  } finally {
+    editor?.destroy();
     restoreRects();
     restoreGlobals();
     dom.window.close();

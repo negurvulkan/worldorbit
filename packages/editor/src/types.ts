@@ -26,9 +26,11 @@ export interface WorldOrbitEditorOptions {
   showPreview?: boolean;
   viewerWidth?: number;
   viewerHeight?: number;
+  shortcuts?: boolean;
   onChange?: (snapshot: WorldOrbitEditorSnapshot) => void;
   onDiagnosticsChange?: (diagnostics: AtlasResolvedDiagnostic[]) => void;
   onSelectionChange?: (selection: WorldOrbitEditorSelection | null) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 export interface WorldOrbitEditor {
@@ -38,6 +40,8 @@ export interface WorldOrbitEditor {
   getAtlasDocument(): WorldOrbitAtlasDocument;
   getDiagnostics(): AtlasResolvedDiagnostic[];
   getSelection(): WorldOrbitEditorSelection | null;
+  isDirty(): boolean;
+  markSaved(): void;
   selectPath(path: AtlasDocumentPath | null): void;
   canUndo(): boolean;
   canRedo(): boolean;

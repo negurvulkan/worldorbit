@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.5.0
+
+- stabilized `@worldorbit/editor` with `isDirty()`, `markSaved()`, `onDirtyChange`, keyboard shortcuts, and a debounced source/preview flow tuned for real save/recovery workflows
+- deferred expensive history and canonical formatting for stage drags until commit, added `Escape` drag cancellation, and mirrored diagnostics into outline badges, inspector fields, source diagnostics, stage overlays, and a live status bar
+- hardened `WorldOrbit Studio` with browser file actions for new/open/save/export/example loading, canonical `schema 2.0` save output, `beforeunload` protection, local draft recovery, and session-persistent panel visibility and pane sizing
+- expanded regression coverage across dirty-state behavior, drag cancellation, large-atlas editor mounts, and the Studio recovery/save flow
+
 ## v2.4.0
 
 - delivered the first public `@worldorbit/editor` package with `createWorldOrbitEditor(...)`, shared atlas-document editing, undo/redo, diagnostics, live source syncing, preview output, and first orbit handles
