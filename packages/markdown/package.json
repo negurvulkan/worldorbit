@@ -1,6 +1,6 @@
 {
   "name": "@worldorbit/markdown",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "type": "module",
   "exports": {
     ".": {
@@ -9,7 +9,7 @@
     }
   },
   "dependencies": {
-    "@worldorbit/core": "1.7.0",
-    "@worldorbit/viewer": "1.7.0"
+    "@worldorbit/core": "1.8.0",
+    "@worldorbit/viewer": "1.8.0"
   }
 }

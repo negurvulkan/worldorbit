@@ -24,6 +24,10 @@ export type Unit =
   | "deg";
 
 export type WorldOrbitDocumentVersion = "1.0";
+export type WorldOrbitDraftDocumentVersion = "2.0-draft";
+export type WorldOrbitAnyDocumentVersion =
+  | WorldOrbitDocumentVersion
+  | WorldOrbitDraftDocumentVersion;
 export type ViewProjection = "topdown" | "isometric";
 export type RenderPresetName = "diagram" | "presentation" | "atlas-card" | "markdown";
 
@@ -87,6 +91,15 @@ export interface WorldOrbitDocument {
   version: WorldOrbitDocumentVersion;
   system: WorldOrbitSystem | null;
   objects: WorldOrbitObject[];
+}
+
+export interface WorldOrbitDraftDocument {
+  format: "worldorbit";
+  version: WorldOrbitDraftDocumentVersion;
+  sourceVersion: WorldOrbitDocumentVersion;
+  system: WorldOrbitDraftSystem | null;
+  objects: WorldOrbitObject[];
+  diagnostics: WorldOrbitDiagnostic[];
 }
 
 export interface WorldOrbitSystem {
@@ -375,3 +388,72 @@ export interface MarkdownFenceBlock {
   startLine: number;
   endLine: number;
 }
+
+export type WorldOrbitDiagnosticSeverity = "info" | "warning" | "error";
+export type WorldOrbitDiagnosticSource = "parse" | "normalize" | "validate" | "upgrade";
+
+export interface WorldOrbitDiagnostic {
+  code: string;
+  severity: WorldOrbitDiagnosticSeverity;
+  source: WorldOrbitDiagnosticSource;
+  message: string;
+  line?: number;
+  column?: number;
+  objectId?: string;
+  field?: string;
+}
+
+export interface DiagnosticResult<T> {
+  ok: boolean;
+  value: T | null;
+  diagnostics: WorldOrbitDiagnostic[];
+}
+
+export interface WorldOrbitDraftDefaults {
+  view: ViewProjection;
+  scale: string | null;
+  units: string | null;
+  preset: RenderPresetName | null;
+  theme: string | null;
+}
+
+export interface WorldOrbitDraftViewpoint {
+  id: string;
+  label: string;
+  summary: string;
+  focusObjectId: string | null;
+  selectedObjectId: string | null;
+  projection: ViewProjection;
+  preset: RenderPresetName | null;
+  zoom: number | null;
+  rotationDeg: number;
+  layers: Partial<Record<SceneLayerId, boolean>>;
+  filter: RenderSceneViewpointFilter | null;
+}
+
+export interface WorldOrbitDraftAnnotation {
+  id: string;
+  label: string;
+  targetObjectId: string | null;
+  body: string;
+  tags: string[];
+  sourceObjectId: string | null;
+}
+
+export interface WorldOrbitDraftSystem {
+  type: "system";
+  id: string;
+  title: string | null;
+  defaults: WorldOrbitDraftDefaults;
+  atlasMetadata: Record<string, string>;
+  viewpoints: WorldOrbitDraftViewpoint[];
+  annotations: WorldOrbitDraftAnnotation[];
+}
+
+export interface FormatDocumentOptions {
+  schema?: WorldOrbitAnyDocumentVersion | "auto";
+}
+
+export type FormattableWorldOrbitDocument =
+  | WorldOrbitDocument
+  | WorldOrbitDraftDocument;

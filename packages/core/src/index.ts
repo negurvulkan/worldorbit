@@ -5,15 +5,30 @@ export { tokenizeLine, tokenizeLineDetailed } from "./tokenize.js";
 export { parseWorldOrbit } from "./parse.js";
 export { normalizeDocument } from "./normalize.js";
 export { validateDocument } from "./validate.js";
+export {
+  createDiagnostic,
+  diagnosticFromError,
+  normalizeWithDiagnostics,
+  parseWithDiagnostics,
+  validateDocumentWithDiagnostics,
+} from "./diagnostics.js";
 export { renderDocumentToScene, rotatePoint } from "./scene.js";
-export { formatDocument } from "./format.js";
+export { formatDocument, formatDraftDocument } from "./format.js";
+export { upgradeDocumentToDraftV2 } from "./draft.js";
 export { extractWorldOrbitBlocks } from "./markdown.js";
 
+import { parseWithDiagnostics } from "./diagnostics.js";
 import { formatDocument } from "./format.js";
 import { normalizeDocument } from "./normalize.js";
 import { parseWorldOrbit } from "./parse.js";
 import { renderDocumentToScene } from "./scene.js";
-import type { AstDocument, RenderScene, WorldOrbitDocument } from "./types.js";
+import type {
+  AstDocument,
+  FormatDocumentOptions,
+  FormattableWorldOrbitDocument,
+  RenderScene,
+  WorldOrbitDocument,
+} from "./types.js";
 import { validateDocument } from "./validate.js";
 
 export interface ParseResult {
@@ -40,6 +55,13 @@ export function render(source: string): RenderResult {
   };
 }
 
-export function stringify(document: WorldOrbitDocument): string {
-  return formatDocument(document);
+export function parseSafe(source: string) {
+  return parseWithDiagnostics(source);
+}
+
+export function stringify(
+  document: FormattableWorldOrbitDocument,
+  options: FormatDocumentOptions = {},
+): string {
+  return formatDocument(document, options);
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.8.0
+
+- added structured diagnostics APIs for parse, normalize, and validate phases through `parseWithDiagnostics(...)`, `normalizeWithDiagnostics(...)`, and `validateDocumentWithDiagnostics(...)`
+- introduced a programmatic `2.0-draft` core document model with `upgradeDocumentToDraftV2(...)` and canonical draft formatting through `formatDocument(..., { schema: "2.0-draft" })`
+- promoted scene viewpoints into structured draft viewpoints and lifted object descriptions plus explicit system annotations into draft annotations
+- added schema-draft examples, docs, and regression coverage around diagnostics, draft upgrade, and canonical draft output
+
 ## v1.7.0
 
 - added named atlas viewpoints on the scene model, derived from document-side `system info` viewpoint metadata

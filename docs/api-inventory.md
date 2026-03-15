@@ -5,21 +5,30 @@
 Stable v1.0 APIs:
 
 - `parse(source)`
+- `parseSafe(source)`
+- `parseWithDiagnostics(source)`
 - `render(source)`
 - `parseWorldOrbit(source)`
 - `normalizeDocument(ast)`
+- `normalizeWithDiagnostics(ast)`
 - `validateDocument(document)`
+- `validateDocumentWithDiagnostics(document)`
 - `renderDocumentToScene(document, options?)`
 - `formatDocument(document)`
+- `formatDraftDocument(document)`
 - `stringify(document)`
+- `upgradeDocumentToDraftV2(document, options?)`
 - `extractWorldOrbitBlocks(markdown)`
 
 Core public types include:
 
 - `WorldOrbitDocument`
+- `WorldOrbitDraftDocument`
 - `WorldOrbitObject`
 - `Placement`
 - `AtReference`
+- `WorldOrbitDiagnostic`
+- `DiagnosticResult`
 - `RenderScene`
 - `RenderSceneLayer`
 - `RenderSceneGroup`

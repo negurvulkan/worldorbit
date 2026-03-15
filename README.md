@@ -2,7 +2,7 @@
 
 WorldOrbit is a text-first DSL and rendering pipeline for fictional orbital systems.
 
-The current `v1.x` line includes projection-aware scene generation, numeric scale control, object textures, richer 2D rendering, and atlas-oriented viewer features across SVG, the interactive viewer, and Markdown embeds.
+The current `v1.x` line includes projection-aware scene generation, numeric scale control, object textures, richer 2D rendering, atlas-oriented viewer features, and a first `2.0-draft` schema-upgrade path across the core package.
 
 - `@worldorbit/core`: parser, schema, normalization, validation, formatting, and scene generation
 - `@worldorbit/viewer`: SVG rendering, interactive browser viewer, themes, and embed helpers
@@ -59,12 +59,54 @@ const canonical = formatDocument(result.document);
 Core exports include:
 
 - `parse(source)`
+- `parseSafe(source)`
+- `parseWithDiagnostics(source)`
 - `parseWorldOrbit(source)`
 - `normalizeDocument(ast)`
+- `normalizeWithDiagnostics(ast)`
 - `validateDocument(document)`
+- `validateDocumentWithDiagnostics(document)`
 - `renderDocumentToScene(document, options?)`
 - `formatDocument(document)`
+- `upgradeDocumentToDraftV2(document, options?)`
 - `extractWorldOrbitBlocks(markdown)`
+
+#### Schema 2 Draft
+
+`v1.8` adds a structured draft schema on top of the stable `1.0` document model. The existing parser still reads `v1` source, while `core` can now upgrade that document into a canonical `2.0-draft` authoring shape:
+
+```ts
+import {
+  formatDocument,
+  parse,
+  upgradeDocumentToDraftV2,
+} from "@worldorbit/core";
+
+const result = parse(source);
+const draft = upgradeDocumentToDraftV2(result.document, {
+  preset: "atlas-card",
+});
+
+const draftSource = formatDocument(draft);
+```
+
+The draft model currently organizes:
+
+- `defaults` for projection, scale, units, preset, and theme
+- structured `viewpoints`
+- structured `annotations`
+- preserved atlas metadata carried forward from `system info`
+
+Diagnostics are also available without relying only on thrown errors:
+
+```ts
+import { parseWithDiagnostics } from "@worldorbit/core";
+
+const parsed = parseWithDiagnostics(source);
+if (!parsed.ok) {
+  console.log(parsed.diagnostics);
+}
+```
 
 ### @worldorbit/viewer
 
@@ -278,6 +320,7 @@ WorldOrbit examples live in:
 
 - [examples/minimal.worldorbit](/H:/Projekte/worldorbit/examples/minimal.worldorbit)
 - [examples/iyath.worldorbit](/H:/Projekte/worldorbit/examples/iyath.worldorbit)
+- [examples/iyath.schema2-draft.worldorbit](/H:/Projekte/worldorbit/examples/iyath.schema2-draft.worldorbit)
 - [examples/markdown/static.md](/H:/Projekte/worldorbit/examples/markdown/static.md)
 - [examples/markdown/interactive.md](/H:/Projekte/worldorbit/examples/markdown/interactive.md)
 - [examples/markdown/build.mjs](/H:/Projekte/worldorbit/examples/markdown/build.mjs)
