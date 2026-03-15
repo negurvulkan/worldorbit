@@ -147,7 +147,8 @@
 
       button,
       select,
-      input[type="range"] {
+      input[type="range"],
+      input[type="text"] {
         appearance: none;
         border: 1px solid rgba(240, 180, 100, 0.2);
         border-radius: 999px;
@@ -166,6 +167,11 @@
         padding: 0;
         background: transparent;
         border: 0;
+      }
+
+      input[type="text"],
+      select {
+        width: 100%;
       }
 
       button:hover:not(:disabled) {
@@ -227,7 +233,7 @@
 
       .viewer-controls {
         display: grid;
-        grid-template-columns: repeat(5, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 12px;
         padding: 0 18px 18px;
       }
@@ -255,6 +261,29 @@
         margin-left: 8px;
         color: var(--accent);
         font-size: 12px;
+      }
+
+      .control-stack {
+        display: grid;
+        gap: 10px;
+      }
+
+      .pill-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .pill-row button {
+        padding: 7px 12px;
+        font-size: 12px;
+        letter-spacing: 0.04em;
+      }
+
+      .hint {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
       }
 
       #preview svg {
@@ -329,14 +358,14 @@
   <body>
     <main>
       <section class="hero">
-        <span class="eyebrow">WorldOrbit Atlas Foundations</span>
-        <h1>Isometric Worlds</h1>
+        <span class="eyebrow">WorldOrbit Atlas Navigation</span>
+        <h1>Viewpoints &amp; Deep Links</h1>
         <p>
           Diese Demo laeuft direkt auf den neuen Paketen <code>@worldorbit/core</code>
           und <code>@worldorbit/viewer</code>. Sie zeigt die neue Projektion- und
-          Scale-Pipeline vom DSL ueber die Render-Scene bis zum interaktiven Viewer
-          mit isometrischen Orbits, Atmosphaeren, Texturen, Atlas-Presets und live
-          einstellbaren Maßstaeben.
+          Scale-Pipeline vom DSL ueber die Render-Scene bis zum interaktiven Viewer.
+          Neu in diesem Stand sind benannte Atlas-Viewpoints, Viewer-Suche, Filter,
+          Bookmarks, Minimap und serialisierbare Deep-Link-States fuer Embeds.
         </p>
       </section>
 
@@ -395,6 +424,29 @@
                 </select>
               </div>
               <div class="control-card">
+                <strong>Viewpoint</strong>
+                <div class="control-stack">
+                  <select id="viewpoint" aria-label="Viewpoint">
+                    <option value="">Scene default</option>
+                  </select>
+                  <span class="hint">Dokument- oder Atlas-Ansicht aktivieren</span>
+                </div>
+              </div>
+              <div class="control-card">
+                <strong>Atlas Filter</strong>
+                <div class="control-stack">
+                  <select id="type-filter" aria-label="Objekttyp Filter">
+                    <option value="">Alle Typen</option>
+                    <option value="planet">Planeten</option>
+                    <option value="moon">Monde</option>
+                    <option value="structure">Strukturen</option>
+                    <option value="phenomenon">Phaenomene</option>
+                  </select>
+                  <input id="atlas-search" type="text" placeholder="Suche nach Objekt, Tag oder Typ" />
+                  <div id="search-results" class="pill-row"></div>
+                </div>
+              </div>
+              <div class="control-card">
                 <label for="orbit-scale">Orbit Scale <output id="orbit-scale-value">1.00</output></label>
                 <input id="orbit-scale" type="range" min="0.6" max="1.8" step="0.05" value="1.1" />
               </div>
@@ -405,6 +457,13 @@
               <div class="control-card">
                 <label for="label-scale">Label Scale <output id="label-scale-value">1.00</output></label>
                 <input id="label-scale" type="range" min="0.8" max="1.6" step="0.05" value="1.05" />
+              </div>
+              <div class="control-card">
+                <strong>Bookmarks</strong>
+                <div class="control-stack">
+                  <button id="save-bookmark" type="button">View speichern</button>
+                  <div id="bookmark-list" class="pill-row"></div>
+                </div>
               </div>
             </div>
             <div id="preview"></div>

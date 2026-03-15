@@ -9,6 +9,14 @@ system Iyath
   title "Iyath System"
   view topdown
   scale presentation
+  info
+    viewpoint.overview.label "Atlas Overview"
+    viewpoint.naar.label "Naar Close"
+    viewpoint.naar.focus Naar
+    viewpoint.naar.select Naar
+    viewpoint.naar.zoom 2.4
+    viewpoint.naar.rotation 16
+    viewpoint.naar.layers background orbits objects labels metadata -guides
 
 star Iyath
   radius 1.08sol
@@ -41,6 +49,17 @@ system Iyath
   title "Iyath System"
   view isometric
   scale presentation
+  info
+    viewpoint.overview.label "Atlas Overview"
+    viewpoint.naar.label "Naar Close Orbit"
+    viewpoint.naar.focus Naar
+    viewpoint.naar.select Naar
+    viewpoint.naar.zoom 2.3
+    viewpoint.naar.rotation 14
+    viewpoint.naar.layers background orbits objects labels metadata -guides
+    viewpoint.infrastructure.label "Infrastructure"
+    viewpoint.infrastructure.types structure phenomenon
+    viewpoint.infrastructure.query relay skyhook
 
 star Iyath
   radius 1.08sol
@@ -99,6 +118,8 @@ test("scene creation exposes objects, visuals, visible-content bounds, and metad
   assert.ok(scene.layers.some((layer) => layer.id === "labels"));
   assert.ok(scene.groups.length >= 1);
   assert.ok(scene.labels.length >= 1);
+  assert.ok(scene.viewpoints.some((viewpoint) => viewpoint.id === "overview"));
+  assert.ok(scene.viewpoints.some((viewpoint) => viewpoint.id === "naar"));
   assert.ok(planet);
   assert.ok(planet.x > 0);
   assert.ok(planet.y > 0);
@@ -138,6 +159,10 @@ test("isometric scenes expose ellipse geometry, scale model overrides, and proje
   const ringOrbit = scene.orbitVisuals.find((visual) => visual.objectId === "Dawn-Ring");
   const relay = scene.objects.find((object) => object.objectId === "Relay");
   const skyhook = scene.objects.find((object) => object.objectId === "Skyhook");
+  const naarViewpoint = scene.viewpoints.find((viewpoint) => viewpoint.id === "naar");
+  const infrastructureViewpoint = scene.viewpoints.find(
+    (viewpoint) => viewpoint.id === "infrastructure",
+  );
 
   assert.equal(scene.projection, "isometric");
   assert.equal(scene.viewMode, "isometric");
@@ -153,6 +178,11 @@ test("isometric scenes expose ellipse geometry, scale model overrides, and proje
   assert.ok(skyhook);
   assert.ok(scene.groups.some((group) => group.objectIds.includes("Naar")));
   assert.ok(scene.labels.some((label) => label.objectId === "Naar"));
+  assert.equal(naarViewpoint?.objectId, "Naar");
+  assert.equal(naarViewpoint?.scale, 2.3);
+  assert.equal(naarViewpoint?.layers.guides, false);
+  assert.deepEqual(infrastructureViewpoint?.filter?.objectTypes, ["structure", "phenomenon"]);
+  assert.equal(infrastructureViewpoint?.filter?.query, "relay skyhook");
 
   if (!relay || !skyhook) {
     assert.fail("Projected anchor placements should exist in the isometric scene");

@@ -9,6 +9,16 @@ import { createInteractiveViewer } from "@worldorbit/viewer";
 const source = `
 system Iyath
   view isometric
+  info
+    viewpoint.overview.label "Atlas Overview"
+    viewpoint.naar.label "Naar Close Orbit"
+    viewpoint.naar.focus Naar
+    viewpoint.naar.select Naar
+    viewpoint.naar.zoom 2.2
+    viewpoint.naar.rotation 14
+    viewpoint.infrastructure.label "Infrastructure"
+    viewpoint.infrastructure.types structure
+    viewpoint.infrastructure.query relay
 star Iyath
   temperature 5840
 planet Naar orbit Iyath semiMajor 1.18au eccentricity 0.08 angle 28deg inclination 24deg phase 42deg image assets/naar-map.png atmosphere nitrogen-oxygen
@@ -57,6 +67,8 @@ test("interactive viewer mounts, updates, selects, exports, and destroys cleanly
   const hovers = [];
   const hoverDetails = [];
   const views = [];
+  const filters = [];
+  const viewpoints = [];
 
   preview.getBoundingClientRect = () => ({
     x: 0,
@@ -78,6 +90,7 @@ test("interactive viewer mounts, updates, selects, exports, and destroys cleanly
       preset: "atlas-card",
       width: 1080,
       height: 720,
+      minimap: true,
       onSelectionChange(selection) {
         selections.push(selection?.objectId ?? null);
       },
@@ -93,13 +106,25 @@ test("interactive viewer mounts, updates, selects, exports, and destroys cleanly
       onViewChange(state) {
         views.push(state);
       },
+      onFilterChange(filter, visibleObjects) {
+        filters.push({
+          filter,
+          visible: visibleObjects.map((object) => object.objectId),
+        });
+      },
+      onViewpointChange(viewpoint) {
+        viewpoints.push(viewpoint?.id ?? null);
+      },
     });
 
     assert.ok(preview.querySelector("svg"));
     assert.ok(preview.querySelector("#worldorbit-camera-root"));
+    assert.ok(preview.querySelector("[data-worldorbit-minimap]"));
     assert.ok(views.length > 0);
     assert.equal(viewer.getScene().projection, "isometric");
     assert.equal(viewer.getScene().renderPreset, "atlas-card");
+    assert.ok(viewer.listViewpoints().some((viewpoint) => viewpoint.id === "naar"));
+    assert.equal(viewer.search("relay")[0]?.objectId, "Relay");
 
     viewer.setDocument(parse(source).document);
     viewer.setRenderOptions({
@@ -122,8 +147,28 @@ test("interactive viewer mounts, updates, selects, exports, and destroys cleanly
       },
     });
     assert.equal(viewer.getScene().projection, "isometric");
+    assert.equal(viewer.goToViewpoint("naar"), true);
+    assert.equal(viewer.getActiveViewpoint()?.id, "naar");
+    assert.equal(viewer.getSelectionDetails()?.focusPath.at(-1)?.objectId, "Naar");
     viewer.focusObject("Naar");
     assert.equal(viewer.getState().selectedObjectId, "Naar");
+    viewer.setFilter({ objectTypes: ["moon"] });
+    assert.deepEqual(
+      viewer.getVisibleObjects().map((object) => object.objectId).sort(),
+      ["Iyath", "Leth", "Naar"],
+    );
+    assert.ok(filters.at(-1)?.visible.includes("Leth"));
+
+    const bookmark = viewer.captureBookmark("moon path", "Moon Path");
+    viewer.goToViewpoint("infrastructure");
+    assert.equal(viewer.getActiveViewpoint()?.id, "infrastructure");
+    assert.equal(viewpoints.at(-1), "infrastructure");
+    viewer.applyBookmark(bookmark);
+    assert.equal(viewer.getVisibleObjects().some((object) => object.objectId === "Leth"), true);
+
+    const atlasState = viewer.serializeAtlasState();
+    viewer.setAtlasState(atlasState);
+    assert.ok(viewer.getAtlasState().filter);
 
     const target = preview.querySelector('[data-object-id="Naar"]');
     target?.dispatchEvent(new dom.window.MouseEvent("mouseover", { bubbles: true }));

@@ -282,6 +282,28 @@ export type SceneLayerId =
   | "labels"
   | "metadata";
 
+export interface RenderSceneViewpointFilter {
+  query: string | null;
+  objectTypes: Array<Exclude<WorldOrbitObjectType, "system">>;
+  tags: string[];
+  groupIds: string[];
+}
+
+export interface RenderSceneViewpoint {
+  id: string;
+  label: string;
+  summary: string;
+  objectId: string | null;
+  selectedObjectId: string | null;
+  projection: ViewProjection;
+  preset: RenderPresetName | null;
+  rotationDeg: number;
+  scale: number | null;
+  layers: Partial<Record<SceneLayerId, boolean>>;
+  filter: RenderSceneViewpointFilter | null;
+  generated: boolean;
+}
+
 export interface RenderSceneLayer {
   id: SceneLayerId;
   renderIds: string[];
@@ -314,6 +336,7 @@ export interface RenderScene {
   contentBounds: RenderBounds;
   layers: RenderSceneLayer[];
   groups: RenderSceneGroup[];
+  viewpoints: RenderSceneViewpoint[];
   objects: RenderSceneObject[];
   orbitVisuals: RenderOrbitVisual[];
   leaders: RenderLeaderLine[];

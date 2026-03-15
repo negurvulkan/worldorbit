@@ -11,6 +11,7 @@ import {
   type WorldOrbitObject,
 } from "@worldorbit/core";
 
+import { computeVisibleObjectIds } from "./atlas-state.js";
 import { resolveLayers, resolveTheme } from "./theme.js";
 import type { SvgRenderOptions } from "./types.js";
 
@@ -37,18 +38,24 @@ export function renderSceneToSvg(scene: RenderScene, options: SvgRenderOptions =
     ...options.layers,
   });
   const subtitle = options.subtitle ?? scene.subtitle;
+  const visibleObjectIds = computeVisibleObjectIds(scene, options.filter ?? null);
   const visibleObjects = scene.objects
     .filter((object) => !object.hidden)
+    .filter((object) => visibleObjectIds.has(object.objectId))
     .filter((object) => layers.structures || !isStructureLike(object.object))
     .sort((left, right) => left.sortKey - right.sortKey);
   const visibleLabels = scene.labels
     .filter((label) => !label.hidden)
+    .filter((label) => visibleObjectIds.has(label.objectId))
     .filter((label) => layers.structures || !isStructureLike(label.object));
   const imageDefinitions = buildImageDefinitions(visibleObjects);
-  const orbitMarkup = layers.orbits ? renderOrbitLayer(scene) : { back: "", front: "" };
+  const orbitMarkup = layers.orbits
+    ? renderOrbitLayer(scene, visibleObjectIds, layers.structures)
+    : { back: "", front: "" };
   const leaderMarkup = layers.guides
     ? scene.leaders
         .filter((leader) => !leader.hidden)
+        .filter((leader) => visibleObjectIds.has(leader.objectId))
         .filter((leader) => layers.structures || !isStructureLike(leader.object))
         .map(
           (leader) =>
@@ -56,9 +63,11 @@ export function renderSceneToSvg(scene: RenderScene, options: SvgRenderOptions =
         )
         .join("")
     : "";
-  const objectMarkup = visibleObjects
-    .map((object) => renderSceneObject(object, options.selectedObjectId ?? null, theme))
-    .join("");
+  const objectMarkup = layers.objects
+    ? visibleObjects
+        .map((object) => renderSceneObject(object, options.selectedObjectId ?? null, theme))
+        .join("")
+    : "";
   const labelMarkup = layers.labels
     ? visibleLabels
         .map((label) => renderSceneLabel(scene, label, options.selectedObjectId ?? null))
@@ -77,7 +86,7 @@ export function renderSceneToSvg(scene: RenderScene, options: SvgRenderOptions =
   ${layers.guides ? renderBackdrop(scene.width, scene.height) : ""}`
     : "";
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${scene.width}" height="${scene.height}" viewBox="0 0 ${scene.width} ${scene.height}" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="worldorbit-title worldorbit-desc">
+  return `<svg xmlns="http://www.w3.org/2000/svg" data-worldorbit-svg="true" width="${scene.width}" height="${scene.height}" viewBox="0 0 ${scene.width} ${scene.height}" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="worldorbit-title worldorbit-desc">
   <title id="worldorbit-title">${escapeXml(scene.title)}</title>
   <desc id="worldorbit-desc">A ${escapeXml(scene.viewMode)} WorldOrbit render with ${visibleObjects.length} visible objects.</desc>
   <defs>
@@ -136,7 +145,7 @@ export function renderSceneToSvg(scene: RenderScene, options: SvgRenderOptions =
       <g data-worldorbit-world-content="true">
         ${layers.orbits ? `<g data-layer-id="orbits-back">${orbitMarkup.back}</g>` : ""}
         ${layers.guides ? `<g data-layer-id="guides">${leaderMarkup}</g>` : ""}
-        <g data-layer-id="objects">${objectMarkup}</g>
+        ${layers.objects ? `<g data-layer-id="objects">${objectMarkup}</g>` : ""}
         ${layers.orbits ? `<g data-layer-id="orbits-front">${orbitMarkup.front}</g>` : ""}
         ${layers.labels ? `<g data-layer-id="labels">${labelMarkup}</g>` : ""}
       </g>
@@ -159,11 +168,20 @@ export function renderSourceToSvg(source: string, options: SvgRenderOptions = {}
   return renderDocumentToSvg(document, options);
 }
 
-function renderOrbitLayer(scene: RenderScene): { back: string; front: string } {
+function renderOrbitLayer(
+  scene: RenderScene,
+  visibleObjectIds: Set<string>,
+  includeStructures: boolean,
+): { back: string; front: string } {
   const backParts: string[] = [];
   const frontParts: string[] = [];
 
-  for (const visual of scene.orbitVisuals.filter((entry) => !entry.hidden)) {
+  for (const visual of scene.orbitVisuals.filter(
+    (entry) =>
+      !entry.hidden &&
+      visibleObjectIds.has(entry.objectId) &&
+      (includeStructures || !isStructureLike(entry.object)),
+  )) {
     const strokeWidth = visual.bandThickness ?? (visual.band ? 10 : 1.5);
     const orbitClass = visual.band ? "wo-orbit wo-orbit-band wo-orbit-node" : "wo-orbit wo-orbit-node";
     const dataAttributes = `data-render-id="${escapeXml(visual.renderId)}" data-orbit-object-id="${escapeAttribute(visual.objectId)}" data-parent-id="${escapeAttribute(visual.parentId)}" data-group-id="${escapeAttribute(visual.groupId ?? "")}"`;
@@ -550,6 +568,7 @@ function resolveRenderPreset(
           background: true,
           guides: true,
           orbits: true,
+          objects: true,
           labels: true,
           structures: true,
           metadata: true,
@@ -561,6 +580,7 @@ function resolveRenderPreset(
           background: true,
           guides: false,
           orbits: true,
+          objects: true,
           labels: true,
           structures: true,
           metadata: true,
@@ -572,6 +592,7 @@ function resolveRenderPreset(
           background: true,
           guides: false,
           orbits: true,
+          objects: true,
           labels: true,
           structures: true,
           metadata: false,
@@ -584,6 +605,7 @@ function resolveRenderPreset(
           background: true,
           guides: true,
           orbits: true,
+          objects: true,
           labels: true,
           structures: true,
           metadata: true,

@@ -1,11 +1,21 @@
 export type * from "./types.js";
 export { getThemePreset, resolveLayers, resolveTheme } from "./theme.js";
 export {
+  deserializeViewerAtlasState,
+  normalizeViewerFilter,
+  sceneViewpointToLayerOptions,
+  searchSceneObjects,
+  serializeViewerAtlasState,
+  viewpointToViewerFilter,
+} from "./atlas-state.js";
+export {
   DEFAULT_VIEWER_STATE,
   clampScale,
   composeViewerTransform,
   fitViewerState,
   focusViewerState,
+  getViewerVisibleBounds,
+  invertViewerPoint,
   getSceneCenter,
   normalizeRotation,
   panViewerState,

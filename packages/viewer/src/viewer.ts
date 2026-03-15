@@ -2,18 +2,36 @@ import {
   normalizeDocument,
   parseWorldOrbit,
   renderDocumentToScene,
+  rotatePoint,
   validateDocument,
   type CoordinatePoint,
   type RenderScene,
   type RenderSceneObject,
+  type RenderSceneViewpoint,
   type WorldOrbitDocument,
 } from "@worldorbit/core";
 
+import {
+  computeVisibleObjectIds,
+  createAtlasStateSnapshot,
+  createViewerBookmark,
+  deserializeViewerAtlasState,
+  normalizeViewerFilter,
+  sceneViewpointToLayerOptions,
+  searchSceneObjects,
+  serializeViewerAtlasState,
+  viewpointToViewerFilter,
+} from "./atlas-state.js";
+import { renderViewerMinimap } from "./minimap.js";
 import { renderSceneToSvg } from "./render.js";
 import type {
   InteractiveViewerOptions,
+  ViewerAtlasState,
+  ViewerBookmark,
+  ViewerFilter,
   ViewerObjectDetails,
   ViewerRenderOptions,
+  ViewerSearchResult,
   ViewerState,
   WorldOrbitViewer,
 } from "./types.js";
@@ -22,6 +40,7 @@ import {
   composeViewerTransform,
   fitViewerState,
   focusViewerState,
+  invertViewerPoint,
   panViewerState,
   rotateViewerState,
   type ViewerConstraints,
@@ -31,6 +50,7 @@ import {
 interface TouchGestureState {
   startState: ViewerState;
   startCenter: CoordinatePoint;
+  startViewportCenter: CoordinatePoint;
   startDistance: number;
 }
 
@@ -74,6 +94,7 @@ export function createInteractiveViewer(
     pointer: options.pointer ?? true,
     touch: options.touch ?? true,
     selection: options.selection ?? true,
+    minimap: options.minimap ?? false,
     panStep: options.panStep ?? DEFAULT_VIEWER_LIMITS.panStep,
     zoomStep: options.zoomStep ?? DEFAULT_VIEWER_LIMITS.zoomStep,
     rotationStep: options.rotationStep ?? DEFAULT_VIEWER_LIMITS.rotationStep,
@@ -88,17 +109,20 @@ export function createInteractiveViewer(
     scaleModel: options.scaleModel ? { ...options.scaleModel } : undefined,
     theme: options.theme,
     layers: options.layers,
+    filter: normalizeViewerFilter(options.initialFilter),
     subtitle: options.subtitle,
   };
 
   const previousTabIndex = container.getAttribute("tabindex");
   const previousTouchAction = container.style.touchAction;
+  const previousPosition = container.style.position;
 
   let currentInput = resolveInitialInput(options);
   let scene = renderSceneFromInput(currentInput, renderOptions);
   let state = { ...DEFAULT_VIEWER_STATE };
   let svgElement: SVGSVGElement | null = null;
   let cameraRoot: SVGGElement | null = null;
+  let minimapRoot: HTMLElement | null = null;
   let suppressClick = false;
   let activePointerId: number | null = null;
   let lastPointerPoint: CoordinatePoint | null = null;
@@ -107,6 +131,7 @@ export function createInteractiveViewer(
   let touchPoints = new Map<number, CoordinatePoint>();
   let touchGesture: TouchGestureState | null = null;
   let hoveredObjectId: string | null = null;
+  let activeViewpointId: string | null = null;
 
   if (previousTabIndex === null) {
     container.tabIndex = 0;
@@ -114,6 +139,9 @@ export function createInteractiveViewer(
 
   container.classList.add("wo-viewer-container");
   container.style.touchAction = behavior.touch ? "none" : previousTouchAction;
+  if (!container.style.position) {
+    container.style.position = "relative";
+  }
 
   const handleWheel = (event: WheelEvent): void => {
     if (!behavior.pointer || destroyed) {
@@ -123,7 +151,7 @@ export function createInteractiveViewer(
     event.preventDefault();
     container.focus();
 
-    const anchor = getScenePointFromClient(event.clientX, event.clientY);
+    const anchor = getWorldPointFromClient(event.clientX, event.clientY);
     const factor = clampValue(Math.exp(-event.deltaY * 0.002), 0.6, 1.6);
     updateState(zoomViewerStateAt(scene, state, factor, anchor, constraints));
   };
@@ -145,11 +173,11 @@ export function createInteractiveViewer(
     container.focus();
     container.setPointerCapture?.(event.pointerId);
 
-    const point = getScenePointFromClient(event.clientX, event.clientY);
+    const point = getViewportPointFromClient(event.clientX, event.clientY);
     if (isTouch) {
       touchPoints.set(event.pointerId, point);
       if (touchPoints.size === 2) {
-        touchGesture = createTouchGestureState(state, touchPoints);
+        touchGesture = createTouchGestureState(scene, state, touchPoints);
       }
       return;
     }
@@ -171,10 +199,10 @@ export function createInteractiveViewer(
         return;
       }
 
-      touchPoints.set(event.pointerId, getScenePointFromClient(event.clientX, event.clientY));
+      touchPoints.set(event.pointerId, getViewportPointFromClient(event.clientX, event.clientY));
       if (touchPoints.size === 2) {
         if (!touchGesture) {
-          touchGesture = createTouchGestureState(state, touchPoints);
+          touchGesture = createTouchGestureState(scene, state, touchPoints);
         }
 
         const current = getTouchCenterAndDistance(touchPoints);
@@ -186,8 +214,8 @@ export function createInteractiveViewer(
           touchGesture.startCenter,
           constraints,
         );
-        const deltaX = current.center.x - touchGesture.startCenter.x;
-        const deltaY = current.center.y - touchGesture.startCenter.y;
+        const deltaX = current.center.x - touchGesture.startViewportCenter.x;
+        const deltaY = current.center.y - touchGesture.startViewportCenter.y;
         updateState(panViewerState(zoomedState, deltaX, deltaY));
       }
 
@@ -198,7 +226,7 @@ export function createInteractiveViewer(
       return;
     }
 
-    const nextPoint = getScenePointFromClient(event.clientX, event.clientY);
+    const nextPoint = getViewportPointFromClient(event.clientX, event.clientY);
     const deltaX = nextPoint.x - lastPointerPoint.x;
     const deltaY = nextPoint.y - lastPointerPoint.y;
     dragDistance += Math.abs(deltaX) + Math.abs(deltaY);
@@ -334,16 +362,19 @@ export function createInteractiveViewer(
     setSource(source: string): void {
       currentInput = { kind: "source", value: source };
       scene = renderSceneFromInput(currentInput, renderOptions);
+      activeViewpointId = null;
       rerenderScene(true);
     },
     setDocument(document: WorldOrbitDocument): void {
       currentInput = { kind: "document", value: document };
       scene = renderSceneFromInput(currentInput, renderOptions);
+      activeViewpointId = null;
       rerenderScene(true);
     },
     setScene(nextScene: RenderScene): void {
       currentInput = { kind: "scene", value: nextScene };
       scene = nextScene;
+      activeViewpointId = null;
       rerenderScene(true);
     },
     getScene(): RenderScene {
@@ -352,11 +383,113 @@ export function createInteractiveViewer(
     getRenderOptions(): ViewerRenderOptions {
       return cloneRenderOptions(renderOptions);
     },
+    listViewpoints(): RenderSceneViewpoint[] {
+      return scene.viewpoints.slice();
+    },
+    getActiveViewpoint(): RenderSceneViewpoint | null {
+      return getViewpointById(activeViewpointId);
+    },
+    goToViewpoint(id: string): boolean {
+      const viewpoint = getViewpointById(id);
+      if (!viewpoint) {
+        return false;
+      }
+
+      const nextRenderOptions: Partial<ViewerRenderOptions> = {};
+      const viewpointLayers = sceneViewpointToLayerOptions(viewpoint);
+      if (viewpoint.preset !== null) {
+        nextRenderOptions.preset = viewpoint.preset;
+      }
+      if (currentInput.kind !== "scene" && viewpoint.projection !== scene.projection) {
+        nextRenderOptions.projection = viewpoint.projection;
+      }
+      if (viewpointLayers) {
+        nextRenderOptions.layers = viewpointLayers;
+      }
+
+      activeViewpointId = viewpoint.id;
+
+      if (Object.keys(nextRenderOptions).length > 0) {
+        const sceneAffecting = hasSceneAffectingRenderOptions(nextRenderOptions);
+        renderOptions = mergeRenderOptions(renderOptions, nextRenderOptions);
+        if (currentInput.kind !== "scene" && sceneAffecting) {
+          scene = renderSceneFromInput(currentInput, renderOptions);
+        }
+        rerenderScene(sceneAffecting);
+      }
+
+      setFilterInternal(viewpointToViewerFilter(viewpoint), false, false);
+      const nextState = createViewpointState(viewpoint);
+      updateState(nextState);
+      applySelection(viewpoint.selectedObjectId ?? viewpoint.objectId ?? null, false);
+      options.onSelectionChange?.(getSelectedObject());
+      options.onSelectionDetailsChange?.(buildObjectDetails(state.selectedObjectId));
+      notifyViewpointChange();
+      emitAtlasStateChange();
+      return true;
+    },
+    search(query: string, limit = 12): ViewerSearchResult[] {
+      return searchSceneObjects(scene, query, limit);
+    },
+    getFilter(): ViewerFilter | null {
+      return renderOptions.filter ? { ...renderOptions.filter } : null;
+    },
+    setFilter(filter: ViewerFilter | null): void {
+      setFilterInternal(filter, true, true);
+    },
+    getVisibleObjects(): RenderSceneObject[] {
+      return getVisibleSceneObjects();
+    },
+    getFocusPath(id: string): RenderSceneObject[] {
+      return buildFocusPath(id);
+    },
     getObjectDetails(id: string): ViewerObjectDetails | null {
       return buildObjectDetails(id);
     },
     getSelectionDetails(): ViewerObjectDetails | null {
       return buildObjectDetails(state.selectedObjectId);
+    },
+    getAtlasState(): ViewerAtlasState {
+      return createAtlasStateSnapshot(
+        state,
+        renderOptions,
+        renderOptions.filter ?? null,
+        activeViewpointId,
+      );
+    },
+    setAtlasState(nextAtlasState: ViewerAtlasState | string): void {
+      const atlasState =
+        typeof nextAtlasState === "string"
+          ? deserializeViewerAtlasState(nextAtlasState)
+          : nextAtlasState;
+
+      if (atlasState.viewpointId) {
+        api.goToViewpoint(atlasState.viewpointId);
+      }
+
+      api.setRenderOptions(atlasState.renderOptions);
+      setFilterInternal(atlasState.filter ?? null, false, false);
+      updateState(sanitizeState({ ...state, ...atlasState.viewerState }));
+      applySelection(atlasState.viewerState.selectedObjectId ?? null, false);
+      notifyViewpointChange();
+      options.onSelectionChange?.(getSelectedObject());
+      options.onSelectionDetailsChange?.(buildObjectDetails(state.selectedObjectId));
+      emitAtlasStateChange();
+    },
+    serializeAtlasState(): string {
+      return serializeViewerAtlasState(api.getAtlasState());
+    },
+    captureBookmark(name: string, label?: string): ViewerBookmark {
+      return createViewerBookmark(name, label, api.getAtlasState());
+    },
+    applyBookmark(bookmark: ViewerBookmark | string): boolean {
+      if (typeof bookmark === "string") {
+        api.setAtlasState(bookmark);
+        return true;
+      }
+
+      api.setAtlasState(bookmark.atlasState);
+      return true;
     },
     setRenderOptions(options: Partial<ViewerRenderOptions>): void {
       const sceneAffecting = hasSceneAffectingRenderOptions(options);
@@ -393,17 +526,20 @@ export function createInteractiveViewer(
       updateState(fitViewerState(scene, state, constraints));
     },
     focusObject(id: string): void {
+      activeViewpointId = null;
       updateState(focusViewerState(scene, state, id, constraints));
       applySelection(id);
     },
     resetView(): void {
       const resetState = fitViewerState(scene, { ...DEFAULT_VIEWER_STATE }, constraints);
+      activeViewpointId = null;
       updateState(resetState);
       applySelection(null);
     },
     exportSvg(): string {
       return renderSceneToSvg(scene, {
         ...renderOptions,
+        filter: renderOptions.filter ?? null,
         selectedObjectId: state.selectedObjectId,
       });
     },
@@ -426,6 +562,7 @@ export function createInteractiveViewer(
       container.removeEventListener("keydown", handleKeyDown);
       container.classList.remove("wo-viewer-container");
       container.style.touchAction = previousTouchAction;
+      container.style.position = previousPosition;
 
       if (previousTabIndex === null) {
         container.removeAttribute("tabindex");
@@ -436,15 +573,30 @@ export function createInteractiveViewer(
   };
 
   rerenderScene(true);
+  if (options.initialViewpointId) {
+    api.goToViewpoint(options.initialViewpointId);
+  } else if (options.initialSelectionObjectId) {
+    api.focusObject(options.initialSelectionObjectId);
+  } else {
+    emitAtlasStateChange();
+  }
   return api;
 
   function rerenderScene(resetView: boolean): void {
     container.innerHTML = renderSceneToSvg(scene, {
       ...renderOptions,
+      filter: renderOptions.filter ?? null,
       selectedObjectId: state.selectedObjectId,
     });
-    svgElement = container.querySelector("svg");
+    svgElement = container.querySelector('[data-worldorbit-svg="true"]');
     cameraRoot = container.querySelector("#worldorbit-camera-root");
+    minimapRoot = null;
+
+    if (behavior.minimap) {
+      minimapRoot = document.createElement("div");
+      minimapRoot.dataset.worldorbitMinimapRoot = "true";
+      container.append(minimapRoot);
+    }
 
     if (!svgElement || !cameraRoot) {
       throw new Error("Interactive viewer could not locate the rendered SVG camera root.");
@@ -456,26 +608,30 @@ export function createInteractiveViewer(
 
     applySelection(
       state.selectedObjectId &&
-        scene.objects.some((object) => object.objectId === state.selectedObjectId && !object.hidden)
+        getObjectById(state.selectedObjectId)
         ? state.selectedObjectId
         : null,
       false,
     );
     applyHover(
       hoveredObjectId &&
-        scene.objects.some((object) => object.objectId === hoveredObjectId && !object.hidden)
+        getObjectById(hoveredObjectId)
         ? hoveredObjectId
         : null,
       false,
     );
     updateCameraTransform();
+    notifyFilterChange();
+    notifyViewpointChange();
     options.onViewChange?.({ ...state });
+    emitAtlasStateChange();
   }
 
   function updateState(nextState: ViewerState): void {
     state = sanitizeState(nextState);
     updateCameraTransform();
     options.onViewChange?.({ ...state });
+    emitAtlasStateChange();
   }
 
   function sanitizeState(nextState: ViewerState): ViewerState {
@@ -485,8 +641,7 @@ export function createInteractiveViewer(
       translateX: Number.isFinite(nextState.translateX) ? nextState.translateX : state.translateX,
       translateY: Number.isFinite(nextState.translateY) ? nextState.translateY : state.translateY,
       selectedObjectId:
-        nextState.selectedObjectId &&
-        scene.objects.some((object) => object.objectId === nextState.selectedObjectId && !object.hidden)
+        nextState.selectedObjectId && getObjectById(nextState.selectedObjectId)
           ? nextState.selectedObjectId
           : null,
     };
@@ -498,6 +653,7 @@ export function createInteractiveViewer(
     }
 
     cameraRoot.setAttribute("transform", composeViewerTransform(scene, state));
+    updateMinimap();
   }
 
   function applySelection(objectId: string | null, emitCallback = true): void {
@@ -510,7 +666,7 @@ export function createInteractiveViewer(
     state = {
       ...state,
       selectedObjectId:
-        objectId && scene.objects.some((object) => object.objectId === objectId && !object.hidden)
+        objectId && getObjectById(objectId)
           ? objectId
           : null,
     };
@@ -527,6 +683,7 @@ export function createInteractiveViewer(
       options.onSelectionChange?.(getSelectedObject());
       options.onSelectionDetailsChange?.(buildObjectDetails(state.selectedObjectId));
       options.onViewChange?.({ ...state });
+      emitAtlasStateChange();
     }
   }
 
@@ -536,7 +693,7 @@ export function createInteractiveViewer(
     }
 
     hoveredObjectId =
-      objectId && scene.objects.some((object) => object.objectId === objectId && !object.hidden)
+      objectId && getObjectById(objectId)
         ? objectId
         : null;
 
@@ -553,7 +710,19 @@ export function createInteractiveViewer(
   }
 
   function getObjectById(objectId: string | null): RenderSceneObject | null {
-    return scene.objects.find((object) => object.objectId === objectId && !object.hidden) ?? null;
+    if (!objectId) {
+      return null;
+    }
+
+    const visibleObjectIds = getVisibleObjectIds();
+    return (
+      scene.objects.find(
+        (object) =>
+          object.objectId === objectId &&
+          !object.hidden &&
+          visibleObjectIds.has(object.objectId),
+      ) ?? null
+    );
   }
 
   function buildObjectDetails(objectId: string | null): ViewerObjectDetails | null {
@@ -581,6 +750,7 @@ export function createInteractiveViewer(
       ancestors: renderObject.ancestorIds
         .map((ancestorId) => getObjectById(ancestorId))
         .filter(Boolean) as RenderSceneObject[],
+      focusPath: buildFocusPath(renderObject.objectId),
     };
   }
 
@@ -650,7 +820,7 @@ export function createInteractiveViewer(
     }
   }
 
-  function getScenePointFromClient(clientX: number, clientY: number): CoordinatePoint {
+  function getViewportPointFromClient(clientX: number, clientY: number): CoordinatePoint {
     if (!svgElement) {
       return {
         x: scene.width / 2,
@@ -670,6 +840,136 @@ export function createInteractiveViewer(
       x: ((clientX - rect.left) / rect.width) * scene.width,
       y: ((clientY - rect.top) / rect.height) * scene.height,
     };
+  }
+
+  function getWorldPointFromClient(clientX: number, clientY: number): CoordinatePoint {
+    return invertViewerPoint(scene, state, getViewportPointFromClient(clientX, clientY));
+  }
+
+  function getVisibleObjectIds(): Set<string> {
+    return computeVisibleObjectIds(scene, renderOptions.filter ?? null);
+  }
+
+  function getVisibleSceneObjects(): RenderSceneObject[] {
+    const visibleObjectIds = getVisibleObjectIds();
+    return scene.objects.filter(
+      (object) => !object.hidden && visibleObjectIds.has(object.objectId),
+    );
+  }
+
+  function buildFocusPath(objectId: string): RenderSceneObject[] {
+    const object = scene.objects.find((entry) => entry.objectId === objectId && !entry.hidden);
+    if (!object) {
+      return [];
+    }
+
+    return [...object.ancestorIds, object.objectId]
+      .map((entryId) => getObjectById(entryId))
+      .filter(Boolean) as RenderSceneObject[];
+  }
+
+  function getViewpointById(id: string | null): RenderSceneViewpoint | null {
+    return scene.viewpoints.find((viewpoint) => viewpoint.id === id) ?? null;
+  }
+
+  function createViewpointState(viewpoint: RenderSceneViewpoint): ViewerState {
+    const rotationDeg = normalizeRotation(viewpoint.rotationDeg);
+    const scale =
+      viewpoint.scale !== null && viewpoint.scale !== undefined
+        ? clampValue(viewpoint.scale, constraints.minScale, constraints.maxScale)
+        : null;
+    const targetObject =
+      viewpoint.objectId &&
+      scene.objects.find((object) => object.objectId === viewpoint.objectId && !object.hidden);
+
+    if (targetObject) {
+      return createCenteredState(
+        { x: targetObject.x, y: targetObject.y },
+        scale ?? Math.max(1.8, DEFAULT_VIEWER_STATE.scale),
+        rotationDeg,
+        viewpoint.selectedObjectId ?? targetObject.objectId,
+      );
+    }
+
+    const baseState = fitViewerState(scene, { ...DEFAULT_VIEWER_STATE, rotationDeg }, constraints);
+    if (scale === null) {
+      return {
+        ...baseState,
+        rotationDeg,
+        selectedObjectId: viewpoint.selectedObjectId ?? null,
+      };
+    }
+
+    return createCenteredState(
+      {
+        x: scene.contentBounds.centerX,
+        y: scene.contentBounds.centerY,
+      },
+      scale,
+      rotationDeg,
+      viewpoint.selectedObjectId ?? null,
+    );
+  }
+
+  function createCenteredState(
+    target: CoordinatePoint,
+    scale: number,
+    rotationDeg: number,
+    selectedObjectId: string | null,
+  ): ViewerState {
+    const center = {
+      x: scene.width / 2,
+      y: scene.height / 2,
+    };
+    const rotatedTarget = rotatePoint(target, center, rotationDeg);
+
+    return {
+      scale,
+      rotationDeg,
+      translateX: center.x - (center.x + (rotatedTarget.x - center.x) * scale),
+      translateY: center.y - (center.y + (rotatedTarget.y - center.y) * scale),
+      selectedObjectId,
+    };
+  }
+
+  function setFilterInternal(
+    filter: ViewerFilter | null,
+    emitCallbacks: boolean,
+    clearActiveViewpoint: boolean,
+  ): void {
+    renderOptions = {
+      ...renderOptions,
+      filter: normalizeViewerFilter(filter),
+    };
+
+    if (clearActiveViewpoint) {
+      activeViewpointId = null;
+    }
+
+    rerenderScene(false);
+    if (!emitCallbacks) {
+      return;
+    }
+  }
+
+  function notifyFilterChange(): void {
+    options.onFilterChange?.(renderOptions.filter ?? null, getVisibleSceneObjects());
+  }
+
+  function notifyViewpointChange(): void {
+    options.onViewpointChange?.(getViewpointById(activeViewpointId));
+  }
+
+  function emitAtlasStateChange(): void {
+    options.onAtlasStateChange?.(api.getAtlasState());
+  }
+
+  function updateMinimap(): void {
+    if (!behavior.minimap || !minimapRoot) {
+      return;
+    }
+
+    minimapRoot.innerHTML = renderViewerMinimap(scene, state, getVisibleSceneObjects());
   }
 }
 
@@ -706,6 +1006,7 @@ function renderSceneFromInput(
 function cloneRenderOptions(renderOptions: ViewerRenderOptions): ViewerRenderOptions {
   return {
     ...renderOptions,
+    filter: renderOptions.filter ? { ...renderOptions.filter } : undefined,
     scaleModel: renderOptions.scaleModel ? { ...renderOptions.scaleModel } : undefined,
     layers: renderOptions.layers ? { ...renderOptions.layers } : undefined,
     theme:
@@ -722,6 +1023,12 @@ function mergeRenderOptions(
   return {
     ...current,
     ...next,
+    filter:
+      next.filter !== undefined
+        ? normalizeViewerFilter(next.filter)
+        : current.filter
+          ? { ...current.filter }
+          : undefined,
     scaleModel: next.scaleModel
       ? {
           ...(current.scaleModel ?? {}),
@@ -764,13 +1071,15 @@ function parseSource(source: string): WorldOrbitDocument {
 }
 
 function createTouchGestureState(
+  scene: RenderScene,
   state: ViewerState,
   touchPoints: Map<number, CoordinatePoint>,
 ): TouchGestureState {
   const { center, distance } = getTouchCenterAndDistance(touchPoints);
   return {
     startState: { ...state },
-    startCenter: center,
+    startCenter: invertViewerPoint(scene, state, center),
+    startViewportCenter: center,
     startDistance: distance,
   };
 }

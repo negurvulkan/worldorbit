@@ -146,6 +146,64 @@ export function composeViewerTransform(scene: RenderScene, state: ViewerState): 
   return `translate(${state.translateX} ${state.translateY}) translate(${center.x} ${center.y}) rotate(${state.rotationDeg}) scale(${state.scale}) translate(${-center.x} ${-center.y})`;
 }
 
+export function invertViewerPoint(
+  scene: RenderScene,
+  state: ViewerState,
+  point: CoordinatePoint,
+): CoordinatePoint {
+  const center = getSceneCenter(scene);
+  const translated = {
+    x: point.x - state.translateX,
+    y: point.y - state.translateY,
+  };
+  const centered = {
+    x: translated.x - center.x,
+    y: translated.y - center.y,
+  };
+  const scaled = {
+    x: centered.x / Math.max(state.scale, 0.0001),
+    y: centered.y / Math.max(state.scale, 0.0001),
+  };
+  const unrotated = rotatePoint(
+    { x: scaled.x, y: scaled.y },
+    { x: 0, y: 0 },
+    -state.rotationDeg,
+  );
+
+  return {
+    x: center.x + unrotated.x,
+    y: center.y + unrotated.y,
+  };
+}
+
+export function getViewerVisibleBounds(
+  scene: RenderScene,
+  state: ViewerState,
+): RenderBounds {
+  const corners = [
+    { x: 0, y: 0 },
+    { x: scene.width, y: 0 },
+    { x: scene.width, y: scene.height },
+    { x: 0, y: scene.height },
+  ].map((point) => invertViewerPoint(scene, state, point));
+
+  const minX = Math.min(...corners.map((corner) => corner.x));
+  const minY = Math.min(...corners.map((corner) => corner.y));
+  const maxX = Math.max(...corners.map((corner) => corner.x));
+  const maxY = Math.max(...corners.map((corner) => corner.y));
+
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: maxX - minX,
+    height: maxY - minY,
+    centerX: minX + (maxX - minX) / 2,
+    centerY: minY + (maxY - minY) / 2,
+  };
+}
+
 export function getSceneCenter(scene: RenderScene): CoordinatePoint {
   return {
     x: scene.width / 2,

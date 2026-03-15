@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.7.0
+
+- added named atlas viewpoints on the scene model, derived from document-side `system info` viewpoint metadata
+- extended the interactive viewer with search, object filtering, focus paths, bookmark capture, active viewpoint switching, and serializable atlas state snapshots
+- added optional viewer minimaps plus embed payload support for initial viewpoint, filter, selection, and full atlas-state hydration
+- refreshed the browser demo, Markdown output, and regression suite around atlas navigation and deep-linkable viewer state
+
 ## v1.6.0
 
 - added atlas-oriented scene metadata with explicit render layers, object groups, and prepared label positions

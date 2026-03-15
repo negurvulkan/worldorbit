@@ -24,6 +24,7 @@ Core public types include:
 - `RenderSceneLayer`
 - `RenderSceneGroup`
 - `RenderSceneLabel`
+- `RenderSceneViewpoint`
 - `RenderPresetName`
 - `WorldOrbitFieldSchema`
 - `MarkdownFenceBlock`
@@ -46,7 +47,11 @@ Viewer public types include:
 - `ViewerLayerOptions`
 - `SvgRenderOptions`
 - `InteractiveViewerOptions`
+- `ViewerFilter`
+- `ViewerSearchResult`
 - `ViewerObjectDetails`
+- `ViewerAtlasState`
+- `ViewerBookmark`
 - `ViewerState`
 - `WorldOrbitViewer`
 - `WorldOrbitEmbedPayload`

@@ -8,6 +8,8 @@ import type {
   RenderSceneGroup,
   RenderSceneLabel,
   RenderSceneLayer,
+  RenderSceneViewpoint,
+  RenderSceneViewpointFilter,
   RenderOrbitVisual,
   RenderScaleModel,
   RenderScene,
@@ -88,6 +90,19 @@ interface SceneFrame {
   height: number;
   padding: number;
   preset: RenderPresetName | null;
+}
+
+interface ViewpointConfigDraft {
+  id: string;
+  label?: string;
+  focus?: string;
+  select?: string;
+  projection?: ViewProjection;
+  preset?: RenderPresetName | null;
+  rotationDeg?: number;
+  scale?: number | null;
+  layers?: Partial<Record<RenderSceneLayer["id"], boolean>>;
+  filter?: RenderSceneViewpointFilter | null;
 }
 
 const AU_IN_KM = 149_597_870.7;
@@ -272,6 +287,13 @@ export function renderDocumentToScene(
   const labels = createSceneLabels(objects, height, scaleModel.labelMultiplier);
   const layers = createSceneLayers(orbitVisuals, leaders, objects, labels);
   const groups = createSceneGroups(objects, orbitVisuals, leaders, labels, relationships);
+  const viewpoints = createSceneViewpoints(
+    document,
+    projection,
+    frame.preset,
+    relationships,
+    objectMap,
+  );
   const contentBounds = calculateContentBounds(
     width,
     height,
@@ -306,6 +328,7 @@ export function renderDocumentToScene(
     contentBounds,
     layers,
     groups,
+    viewpoints,
     objects,
     orbitVisuals,
     leaders,
@@ -660,6 +683,379 @@ function createSceneGroups(
   }
 
   return [...groups.values()].sort((left, right) => left.label.localeCompare(right.label));
+}
+
+function createSceneViewpoints(
+  document: WorldOrbitDocument,
+  projection: ViewProjection,
+  preset: RenderPresetName | null,
+  relationships: SceneRelationshipContext,
+  objectMap: Map<string, WorldOrbitObject>,
+): RenderSceneViewpoint[] {
+  const generatedOverview = createGeneratedOverviewViewpoint(document, projection, preset);
+  const drafts = new Map<string, ViewpointConfigDraft>();
+
+  for (const [key, value] of Object.entries(document.system?.info ?? {})) {
+    if (!key.startsWith("viewpoint.")) {
+      continue;
+    }
+
+    const [prefix, rawId, ...fieldParts] = key.split(".");
+    if (prefix !== "viewpoint" || !rawId || fieldParts.length === 0) {
+      continue;
+    }
+
+    const id = normalizeViewpointId(rawId);
+    if (!id) {
+      continue;
+    }
+
+    const field = fieldParts.join(".").toLowerCase();
+    const draft = drafts.get(id) ?? { id };
+    applyViewpointField(
+      draft,
+      field,
+      value,
+      projection,
+      preset,
+      relationships,
+      objectMap,
+    );
+    drafts.set(id, draft);
+  }
+
+  const viewpoints = [...drafts.values()]
+    .map((draft) => finalizeViewpointDraft(draft, projection, preset, objectMap))
+    .filter(Boolean) as RenderSceneViewpoint[];
+  const overviewIndex = viewpoints.findIndex((viewpoint) => viewpoint.id === generatedOverview.id);
+
+  if (overviewIndex >= 0) {
+    viewpoints.splice(overviewIndex, 1, {
+      ...generatedOverview,
+      ...viewpoints[overviewIndex],
+      layers: {
+        ...generatedOverview.layers,
+        ...viewpoints[overviewIndex].layers,
+      },
+      filter: viewpoints[overviewIndex].filter ?? generatedOverview.filter,
+      generated: false,
+    });
+  } else {
+    viewpoints.unshift(generatedOverview);
+  }
+
+  return viewpoints.sort((left, right) => {
+    if (left.id === "overview") return -1;
+    if (right.id === "overview") return 1;
+    return left.label.localeCompare(right.label);
+  });
+}
+
+function createGeneratedOverviewViewpoint(
+  document: WorldOrbitDocument,
+  projection: ViewProjection,
+  preset: RenderPresetName | null,
+): RenderSceneViewpoint {
+  const label = document.system?.properties.title
+    ? `${String(document.system.properties.title)} Overview`
+    : "Overview";
+  return {
+    id: "overview",
+    label,
+    summary: "Fit the whole system with the current atlas defaults.",
+    objectId: null,
+    selectedObjectId: null,
+    projection,
+    preset,
+    rotationDeg: 0,
+    scale: null,
+    layers: {},
+    filter: null,
+    generated: true,
+  };
+}
+
+function applyViewpointField(
+  draft: ViewpointConfigDraft,
+  field: string,
+  value: string,
+  projection: ViewProjection,
+  preset: RenderPresetName | null,
+  relationships: SceneRelationshipContext,
+  objectMap: Map<string, WorldOrbitObject>,
+): void {
+  const normalizedValue = value.trim();
+
+  switch (field) {
+    case "label":
+    case "title":
+      if (normalizedValue) {
+        draft.label = normalizedValue;
+      }
+      return;
+    case "focus":
+    case "object":
+      if (normalizedValue) {
+        draft.focus = normalizedValue;
+      }
+      return;
+    case "select":
+    case "selection":
+      if (normalizedValue) {
+        draft.select = normalizedValue;
+      }
+      return;
+    case "projection":
+    case "view":
+      draft.projection = parseViewProjection(normalizedValue) ?? projection;
+      return;
+    case "preset":
+      draft.preset = parseRenderPreset(normalizedValue) ?? preset;
+      return;
+    case "rotation":
+    case "angle":
+      draft.rotationDeg = parseFiniteNumber(normalizedValue) ?? draft.rotationDeg ?? 0;
+      return;
+    case "zoom":
+    case "scale":
+      draft.scale = parsePositiveNumber(normalizedValue);
+      return;
+    case "layers":
+      draft.layers = parseViewpointLayers(normalizedValue);
+      return;
+    case "query":
+      draft.filter = {
+        ...(draft.filter ?? createEmptyViewpointFilter()),
+        query: normalizedValue || null,
+      };
+      return;
+    case "types":
+    case "objecttypes":
+      draft.filter = {
+        ...(draft.filter ?? createEmptyViewpointFilter()),
+        objectTypes: parseViewpointObjectTypes(normalizedValue),
+      };
+      return;
+    case "tags":
+      draft.filter = {
+        ...(draft.filter ?? createEmptyViewpointFilter()),
+        tags: splitListValue(normalizedValue),
+      };
+      return;
+    case "groups":
+      draft.filter = {
+        ...(draft.filter ?? createEmptyViewpointFilter()),
+        groupIds: parseViewpointGroups(normalizedValue, relationships, objectMap),
+      };
+      return;
+  }
+}
+
+function finalizeViewpointDraft(
+  draft: ViewpointConfigDraft,
+  projection: ViewProjection,
+  preset: RenderPresetName | null,
+  objectMap: Map<string, WorldOrbitObject>,
+): RenderSceneViewpoint | null {
+  const objectId = draft.focus && objectMap.has(draft.focus) ? draft.focus : null;
+  const selectedObjectId =
+    draft.select && objectMap.has(draft.select)
+      ? draft.select
+      : objectId;
+  const filter = normalizeViewpointFilter(draft.filter);
+  const label = draft.label?.trim() || humanizeIdentifier(draft.id);
+
+  return {
+    id: draft.id,
+    label,
+    summary: createViewpointSummary(label, objectId, filter),
+    objectId,
+    selectedObjectId,
+    projection: draft.projection ?? projection,
+    preset: draft.preset ?? preset,
+    rotationDeg: draft.rotationDeg ?? 0,
+    scale: draft.scale ?? null,
+    layers: draft.layers ?? {},
+    filter,
+    generated: false,
+  };
+}
+
+function createEmptyViewpointFilter(): RenderSceneViewpointFilter {
+  return {
+    query: null,
+    objectTypes: [],
+    tags: [],
+    groupIds: [],
+  };
+}
+
+function normalizeViewpointFilter(
+  filter: RenderSceneViewpointFilter | null | undefined,
+): RenderSceneViewpointFilter | null {
+  if (!filter) {
+    return null;
+  }
+
+  const normalized: RenderSceneViewpointFilter = {
+    query: filter.query?.trim() || null,
+    objectTypes: [...new Set(filter.objectTypes)],
+    tags: [...new Set(filter.tags)],
+    groupIds: [...new Set(filter.groupIds)],
+  };
+
+  return normalized.query ||
+    normalized.objectTypes.length > 0 ||
+    normalized.tags.length > 0 ||
+    normalized.groupIds.length > 0
+    ? normalized
+    : null;
+}
+
+function parseViewProjection(value: string): ViewProjection | null {
+  return value.toLowerCase() === "isometric"
+    ? "isometric"
+    : value.toLowerCase() === "topdown"
+      ? "topdown"
+      : null;
+}
+
+function parseRenderPreset(value: string): RenderPresetName | null {
+  const normalized = value.toLowerCase();
+  if (
+    normalized === "diagram" ||
+    normalized === "presentation" ||
+    normalized === "atlas-card" ||
+    normalized === "markdown"
+  ) {
+    return normalized;
+  }
+
+  return null;
+}
+
+function parseFiniteNumber(value: string): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parsePositiveNumber(value: string): number | null {
+  const parsed = parseFiniteNumber(value);
+  return parsed !== null && parsed > 0 ? parsed : null;
+}
+
+function parseViewpointLayers(
+  value: string,
+): Partial<Record<RenderSceneLayer["id"], boolean>> {
+  const next: Partial<Record<RenderSceneLayer["id"], boolean>> = {};
+
+  for (const token of splitListValue(value)) {
+    const enabled = !token.startsWith("-") && !token.startsWith("!");
+    const rawLayer = token.replace(/^[-!]+/, "").toLowerCase();
+
+    if (rawLayer === "orbits") {
+      next["orbits-back"] = enabled;
+      next["orbits-front"] = enabled;
+      continue;
+    }
+
+    if (
+      rawLayer === "background" ||
+      rawLayer === "guides" ||
+      rawLayer === "orbits-back" ||
+      rawLayer === "orbits-front" ||
+      rawLayer === "objects" ||
+      rawLayer === "labels" ||
+      rawLayer === "metadata"
+    ) {
+      next[rawLayer] = enabled;
+    }
+  }
+
+  return next;
+}
+
+function parseViewpointObjectTypes(
+  value: string,
+): Array<Exclude<WorldOrbitObject["type"], never>> {
+  return splitListValue(value).filter((entry): entry is WorldOrbitObject["type"] =>
+    entry === "star" ||
+    entry === "planet" ||
+    entry === "moon" ||
+    entry === "belt" ||
+    entry === "asteroid" ||
+    entry === "comet" ||
+    entry === "ring" ||
+    entry === "structure" ||
+    entry === "phenomenon",
+  );
+}
+
+function parseViewpointGroups(
+  value: string,
+  relationships: SceneRelationshipContext,
+  objectMap: Map<string, WorldOrbitObject>,
+): string[] {
+  return splitListValue(value).map((entry) => {
+    if (entry.startsWith("wo-") && entry.endsWith("-group")) {
+      return entry;
+    }
+
+    if (relationships.groupIds.has(entry)) {
+      return relationships.groupIds.get(entry) ?? createGroupId(entry);
+    }
+
+    return objectMap.has(entry) ? createGroupId(entry) : createGroupId(entry);
+  });
+}
+
+function splitListValue(value: string): string[] {
+  return value
+    .split(/[\s,]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function normalizeViewpointId(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function humanizeIdentifier(value: string): string {
+  return value
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((segment) => segment[0].toUpperCase() + segment.slice(1))
+    .join(" ");
+}
+
+function createViewpointSummary(
+  label: string,
+  objectId: string | null,
+  filter: RenderSceneViewpointFilter | null,
+): string {
+  const parts = [label];
+
+  if (objectId) {
+    parts.push(`focus ${objectId}`);
+  }
+
+  if (filter?.objectTypes.length) {
+    parts.push(filter.objectTypes.join("/"));
+  }
+
+  if (filter?.tags.length) {
+    parts.push(`tags ${filter.tags.join(", ")}`);
+  }
+
+  if (filter?.query) {
+    parts.push(`query "${filter.query}"`);
+  }
+
+  return parts.join(" - ");
 }
 
 function calculateContentBounds(

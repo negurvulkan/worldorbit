@@ -4,6 +4,8 @@ import { renderSceneToSvg } from "./render.js";
 import type {
   MountedWorldOrbitEmbeds,
   MountWorldOrbitEmbedsOptions,
+  ViewerAtlasState,
+  ViewerFilter,
   WorldOrbitEmbedPayload,
 } from "./types.js";
 import { createInteractiveViewer } from "./viewer.js";
@@ -21,18 +23,40 @@ export function deserializeWorldOrbitEmbedPayload(serialized: string): WorldOrbi
 export function createEmbedPayload(
   scene: RenderScene,
   mode: WorldOrbitEmbedPayload["mode"],
+  options: {
+    initialViewpointId?: string;
+    initialSelectionObjectId?: string;
+    initialFilter?: ViewerFilter | null;
+    atlasState?: ViewerAtlasState | null;
+    minimap?: boolean;
+  } = {},
 ): WorldOrbitEmbedPayload {
   return {
     version: "1.0",
     mode,
     scene,
+    options: {
+      initialViewpointId: options.initialViewpointId,
+      initialSelectionObjectId: options.initialSelectionObjectId,
+      initialFilter: options.initialFilter ?? null,
+      atlasState: options.atlasState ?? null,
+      minimap: options.minimap,
+    },
   };
 }
 
 export function createWorldOrbitEmbedMarkup(
   payload: WorldOrbitEmbedPayload,
-  options: Pick<MountWorldOrbitEmbedsOptions, "theme" | "layers" | "subtitle" | "preset"> & {
+  options: Pick<
+    MountWorldOrbitEmbedsOptions,
+    "theme" | "layers" | "subtitle" | "preset"
+  > & {
     className?: string;
+    initialViewpointId?: string;
+    initialSelectionObjectId?: string;
+    initialFilter?: ViewerFilter | null;
+    atlasState?: ViewerAtlasState | null;
+    minimap?: boolean;
   } = {},
 ): string {
   const mergedPayload: WorldOrbitEmbedPayload = {
@@ -43,17 +67,25 @@ export function createWorldOrbitEmbedMarkup(
       layers: options.layers ?? payload.options?.layers,
       subtitle: options.subtitle ?? payload.options?.subtitle,
       preset: options.preset ?? payload.options?.preset,
+      initialViewpointId: options.initialViewpointId ?? payload.options?.initialViewpointId,
+      initialSelectionObjectId:
+        options.initialSelectionObjectId ?? payload.options?.initialSelectionObjectId,
+      initialFilter: options.initialFilter ?? payload.options?.initialFilter ?? null,
+      atlasState: options.atlasState ?? payload.options?.atlasState ?? null,
+      minimap: options.minimap ?? payload.options?.minimap,
     },
   };
 
   const html = renderSceneToSvg(payload.scene, {
     theme: mergedPayload.options?.theme,
     layers: mergedPayload.options?.layers,
+    filter: mergedPayload.options?.initialFilter ?? null,
+    selectedObjectId: mergedPayload.options?.initialSelectionObjectId ?? null,
     subtitle: mergedPayload.options?.subtitle,
     preset: mergedPayload.options?.preset,
   });
 
-  return `<div class="${escapeAttribute(options.className ?? "worldorbit-embed")}" data-worldorbit-embed="true" data-worldorbit-mode="${payload.mode}" data-worldorbit-preset="${escapeAttribute(mergedPayload.options?.preset ?? payload.scene.renderPreset ?? "custom")}" data-worldorbit-payload="${escapeAttribute(serializeWorldOrbitEmbedPayload(mergedPayload))}">${html}</div>`;
+  return `<div class="${escapeAttribute(options.className ?? "worldorbit-embed")}" data-worldorbit-embed="true" data-worldorbit-mode="${payload.mode}" data-worldorbit-preset="${escapeAttribute(mergedPayload.options?.preset ?? payload.scene.renderPreset ?? "custom")}" data-worldorbit-viewpoint="${escapeAttribute(mergedPayload.options?.initialViewpointId ?? "")}" data-worldorbit-payload="${escapeAttribute(serializeWorldOrbitEmbedPayload(mergedPayload))}">${html}</div>`;
 }
 
 export function mountWorldOrbitEmbeds(
@@ -70,6 +102,12 @@ export function mountWorldOrbitEmbeds(
     const layers = options.layers ?? payload.options?.layers;
     const subtitle = options.subtitle ?? payload.options?.subtitle;
     const preset = options.preset ?? payload.options?.preset ?? payload.scene.renderPreset ?? undefined;
+    const initialFilter = options.viewer?.initialFilter ?? payload.options?.initialFilter ?? null;
+    const initialViewpointId =
+      options.viewer?.initialViewpointId ?? payload.options?.initialViewpointId;
+    const initialSelectionObjectId =
+      options.viewer?.initialSelectionObjectId ?? payload.options?.initialSelectionObjectId;
+    const minimap = options.viewer?.minimap ?? payload.options?.minimap;
 
     if (mode === "interactive") {
       const viewer = createInteractiveViewer(element, {
@@ -82,7 +120,14 @@ export function mountWorldOrbitEmbeds(
         theme,
         layers,
         subtitle,
+        initialFilter,
+        initialViewpointId,
+        initialSelectionObjectId,
+        minimap,
       });
+      if (payload.options?.atlasState) {
+        viewer.setAtlasState(payload.options.atlasState);
+      }
       viewers.set(element, viewer);
       options.onMount?.(viewer, element);
     } else {
@@ -93,6 +138,8 @@ export function mountWorldOrbitEmbeds(
         preset,
         theme,
         layers,
+        filter: initialFilter,
+        selectedObjectId: initialSelectionObjectId ?? null,
         subtitle,
       });
       options.onMount?.(null, element);

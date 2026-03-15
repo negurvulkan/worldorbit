@@ -23,13 +23,27 @@ export function renderWorldOrbitBlock(
     const scene = renderDocumentToScene(document, options);
 
     if ((options.mode ?? "static") === "interactive") {
-      return createWorldOrbitEmbedMarkup(createEmbedPayload(scene, "interactive"), {
-        className: options.className ?? "worldorbit-block worldorbit-interactive",
-        theme: options.theme,
-        layers: options.layers,
-        subtitle: options.subtitle,
-        preset: options.preset,
-      });
+      return createWorldOrbitEmbedMarkup(
+        createEmbedPayload(scene, "interactive", {
+          initialViewpointId: options.initialViewpointId,
+          initialSelectionObjectId: options.initialSelectionObjectId,
+          initialFilter: options.initialFilter ?? null,
+          atlasState: options.atlasState ?? null,
+          minimap: options.minimap,
+        }),
+        {
+          className: options.className ?? "worldorbit-block worldorbit-interactive",
+          theme: options.theme,
+          layers: options.layers,
+          subtitle: options.subtitle,
+          preset: options.preset,
+          initialViewpointId: options.initialViewpointId,
+          initialSelectionObjectId: options.initialSelectionObjectId,
+          initialFilter: options.initialFilter ?? null,
+          atlasState: options.atlasState ?? null,
+          minimap: options.minimap,
+        },
+      );
     }
 
     return `<figure class="${escapeAttribute(options.className ?? "worldorbit-block worldorbit-static")}">${renderSceneToSvg(scene, options)}</figure>`;

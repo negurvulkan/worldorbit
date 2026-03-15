@@ -8,6 +8,7 @@ const DEFAULT_LAYERS: Required<ViewerLayerOptions> = {
   background: true,
   guides: true,
   orbits: true,
+  objects: true,
   labels: true,
   structures: true,
   metadata: true,

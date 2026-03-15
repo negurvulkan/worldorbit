@@ -54,6 +54,13 @@ planet Naar orbit Iyath semiMajor 1.18au eccentricity 0.08 angle 28deg inclinati
       mode: "interactive",
       preset: "atlas-card",
       projection: "isometric",
+      initialViewpointId: "overview",
+      initialSelectionObjectId: "Naar",
+      initialFilter: {
+        objectTypes: ["planet"],
+        tags: ["habitable"],
+      },
+      minimap: true,
       scaleModel: {
         bodyRadiusMultiplier: 1.25,
       },
@@ -73,7 +80,12 @@ planet Naar orbit Iyath semiMajor 1.18au eccentricity 0.08 angle 28deg inclinati
   assert.equal(payload.scene.projection, "isometric");
   assert.equal(payload.scene.scaleModel.bodyRadiusMultiplier, 1.25);
   assert.equal(payload.scene.renderPreset, "atlas-card");
+  assert.equal(payload.options?.initialViewpointId, "overview");
+  assert.equal(payload.options?.initialSelectionObjectId, "Naar");
+  assert.equal(payload.options?.initialFilter?.objectTypes?.[0], "planet");
+  assert.equal(payload.options?.minimap, true);
   assert.match(html, /data-worldorbit-preset="atlas-card"/);
+  assert.match(html, /data-worldorbit-viewpoint="overview"/);
 });
 
 test("remark plugin transforms fenced blocks into static markup", async () => {

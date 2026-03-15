@@ -2,7 +2,7 @@
 
 WorldOrbit is a text-first DSL and rendering pipeline for fictional orbital systems.
 
-The current `v1.x` line includes projection-aware scene generation, numeric scale control, object textures, richer 2D rendering, and the first atlas-oriented viewer foundations across SVG, the interactive viewer, and Markdown embeds.
+The current `v1.x` line includes projection-aware scene generation, numeric scale control, object textures, richer 2D rendering, and atlas-oriented viewer features across SVG, the interactive viewer, and Markdown embeds.
 
 - `@worldorbit/core`: parser, schema, normalization, validation, formatting, and scene generation
 - `@worldorbit/viewer`: SVG rendering, interactive browser viewer, themes, and embed helpers
@@ -105,9 +105,38 @@ Viewer features in the current `v1.x` line:
 - ellipse and split-arc orbit rendering with projected ring and belt bands
 - scene-provided labels, groups, and stable layer ordering for atlas-style rendering
 - viewer details hooks and selection/hover chains for parent and orbit context
+- named scene viewpoints plus viewer-side viewpoint activation
+- atlas search, object filtering, focus paths, and serializable deep-link state
+- optional minimap overlays and bookmark capture/apply helpers
 - hydration helpers:
   - `createWorldOrbitEmbedMarkup(...)`
   - `mountWorldOrbitEmbeds(...)`
+
+#### Atlas navigation
+
+`v1.7` extends the viewer stack from atlas-ready rendering into atlas-ready navigation:
+
+- scene generation exposes named `viewpoints`
+- viewers can switch viewpoints, search, filter, and serialize current atlas state
+- embeds can hydrate with an initial viewpoint, selection, filter, or a full saved atlas state
+
+Document-defined viewpoints are currently authored through `system info` entries such as:
+
+```worldorbit
+system Iyath
+  info
+    viewpoint.overview.label "Atlas Overview"
+    viewpoint.naar.focus Naar
+    viewpoint.naar.zoom 2.2
+    viewpoint.naar.layers background orbits objects labels metadata -guides
+```
+
+In the browser, the current atlas state can be round-tripped with:
+
+```ts
+const snapshot = viewer.serializeAtlasState();
+viewer.setAtlasState(snapshot);
+```
 
 #### Projection and scale
 
