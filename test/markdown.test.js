@@ -17,14 +17,22 @@ const markdown = `
 # Atlas
 
 \`\`\`worldorbit
+schema 2.0
+
 system Iyath
   title "Iyath System"
-star Iyath
-planet Naar orbit Iyath distance 1.18au image /demo/assets/naar-map.png
+
+defaults
+  view isometric
+  scale presentation
+  preset atlas-card
+
+object star Iyath
+object planet Naar orbit Iyath distance 1.18au image /demo/assets/naar-map.png
 \`\`\`
 `.trim();
 
-const draftBlock = `
+const legacyDraftBlock = `
 schema 2.0-draft
 
 system Iyath
@@ -37,7 +45,8 @@ defaults
 
 viewpoint overview
   label "Atlas Overview"
-  summary "Draft overview for markdown hydration."
+  summary "Legacy draft overview for markdown hydration."
+  projection isometric
 
 object star Iyath
 
@@ -54,10 +63,17 @@ object planet Naar
 test("renderWorldOrbitBlock emits inline svg for static mode", () => {
   const html = renderWorldOrbitBlock(
     `
+schema 2.0
+
 system Iyath
+  title "Iyath System"
+
+defaults
   view isometric
-star Iyath
-planet Naar orbit Iyath semiMajor 1.18au eccentricity 0.08 angle 28deg inclination 24deg phase 42deg image /demo/assets/naar-map.png atmosphere nitrogen-oxygen
+  preset markdown
+
+object star Iyath
+object planet Naar orbit Iyath semiMajor 1.18au eccentricity 0.08 angle 28deg inclination 24deg phase 42deg image /demo/assets/naar-map.png atmosphere nitrogen-oxygen
 `.trim(),
     { mode: "static", projection: "isometric", preset: "markdown" },
   );
@@ -72,10 +88,16 @@ planet Naar orbit Iyath semiMajor 1.18au eccentricity 0.08 angle 28deg inclinati
 test("renderWorldOrbitBlock emits a hydration payload for interactive mode", () => {
   const html = renderWorldOrbitBlock(
     `
+schema 2.0
+
 system Iyath
+
+defaults
   view isometric
-star Iyath
-planet Naar orbit Iyath semiMajor 1.18au eccentricity 0.08 angle 28deg inclination 24deg phase 42deg image /demo/assets/naar-map.png atmosphere nitrogen-oxygen
+  preset atlas-card
+
+object star Iyath
+object planet Naar orbit Iyath semiMajor 1.18au eccentricity 0.08 angle 28deg inclination 24deg phase 42deg image /demo/assets/naar-map.png atmosphere nitrogen-oxygen
 `.trim(),
     {
       mode: "interactive",
@@ -103,6 +125,7 @@ planet Naar orbit Iyath semiMajor 1.18au eccentricity 0.08 angle 28deg inclinati
   const payload = deserializeWorldOrbitEmbedPayload(payloadMatch[1]);
   const planet = payload.scene.objects.find((object) => object.objectId === "Naar");
 
+  assert.equal(payload.version, "2.0");
   assert.equal(planet?.imageHref, "/demo/assets/naar-map.png");
   assert.equal(payload.scene.projection, "isometric");
   assert.equal(payload.scene.scaleModel.bodyRadiusMultiplier, 1.25);
@@ -115,8 +138,8 @@ planet Naar orbit Iyath semiMajor 1.18au eccentricity 0.08 angle 28deg inclinati
   assert.match(html, /data-worldorbit-viewpoint="overview"/);
 });
 
-test("renderWorldOrbitBlock accepts schema 2 draft input and preserves draft preset defaults", () => {
-  const html = renderWorldOrbitBlock(draftBlock, {
+test("renderWorldOrbitBlock accepts legacy schema 2.0-draft input for compatibility", () => {
+  const html = renderWorldOrbitBlock(legacyDraftBlock, {
     mode: "interactive",
   });
 
@@ -128,7 +151,7 @@ test("renderWorldOrbitBlock accepts schema 2 draft input and preserves draft pre
   const payload = deserializeWorldOrbitEmbedPayload(payloadMatch[1]);
   assert.equal(payload.scene.renderPreset, "atlas-card");
   assert.equal(payload.scene.projection, "isometric");
-  assert.equal(payload.scene.viewpoints[0]?.summary, "Draft overview for markdown hydration.");
+  assert.equal(payload.scene.viewpoints[0]?.summary, "Legacy draft overview for markdown hydration.");
 });
 
 test("remark plugin transforms fenced blocks into static markup", async () => {

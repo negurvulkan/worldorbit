@@ -104,7 +104,7 @@ export function createAtlasStateSnapshot(
   viewpointId: string | null,
 ): ViewerAtlasState {
   return {
-    version: "1.0",
+    version: "2.0",
     viewpointId,
     viewerState: { ...viewerState },
     renderOptions: {
@@ -122,7 +122,30 @@ export function serializeViewerAtlasState(state: ViewerAtlasState): string {
 }
 
 export function deserializeViewerAtlasState(serialized: string): ViewerAtlasState {
-  return JSON.parse(decodeURIComponent(serialized)) as ViewerAtlasState;
+  const raw = JSON.parse(decodeURIComponent(serialized)) as Partial<ViewerAtlasState> & {
+    version?: string;
+  };
+
+  return {
+    version: "2.0",
+    viewpointId: raw.viewpointId ?? null,
+    viewerState: {
+      scale: raw.viewerState?.scale ?? 1,
+      rotationDeg: raw.viewerState?.rotationDeg ?? 0,
+      translateX: raw.viewerState?.translateX ?? 0,
+      translateY: raw.viewerState?.translateY ?? 0,
+      selectedObjectId: raw.viewerState?.selectedObjectId ?? null,
+    },
+    renderOptions: {
+      preset: raw.renderOptions?.preset,
+      projection: raw.renderOptions?.projection,
+      layers: raw.renderOptions?.layers ? { ...raw.renderOptions.layers } : undefined,
+      scaleModel: raw.renderOptions?.scaleModel
+        ? { ...raw.renderOptions.scaleModel }
+        : undefined,
+    },
+    filter: normalizeViewerFilter(raw.filter ?? null),
+  };
 }
 
 export function createViewerBookmark(

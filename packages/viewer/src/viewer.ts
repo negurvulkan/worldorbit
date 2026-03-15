@@ -1071,13 +1071,15 @@ function resolveSourceRenderOptions(
   loaded: LoadedWorldOrbitSource,
   renderOptions: ViewerRenderOptions,
 ): ViewerRenderOptions {
-  if (renderOptions.preset || !loaded.draftDocument?.system?.defaults.preset) {
+  const atlasDocument = loaded.atlasDocument ?? loaded.draftDocument;
+
+  if (renderOptions.preset || !atlasDocument?.system?.defaults.preset) {
     return renderOptions;
   }
 
   return {
     ...renderOptions,
-    preset: loaded.draftDocument.system.defaults.preset,
+    preset: atlasDocument.system.defaults.preset,
   };
 }
 

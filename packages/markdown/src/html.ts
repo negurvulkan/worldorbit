@@ -75,12 +75,14 @@ function resolveSourceRenderOptions(
   loaded: LoadedWorldOrbitSource,
   options: WorldOrbitMarkdownOptions,
 ): WorldOrbitMarkdownOptions {
-  if (options.preset || !loaded.draftDocument?.system?.defaults.preset) {
+  const atlasDocument = loaded.atlasDocument ?? loaded.draftDocument;
+
+  if (options.preset || !atlasDocument?.system?.defaults.preset) {
     return options;
   }
 
   return {
     ...options,
-    preset: loaded.draftDocument.system.defaults.preset,
+    preset: atlasDocument.system.defaults.preset,
   };
 }

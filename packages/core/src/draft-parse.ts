@@ -12,6 +12,7 @@ import type {
   RenderSceneLayer,
   RenderSceneViewpointFilter,
   ViewProjection,
+  WorldOrbitAtlasDocument,
   WorldOrbitDraftAnnotation,
   WorldOrbitDraftDocument,
   WorldOrbitDraftSystem,
@@ -58,9 +59,21 @@ type DraftSectionState =
       infoIndent: number | null;
     };
 
+export function parseWorldOrbitAtlas(source: string): WorldOrbitAtlasDocument {
+  return parseAtlasSource(source, "2.0") as WorldOrbitAtlasDocument;
+}
+
 export function parseWorldOrbitDraft(source: string): WorldOrbitDraftDocument {
+  return parseAtlasSource(source, "2.0-draft") as WorldOrbitDraftDocument;
+}
+
+function parseAtlasSource(
+  source: string,
+  outputVersion: "2.0" | "2.0-draft",
+): WorldOrbitAtlasDocument | WorldOrbitDraftDocument {
   const lines = source.split(/\r?\n/);
   let sawSchemaHeader = false;
+  let schemaVersion: "2.0" | "2.0-draft" = "2.0";
   let system: WorldOrbitDraftSystem | null = null;
   let section: DraftSectionState | null = null;
   const objectNodes: AstObjectNode[] = [];
@@ -88,7 +101,7 @@ export function parseWorldOrbitDraft(source: string): WorldOrbitDraftDocument {
     }
 
     if (!sawSchemaHeader) {
-      assertDraftSchemaHeader(tokens, lineNumber);
+      schemaVersion = assertDraftSchemaHeader(tokens, lineNumber);
       sawSchemaHeader = true;
       continue;
     }
@@ -120,7 +133,7 @@ export function parseWorldOrbitDraft(source: string): WorldOrbitDraftDocument {
 
     if (!section) {
       throw new WorldOrbitError(
-        "Indented line without parent draft section",
+        "Indented line without parent atlas section",
         lineNumber,
         indent + 1,
       );
@@ -130,7 +143,7 @@ export function parseWorldOrbitDraft(source: string): WorldOrbitDraftDocument {
   }
 
   if (!sawSchemaHeader) {
-    throw new WorldOrbitError('Missing required draft schema header "schema 2.0-draft"');
+    throw new WorldOrbitError('Missing required atlas schema header "schema 2.0"');
   }
 
   const ast: AstDocument = {
@@ -145,28 +158,47 @@ export function parseWorldOrbitDraft(source: string): WorldOrbitDraftDocument {
     objects: normalizedObjects,
   });
 
+  const diagnostics =
+    schemaVersion === "2.0-draft" && outputVersion === "2.0"
+      ? [
+          {
+            code: "load.schema.deprecatedDraft",
+            severity: "warning" as const,
+            source: "upgrade" as const,
+            message:
+              'Source header "schema 2.0-draft" is deprecated; canonical v2 documents now use "schema 2.0".',
+          },
+        ]
+      : [];
+
   return {
     format: "worldorbit",
-    version: "2.0-draft",
+    version: outputVersion,
     sourceVersion: "1.0",
     system,
     objects: normalizedObjects,
-    diagnostics: [],
+    diagnostics,
   };
 }
 
-function assertDraftSchemaHeader(tokens: LineToken[], line: number): void {
+function assertDraftSchemaHeader(
+  tokens: LineToken[],
+  line: number,
+): "2.0" | "2.0-draft" {
   if (
     tokens.length !== 2 ||
     tokens[0].value.toLowerCase() !== "schema" ||
-    tokens[1].value.toLowerCase() !== "2.0-draft"
+    (tokens[1].value.toLowerCase() !== "2.0-draft" &&
+      tokens[1].value.toLowerCase() !== "2.0")
   ) {
     throw new WorldOrbitError(
-      'Expected draft header "schema 2.0-draft"',
+      'Expected atlas header "schema 2.0" or legacy "schema 2.0-draft"',
       line,
       tokens[0]?.column ?? 1,
     );
   }
+
+  return tokens[1].value.toLowerCase() === "2.0-draft" ? "2.0-draft" : "2.0";
 }
 
 function startTopLevelSection(
@@ -187,7 +219,7 @@ function startTopLevelSection(
     case "system":
       if (system) {
         throw new WorldOrbitError(
-          'Draft section "system" may only appear once',
+          'Atlas section "system" may only appear once',
           line,
           tokens[0].column,
         );
@@ -196,14 +228,14 @@ function startTopLevelSection(
     case "defaults":
       if (!system) {
         throw new WorldOrbitError(
-          'Draft section "defaults" requires a preceding system declaration',
+          'Atlas section "defaults" requires a preceding system declaration',
           line,
           tokens[0].column,
         );
       }
       if (flags.sawDefaults) {
         throw new WorldOrbitError(
-          'Draft section "defaults" may only appear once',
+          'Atlas section "defaults" may only appear once',
           line,
           tokens[0].column,
         );
@@ -216,14 +248,14 @@ function startTopLevelSection(
     case "atlas":
       if (!system) {
         throw new WorldOrbitError(
-          'Draft section "atlas" requires a preceding system declaration',
+          'Atlas section "atlas" requires a preceding system declaration',
           line,
           tokens[0].column,
         );
       }
       if (flags.sawAtlas) {
         throw new WorldOrbitError(
-          'Draft section "atlas" may only appear once',
+          'Atlas section "atlas" may only appear once',
           line,
           tokens[0].column,
         );
@@ -237,7 +269,7 @@ function startTopLevelSection(
     case "viewpoint":
       if (!system) {
         throw new WorldOrbitError(
-          'Draft section "viewpoint" requires a preceding system declaration',
+          'Atlas section "viewpoint" requires a preceding system declaration',
           line,
           tokens[0].column,
         );
@@ -246,7 +278,7 @@ function startTopLevelSection(
     case "annotation":
       if (!system) {
         throw new WorldOrbitError(
-          'Draft section "annotation" requires a preceding system declaration',
+          'Atlas section "annotation" requires a preceding system declaration',
           line,
           tokens[0].column,
         );
@@ -256,7 +288,7 @@ function startTopLevelSection(
       return startObjectSection(tokens, line, objectNodes);
     default:
       throw new WorldOrbitError(
-        `Unknown draft section "${tokens[0]?.value ?? ""}"`,
+        `Unknown atlas section "${tokens[0]?.value ?? ""}"`,
         line,
         tokens[0]?.column ?? 1,
       );
@@ -266,7 +298,7 @@ function startTopLevelSection(
 function startSystemSection(tokens: LineToken[], line: number): DraftSectionState {
   if (tokens.length !== 2) {
     throw new WorldOrbitError(
-      "Invalid draft system declaration",
+      "Invalid atlas system declaration",
       line,
       tokens[0]?.column ?? 1,
     );
@@ -392,7 +424,7 @@ function startObjectSection(
 ): DraftSectionState {
   if (tokens.length < 3) {
     throw new WorldOrbitError(
-      "Invalid draft object declaration",
+      "Invalid atlas object declaration",
       line,
       tokens[0]?.column ?? 1,
     );
@@ -473,7 +505,7 @@ function applySystemField(
 
   if (key !== "title") {
     throw new WorldOrbitError(
-      `Unknown system draft field "${tokens[0].value}"`,
+      `Unknown system atlas field "${tokens[0].value}"`,
       line,
       tokens[0].column,
     );
@@ -551,7 +583,7 @@ function applyAtlasField(
   }
 
   throw new WorldOrbitError(
-    `Unknown atlas draft field "${tokens[0].value}"`,
+    `Unknown atlas field "${tokens[0].value}"`,
     line,
     tokens[0].column,
   );
@@ -720,12 +752,12 @@ function requireUniqueField(
   line: number,
 ): string {
   if (tokens.length < 2) {
-    throw new WorldOrbitError("Invalid draft field line", line, tokens[0]?.column ?? 1);
+    throw new WorldOrbitError("Invalid atlas field line", line, tokens[0]?.column ?? 1);
   }
 
   const key = tokens[0].value.toLowerCase();
   if (seenFields.has(key)) {
-    throw new WorldOrbitError(`Duplicate draft field "${tokens[0].value}"`, line, tokens[0].column);
+    throw new WorldOrbitError(`Duplicate atlas field "${tokens[0].value}"`, line, tokens[0].column);
   }
 
   seenFields.add(key);
@@ -734,7 +766,7 @@ function requireUniqueField(
 
 function joinFieldValue(tokens: LineToken[], line: number): string {
   if (tokens.length < 2) {
-    throw new WorldOrbitError("Missing value for draft field", line, tokens[0]?.column ?? 1);
+    throw new WorldOrbitError("Missing value for atlas field", line, tokens[0]?.column ?? 1);
   }
 
   return tokens
@@ -749,7 +781,7 @@ function parseObjectTypeTokens(
   line: number,
 ): Array<WorldOrbitObject["type"]> {
   if (tokens.length === 0) {
-    throw new WorldOrbitError("Missing value for draft field", line);
+    throw new WorldOrbitError("Missing value for atlas field", line);
   }
 
   return tokens.map((token) => {

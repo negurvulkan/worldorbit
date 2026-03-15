@@ -17,7 +17,22 @@ export function serializeWorldOrbitEmbedPayload(payload: WorldOrbitEmbedPayload)
 }
 
 export function deserializeWorldOrbitEmbedPayload(serialized: string): WorldOrbitEmbedPayload {
-  return JSON.parse(decodeURIComponent(serialized)) as WorldOrbitEmbedPayload;
+  const raw = JSON.parse(decodeURIComponent(serialized)) as Partial<WorldOrbitEmbedPayload> & {
+    version?: string;
+  };
+
+  return {
+    version: "2.0",
+    mode: raw.mode ?? "interactive",
+    scene: raw.scene as RenderScene,
+    options: raw.options
+      ? {
+          ...raw.options,
+          initialFilter: raw.options.initialFilter ?? null,
+          atlasState: raw.options.atlasState ?? null,
+        }
+      : undefined,
+  };
 }
 
 export function createEmbedPayload(
@@ -32,7 +47,7 @@ export function createEmbedPayload(
   } = {},
 ): WorldOrbitEmbedPayload {
   return {
-    version: "1.0",
+    version: "2.0",
     mode,
     scene,
     options: {

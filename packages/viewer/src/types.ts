@@ -105,7 +105,7 @@ export interface ViewerObjectDetails {
 }
 
 export interface ViewerAtlasState {
-  version: "1.0";
+  version: "2.0";
   viewpointId: string | null;
   viewerState: ViewerState;
   renderOptions: {
@@ -121,6 +121,29 @@ export interface ViewerBookmark {
   id: string;
   label: string;
   atlasState: ViewerAtlasState;
+}
+
+export interface AtlasViewerControls {
+  search?: boolean;
+  typeFilter?: boolean;
+  viewpointSelect?: boolean;
+  inspector?: boolean;
+  bookmarks?: boolean;
+}
+
+export interface AtlasInspectorSnapshot {
+  selection: ViewerObjectDetails | null;
+  activeViewpoint: RenderSceneViewpoint | null;
+  filter: ViewerFilter | null;
+  atlasState: ViewerAtlasState;
+  visibleObjectIds: string[];
+  scene: {
+    title: string;
+    projection: ViewProjection;
+    renderPreset: RenderPresetName | null;
+    groupCount: number;
+    viewpointCount: number;
+  };
 }
 
 export interface InteractiveViewerOptions extends ViewerRenderOptions {
@@ -149,6 +172,15 @@ export interface InteractiveViewerOptions extends ViewerRenderOptions {
   onViewpointChange?: (viewpoint: RenderSceneViewpoint | null) => void;
   onViewChange?: (state: ViewerState) => void;
   onAtlasStateChange?: (state: ViewerAtlasState) => void;
+}
+
+export interface AtlasViewerOptions
+  extends Omit<InteractiveViewerOptions, "initialFilter"> {
+  controls?: AtlasViewerControls;
+  initialFilter?: ViewerFilter | null;
+  initialQuery?: string;
+  initialObjectType?: WorldOrbitObject["type"] | null;
+  onInspectorChange?: (snapshot: AtlasInspectorSnapshot) => void;
 }
 
 export interface WorldOrbitViewer {
@@ -185,8 +217,31 @@ export interface WorldOrbitViewer {
   destroy(): void;
 }
 
+export interface WorldOrbitAtlasViewer {
+  element: HTMLElement;
+  viewer: WorldOrbitViewer;
+  getViewer(): WorldOrbitViewer;
+  setSource(source: string): void;
+  setDocument(document: WorldOrbitDocument): void;
+  setScene(scene: RenderScene): void;
+  getAtlasState(): ViewerAtlasState;
+  setAtlasState(state: ViewerAtlasState | string): void;
+  getInspectorSnapshot(): AtlasInspectorSnapshot;
+  getSearchQuery(): string;
+  setSearchQuery(query: string): void;
+  getObjectTypeFilter(): WorldOrbitObject["type"] | null;
+  setObjectTypeFilter(type: WorldOrbitObject["type"] | null): void;
+  listSearchResults(limit?: number): ViewerSearchResult[];
+  listBookmarks(): ViewerBookmark[];
+  captureBookmark(name: string, label?: string): ViewerBookmark;
+  applyBookmark(bookmark: ViewerBookmark | string): boolean;
+  goToViewpoint(id: string): boolean;
+  exportSvg(): string;
+  destroy(): void;
+}
+
 export interface WorldOrbitEmbedPayload {
-  version: "1.0";
+  version: "2.0";
   mode: WorldOrbitEmbedMode;
   scene: RenderScene;
   options?: {

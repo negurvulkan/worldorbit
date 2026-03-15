@@ -3,12 +3,12 @@ import type {
   RenderPresetName,
   SceneRenderOptions,
   ViewProjection,
+  WorldOrbitAtlasAnnotation,
+  WorldOrbitAtlasDefaults,
+  WorldOrbitAtlasDocument,
+  WorldOrbitAtlasSystem,
+  WorldOrbitAtlasViewpoint,
   WorldOrbitDiagnostic,
-  WorldOrbitDraftAnnotation,
-  WorldOrbitDraftDefaults,
-  WorldOrbitDraftDocument,
-  WorldOrbitDraftSystem,
-  WorldOrbitDraftViewpoint,
   WorldOrbitDocument,
   WorldOrbitObject,
 } from "./types.js";
@@ -23,10 +23,10 @@ interface DraftAnnotationConfig {
   tags?: string[];
 }
 
-export function upgradeDocumentToDraftV2(
+export function upgradeDocumentToV2(
   document: WorldOrbitDocument,
   options: UpgradeOptions = {},
-): WorldOrbitDraftDocument {
+): WorldOrbitAtlasDocument {
   const scene = renderDocumentToScene(document, options);
   const diagnostics: WorldOrbitDiagnostic[] = [];
   const atlasMetadata = collectAtlasMetadata(document, diagnostics);
@@ -48,13 +48,13 @@ export function upgradeDocumentToDraftV2(
       code: "upgrade.viewpoints.structured",
       severity: "info",
       source: "upgrade",
-      message: `Promoted ${scene.viewpoints.filter((viewpoint) => !viewpoint.generated).length} document-defined viewpoint(s) into the 2.0-draft atlas section.`,
+      message: `Promoted ${scene.viewpoints.filter((viewpoint) => !viewpoint.generated).length} document-defined viewpoint(s) into the 2.0 atlas section.`,
     });
   }
 
   return {
     format: "worldorbit",
-    version: "2.0-draft",
+    version: "2.0",
     sourceVersion: document.version,
     system,
     objects: document.objects.map(cloneWorldOrbitObject),
@@ -62,8 +62,15 @@ export function upgradeDocumentToDraftV2(
   };
 }
 
-export function materializeDraftDocument(
-  document: WorldOrbitDraftDocument,
+export function upgradeDocumentToDraftV2(
+  document: WorldOrbitDocument,
+  options: UpgradeOptions = {},
+) {
+  return convertAtlasDocumentToLegacyDraft(upgradeDocumentToV2(document, options));
+}
+
+export function materializeAtlasDocument(
+  document: WorldOrbitAtlasDocument,
 ): WorldOrbitDocument {
   const system = document.system
     ? {
@@ -82,14 +89,18 @@ export function materializeDraftDocument(
   };
 }
 
+export function materializeDraftDocument(document: WorldOrbitAtlasDocument) {
+  return materializeAtlasDocument(document);
+}
+
 function createDraftSystem(
   document: WorldOrbitDocument,
-  defaults: WorldOrbitDraftDefaults,
+  defaults: WorldOrbitAtlasDefaults,
   atlasMetadata: Record<string, string>,
-  annotations: WorldOrbitDraftAnnotation[],
+  annotations: WorldOrbitAtlasAnnotation[],
   diagnostics: WorldOrbitDiagnostic[],
   preset: RenderPresetName | null,
-): WorldOrbitDraftSystem {
+): WorldOrbitAtlasSystem {
   const scene = renderDocumentToScene(document, {
     preset: preset ?? undefined,
     projection: defaults.view,
@@ -113,7 +124,7 @@ function createDraftDefaults(
   document: WorldOrbitDocument,
   preset: RenderPresetName | null,
   projection: ViewProjection,
-): WorldOrbitDraftDefaults {
+): WorldOrbitAtlasDefaults {
   return {
     view:
       typeof document.system?.properties.view === "string" &&
@@ -156,7 +167,7 @@ function collectAtlasMetadata(
       code: "upgrade.atlasMetadata.preserved",
       severity: "warning",
       source: "upgrade",
-      message: `Preserved ${metadataKeys.length} system info entr${metadataKeys.length === 1 ? "y" : "ies"} as atlas metadata in the 2.0-draft document.`,
+      message: `Preserved ${metadataKeys.length} system info entr${metadataKeys.length === 1 ? "y" : "ies"} as atlas metadata in the 2.0 atlas document.`,
     });
   }
 
@@ -166,7 +177,7 @@ function collectAtlasMetadata(
 function collectDraftAnnotations(
   document: WorldOrbitDocument,
   diagnostics: WorldOrbitDiagnostic[],
-): WorldOrbitDraftAnnotation[] {
+): WorldOrbitAtlasAnnotation[] {
   const drafts = new Map<string, DraftAnnotationConfig>();
 
   for (const [key, value] of Object.entries(document.system?.info ?? {})) {
@@ -233,7 +244,7 @@ function collectDraftAnnotations(
       code: "upgrade.annotation.objectDescription",
       severity: "info",
       source: "upgrade",
-      message: `Lifted ${object.id}.info.description into structured draft annotation "${annotationId}".`,
+      message: `Lifted ${object.id}.info.description into structured atlas annotation "${annotationId}".`,
       objectId: object.id,
       field: "description",
     });
@@ -254,7 +265,7 @@ function collectDraftAnnotations(
 
 function mapSceneViewpointToDraftViewpoint(
   viewpoint: ReturnType<typeof renderDocumentToScene>["viewpoints"][number],
-): WorldOrbitDraftViewpoint {
+): WorldOrbitAtlasViewpoint {
   return {
     id: viewpoint.id,
     label: viewpoint.label,
@@ -335,7 +346,7 @@ function humanizeIdentifier(value: string): string {
 }
 
 function materializeDraftSystemProperties(
-  system: WorldOrbitDraftSystem,
+  system: WorldOrbitAtlasSystem,
 ): NonNullable<WorldOrbitDocument["system"]>["properties"] {
   const properties: NonNullable<WorldOrbitDocument["system"]>["properties"] = {};
 
@@ -356,7 +367,7 @@ function materializeDraftSystemProperties(
   return properties;
 }
 
-function materializeDraftSystemInfo(system: WorldOrbitDraftSystem): Record<string, string> {
+function materializeDraftSystemInfo(system: WorldOrbitAtlasSystem): Record<string, string> {
   const info: Record<string, string> = {
     ...system.atlasMetadata,
   };
@@ -433,7 +444,7 @@ function materializeDraftSystemInfo(system: WorldOrbitDraftSystem): Record<strin
 }
 
 function serializeViewpointLayers(
-  layers: WorldOrbitDraftViewpoint["layers"],
+  layers: WorldOrbitAtlasViewpoint["layers"],
 ): string {
   const tokens: string[] = [];
   const orbitFront = layers["orbits-front"];
@@ -450,4 +461,13 @@ function serializeViewpointLayers(
   }
 
   return tokens.join(" ");
+}
+
+function convertAtlasDocumentToLegacyDraft(
+  document: WorldOrbitAtlasDocument,
+) {
+  return {
+    ...document,
+    version: "2.0-draft" as const,
+  };
 }

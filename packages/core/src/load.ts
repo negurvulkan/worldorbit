@@ -1,6 +1,6 @@
 import { diagnosticFromError } from "./diagnostics.js";
-import { materializeDraftDocument } from "./draft.js";
-import { parseWorldOrbitDraft } from "./draft-parse.js";
+import { materializeAtlasDocument } from "./draft.js";
+import { parseWorldOrbitAtlas } from "./draft-parse.js";
 import { WorldOrbitError } from "./errors.js";
 import { normalizeDocument } from "./normalize.js";
 import { parseWorldOrbit } from "./parse.js";
@@ -9,12 +9,13 @@ import type {
   DiagnosticResult,
   LoadedWorldOrbitSource,
   WorldOrbitAnyDocumentVersion,
+  WorldOrbitAtlasDocument,
   WorldOrbitDocument,
-  WorldOrbitDraftDocument,
 } from "./types.js";
 import { validateDocument } from "./validate.js";
 
-const DRAFT_SCHEMA_PATTERN = /^schema\s+2\.0-draft$/i;
+const ATLAS_SCHEMA_PATTERN = /^schema\s+2(?:\.0)?$/i;
+const LEGACY_DRAFT_SCHEMA_PATTERN = /^schema\s+2\.0-draft$/i;
 
 export function detectWorldOrbitSchemaVersion(source: string): WorldOrbitAnyDocumentVersion {
   for (const line of source.split(/\r?\n/)) {
@@ -23,7 +24,15 @@ export function detectWorldOrbitSchemaVersion(source: string): WorldOrbitAnyDocu
       continue;
     }
 
-    return DRAFT_SCHEMA_PATTERN.test(trimmed) ? "2.0-draft" : "1.0";
+    if (LEGACY_DRAFT_SCHEMA_PATTERN.test(trimmed)) {
+      return "2.0-draft";
+    }
+
+    if (ATLAS_SCHEMA_PATTERN.test(trimmed)) {
+      return "2.0";
+    }
+
+    return "1.0";
   }
 
   return "1.0";
@@ -49,8 +58,8 @@ export function loadWorldOrbitSourceWithDiagnostics(
 ): DiagnosticResult<LoadedWorldOrbitSource> {
   const schemaVersion = detectWorldOrbitSchemaVersion(source);
 
-  if (schemaVersion === "2.0-draft") {
-    return loadDraftSourceWithDiagnostics(source);
+  if (schemaVersion === "2.0" || schemaVersion === "2.0-draft") {
+    return loadAtlasSourceWithDiagnostics(source, schemaVersion);
   }
 
   let ast: AstDocument;
@@ -91,6 +100,7 @@ export function loadWorldOrbitSourceWithDiagnostics(
       schemaVersion,
       ast,
       document,
+      atlasDocument: null,
       draftDocument: null,
       diagnostics: [],
     },
@@ -98,28 +108,29 @@ export function loadWorldOrbitSourceWithDiagnostics(
   };
 }
 
-function loadDraftSourceWithDiagnostics(
+function loadAtlasSourceWithDiagnostics(
   source: string,
+  schemaVersion: "2.0" | "2.0-draft",
 ): DiagnosticResult<LoadedWorldOrbitSource> {
-  let draftDocument: WorldOrbitDraftDocument;
+  let atlasDocument: WorldOrbitAtlasDocument;
   try {
-    draftDocument = parseWorldOrbitDraft(source);
+    atlasDocument = parseWorldOrbitAtlas(source);
   } catch (error) {
     return {
       ok: false,
       value: null,
-      diagnostics: [diagnosticFromError(error, "parse", "load.draft.failed")],
+      diagnostics: [diagnosticFromError(error, "parse", "load.atlas.failed")],
     };
   }
 
   let document: WorldOrbitDocument;
   try {
-    document = materializeDraftDocument(draftDocument);
+    document = materializeAtlasDocument(atlasDocument);
   } catch (error) {
     return {
       ok: false,
       value: null,
-      diagnostics: [diagnosticFromError(error, "normalize", "load.draft.materialize.failed")],
+      diagnostics: [diagnosticFromError(error, "normalize", "load.atlas.materialize.failed")],
     };
   }
 
@@ -129,21 +140,22 @@ function loadDraftSourceWithDiagnostics(
     return {
       ok: false,
       value: null,
-      diagnostics: [diagnosticFromError(error, "validate", "load.draft.validate.failed")],
+      diagnostics: [diagnosticFromError(error, "validate", "load.atlas.validate.failed")],
     };
   }
 
   const loaded: LoadedWorldOrbitSource = {
-    schemaVersion: "2.0-draft",
+    schemaVersion,
     ast: null,
     document,
-    draftDocument,
-    diagnostics: [...draftDocument.diagnostics],
+    atlasDocument,
+    draftDocument: atlasDocument,
+    diagnostics: [...atlasDocument.diagnostics],
   };
 
   return {
     ok: true,
     value: loaded,
-    diagnostics: [...draftDocument.diagnostics],
+    diagnostics: [...atlasDocument.diagnostics],
   };
 }

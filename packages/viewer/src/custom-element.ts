@@ -1,14 +1,13 @@
 import {
-  normalizeDocument,
-  parseWorldOrbit,
+  loadWorldOrbitSource,
   renderDocumentToScene,
-  validateDocument,
   type WorldOrbitDocument,
 } from "@worldorbit/core";
 
 import { renderSceneToSvg } from "./render.js";
+import { createAtlasViewer } from "./atlas-viewer.js";
 import { createInteractiveViewer } from "./viewer.js";
-import type { WorldOrbitViewer } from "./types.js";
+import type { WorldOrbitAtlasViewer, WorldOrbitViewer } from "./types.js";
 
 export function defineWorldOrbitViewerElement(tagName = "worldorbit-viewer"): void {
   if (typeof window === "undefined" || typeof customElements === "undefined") {
@@ -24,7 +23,7 @@ export function defineWorldOrbitViewerElement(tagName = "worldorbit-viewer"): vo
       return ["source", "mode", "theme"];
     }
 
-    viewer: WorldOrbitViewer | null = null;
+    viewer: WorldOrbitViewer | WorldOrbitAtlasViewer | null = null;
 
     connectedCallback(): void {
       this.renderCurrent();
@@ -55,17 +54,30 @@ export function defineWorldOrbitViewerElement(tagName = "worldorbit-viewer"): vo
 
       const documentModel = parseSource(source);
       const scene = renderDocumentToScene(documentModel);
+      const theme = (this.getAttribute("theme") ?? undefined) as
+        | "atlas"
+        | "nightglass"
+        | "ember"
+        | undefined;
 
       if (mode === "static") {
         this.innerHTML = renderSceneToSvg(scene, {
-          theme: (this.getAttribute("theme") ?? undefined) as "atlas" | "nightglass" | "ember" | undefined,
+          theme,
+        });
+        return;
+      }
+
+      if (mode === "atlas") {
+        this.viewer = createAtlasViewer(this, {
+          scene,
+          theme,
         });
         return;
       }
 
       this.viewer = createInteractiveViewer(this, {
         scene,
-        theme: (this.getAttribute("theme") ?? undefined) as "atlas" | "nightglass" | "ember" | undefined,
+        theme,
       });
     }
   }
@@ -74,8 +86,5 @@ export function defineWorldOrbitViewerElement(tagName = "worldorbit-viewer"): vo
 }
 
 function parseSource(source: string): WorldOrbitDocument {
-  const ast = parseWorldOrbit(source);
-  const document = normalizeDocument(ast);
-  validateDocument(document);
-  return document;
+  return loadWorldOrbitSource(source).document;
 }

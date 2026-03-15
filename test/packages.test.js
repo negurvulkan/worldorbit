@@ -8,8 +8,10 @@ test("package entry points resolve for core, viewer, and markdown", async () => 
 
   assert.equal(typeof core.parse, "function");
   assert.equal(typeof core.renderDocumentToScene, "function");
+  assert.equal(typeof core.parseWorldOrbitAtlas, "function");
   assert.equal(typeof viewer.renderSceneToSvg, "function");
   assert.equal(typeof viewer.createInteractiveViewer, "function");
+  assert.equal(typeof viewer.createAtlasViewer, "function");
   assert.equal(typeof markdown.remarkWorldOrbit, "function");
   assert.equal(typeof markdown.rehypeWorldOrbit, "function");
 });

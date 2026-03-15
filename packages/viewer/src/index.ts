@@ -36,4 +36,5 @@ export {
   serializeWorldOrbitEmbedPayload,
 } from "./embed.js";
 export { defineWorldOrbitViewerElement } from "./custom-element.js";
+export { createAtlasViewer } from "./atlas-viewer.js";
 export { createInteractiveViewer } from "./viewer.js";

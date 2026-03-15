@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.0.0
+
+- stabilized the canonical atlas schema on `schema 2.0` and added first-class `WorldOrbitAtlasDocument` loading, formatting, upgrading, and materialization APIs
+- kept legacy `schema 2.0-draft` support as a compatibility path, now normalized through the canonical atlas loader with explicit deprecation diagnostics
+- added the high-level `createAtlasViewer(...)` API with built-in atlas controls, inspector snapshots, bookmark handling, and access to the wrapped low-level viewer
+- updated the custom element, embed payloads, viewer atlas state, demo, examples, and Markdown flow around the stable `2.0` contract
+- refreshed docs, examples, and regression coverage so `2.0` is the primary authoring path while `1.0` and legacy draft input remain readable
+
 ## v1.9.0
 
 - added direct source loading for both stable `1.0` and draft `2.0-draft` files through `loadWorldOrbitSource(...)`, `loadWorldOrbitSourceWithDiagnostics(...)`, and the `load(...)` convenience export

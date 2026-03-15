@@ -3,13 +3,19 @@
 This page demonstrates a build-time static SVG diagram.
 
 ```worldorbit
+schema 2.0
+
 system Iyath
   title "Iyath System"
-  view isometric
 
-star Iyath
+defaults
+  view isometric
+  preset markdown
+
+object star Iyath
   temperature 5840
-planet Naar
+
+object planet Naar
   orbit Iyath
   semiMajor 1.18au
   eccentricity 0.08
@@ -18,6 +24,14 @@ planet Naar
   phase 42deg
   image /demo/assets/naar-map.png
   atmosphere nitrogen-oxygen
-moon Leth orbit Naar distance 220000km angle 18deg inclination 12deg
-structure Skyhook kind elevator surface Naar
+
+object moon Leth
+  orbit Naar
+  distance 220000km
+  angle 18deg
+  inclination 12deg
+
+object structure Skyhook
+  kind elevator
+  surface Naar
 ```

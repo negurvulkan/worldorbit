@@ -1,36 +1,63 @@
-import { parse } from "@worldorbit/core";
+import { loadWorldOrbitSource } from "@worldorbit/core";
 import {
   createEmbedPayload,
   createInteractiveViewer,
   createWorldOrbitEmbedMarkup,
 } from "@worldorbit/viewer";
 
-const sampleSource = `system Iyath
+const sampleSource = `schema 2.0
+
+system Iyath
   title "Iyath System"
+
+defaults
   view isometric
   scale presentation
+  preset atlas-card
+  theme atlas
 
-  info
-    viewpoint.overview.label "Atlas Overview"
-    viewpoint.naar.label "Naar Close Orbit"
-    viewpoint.naar.focus Naar
-    viewpoint.naar.select Naar
-    viewpoint.naar.zoom 2.25
-    viewpoint.naar.rotation 12
-    viewpoint.naar.layers background orbits objects labels metadata -guides
-    viewpoint.infrastructure.label "Infrastructure"
-    viewpoint.infrastructure.types structure phenomenon
-    viewpoint.infrastructure.query relay skyhook gate anomaly
-    viewpoint.infrastructure.layers background orbits objects labels metadata
+atlas
+  metadata
+    atlas.note "Reference atlas entry for the stable v2.0 schema."
 
-star Iyath
+viewpoint overview
+  label "Atlas Overview"
+  summary "Fit the full system and keep the atlas defaults visible."
+  projection isometric
+
+viewpoint naar
+  label "Naar Close Orbit"
+  summary "Center the homeworld and its local infrastructure."
+  focus Naar
+  select Naar
+  zoom 2.25
+  rotation 12
+  layers background orbits objects labels metadata -guides
+
+viewpoint infrastructure
+  label "Infrastructure"
+  summary "Filter infrastructure and anomalies for atlas inspection."
+  focus Naar
+  projection isometric
+  layers background orbits objects labels metadata
+  filter
+    query relay skyhook gate anomaly
+    objectTypes structure phenomenon
+
+annotation ember
+  label "Mining Corridor"
+  target Ember-Belt
+  body "Industrial traffic and salvage fields cut through the inner belt."
+  tags industry salvage
+
+object star Iyath
   class G2
   radius 1.08sol
   mass 1.02sol
   temperature 5840
   color #ffd36a
 
-planet Naar
+object planet Naar
   class terrestrial
   culture Enari
   image assets/naar-map.png
@@ -51,7 +78,7 @@ planet Naar
     faction "Veyrathische Republik"
     description "Heimatwelt der Enari."
 
-moon Leth
+object moon Leth
   orbit Naar
   distance 220000km
   angle 34deg
@@ -62,7 +89,7 @@ moon Leth
   albedo 0.21
   tags moon survey
 
-ring Dawn-Ring
+object ring Dawn-Ring
   orbit Naar
   distance 185000km
   angle 22deg
@@ -70,7 +97,7 @@ ring Dawn-Ring
   inner 120000km
   outer 190000km
 
-belt Ember-Belt
+object belt Ember-Belt
   orbit Iyath
   semiMajor 2.7au
   eccentricity 0.16
@@ -81,22 +108,22 @@ belt Ember-Belt
   outer 2.95au
   tags mining debris atlas
 
-structure L4-Relay
+object structure L4-Relay
   kind relay
   tags relay infrastructure atlas
   at Naar:L4
 
-structure Skyhook
+object structure Skyhook
   kind elevator
   tags infrastructure atlas
   surface Naar
 
-structure OuterGate
+object structure OuterGate
   kind gate
   tags infrastructure atlas
   free 8.4au
 
-phenomenon Helioscar
+object phenomenon Helioscar
   kind anomaly
   tags anomaly atlas
   orbit Iyath
@@ -140,6 +167,8 @@ const labelScaleValue = document.querySelector("#label-scale-value");
 
 let viewer = null;
 let currentDocument = null;
+let currentSourceSchemaVersion = null;
+let currentAtlasDocument = null;
 let currentSelection = null;
 let currentSelectionDetails = null;
 let currentScene = null;
@@ -160,8 +189,10 @@ function scheduleRender() {
 
 function render() {
   try {
-    const result = parse(sourceField.value);
-    currentDocument = result.document;
+    const loaded = loadWorldOrbitSource(sourceField.value);
+    currentDocument = loaded.document;
+    currentSourceSchemaVersion = loaded.schemaVersion;
+    currentAtlasDocument = loaded.atlasDocument ?? loaded.draftDocument;
     currentSelection = null;
     currentSelectionDetails = null;
 
@@ -233,6 +264,8 @@ function render() {
     enableViewerButtons(true);
   } catch (error) {
     currentDocument = null;
+    currentSourceSchemaVersion = null;
+    currentAtlasDocument = null;
     currentSelection = null;
     currentSelectionDetails = null;
     currentScene = null;
@@ -361,7 +394,7 @@ function updateSearchResults() {
   searchResults.innerHTML = results
     .map(
       (result) =>
-        `<button type="button" data-object-id="${escapeHtml(result.objectId)}">${escapeHtml(result.objectId)} · ${escapeHtml(result.type)}</button>`,
+        `<button type="button" data-object-id="${escapeHtml(result.objectId)}">${escapeHtml(result.objectId)} - ${escapeHtml(result.type)}</button>`,
     )
     .join("");
 }
@@ -475,7 +508,8 @@ function updateSummary() {
     : "Kein Filter";
   const viewpointSummary = currentViewpointId ? `Viewpoint ${currentViewpointId}` : "Scene default";
   const preset = currentScene.renderPreset ?? "custom";
-  const base = `${currentDocument.objects.length} Objekte - ${currentScene.projection} - ${currentScene.layoutPreset} layout - ${preset}`;
+  const schemaLabel = currentSourceSchemaVersion ?? currentDocument.version;
+  const base = `${currentDocument.objects.length} Objekte - schema ${schemaLabel} - ${currentScene.projection} - ${currentScene.layoutPreset} layout - ${preset}`;
 
   summary.textContent = currentSelection
     ? `${base} - ${viewpointSummary} - ${filterSummary} - Auswahl: ${currentSelection.objectId}`
@@ -529,10 +563,14 @@ function updateModelPanel() {
           system: currentDocument.system?.id ?? null,
           objectCount: currentDocument.objects.length,
           schemaVersion: currentDocument.version,
+          sourceSchemaVersion: currentSourceSchemaVersion,
+          atlasDocumentVersion: currentAtlasDocument?.version ?? null,
         },
       }
     : {
         document: currentDocument,
+        sourceSchemaVersion: currentSourceSchemaVersion,
+        atlasDocumentVersion: currentAtlasDocument?.version ?? null,
         atlasState: currentAtlasState,
         sceneDefaults: {
           preset: currentScene.renderPreset,
@@ -676,7 +714,7 @@ function downloadSvg() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "worldorbit-v1-7-atlas.svg";
+  link.download = "worldorbit-v2-atlas.svg";
   link.click();
   URL.revokeObjectURL(url);
 }

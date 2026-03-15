@@ -1,0 +1,99 @@
+schema 2.0
+
+system Iyath
+  title "Iyath System"
+
+defaults
+  view isometric
+  scale presentation
+  preset atlas-card
+  theme atlas
+
+viewpoint overview
+  label "Iyath System Overview"
+  summary "Fit the whole system with the current atlas defaults."
+  projection isometric
+
+annotation naar-notes
+  label "Naar Notes"
+  target Naar
+  body "Heimatwelt der Enari."
+  tags habitable homeworld
+
+object star Iyath
+  class G2
+  color #ffd36a
+  radius 1.08sol
+  mass 1.02sol
+  temperature 5840
+
+object planet Naar
+  orbit Iyath
+  semiMajor 1.18au
+  eccentricity 0.08
+  period 412d
+  angle 28deg
+  inclination 24deg
+  phase 42deg
+  class terrestrial
+  tags habitable homeworld
+  image /demo/assets/naar-map.png
+  radius 1.06re
+  temperature 289
+  albedo 0.34
+  atmosphere nitrogen-oxygen
+
+  info
+    description "Heimatwelt der Enari."
+    faction "Veyrathische Republik"
+
+object moon Leth
+  orbit Naar
+  distance 220000km
+  period 18d
+  angle 34deg
+  inclination 18deg
+  phase 210deg
+  radius 0.27re
+  albedo 0.21
+
+object belt Ember-Belt
+  orbit Iyath
+  semiMajor 2.7au
+  eccentricity 0.16
+  angle 14deg
+  inclination 11deg
+  phase 166deg
+  tags mining debris
+  inner 2.45au
+  outer 2.95au
+
+object ring Dawn-Ring
+  orbit Naar
+  distance 185000km
+  angle 22deg
+  inclination 18deg
+  inner 120000km
+  outer 190000km
+
+object structure L4-Relay
+  at Naar:L4
+  kind relay
+
+object structure OuterGate
+  free 8.4au
+  kind gate
+
+object structure Skyhook
+  surface Naar
+  kind elevator
+
+object phenomenon Helioscar
+  orbit Iyath
+  semiMajor 4.9au
+  eccentricity 0.2
+  angle 36deg
+  inclination 9deg
+  phase 228deg
+  kind anomaly
+  temperature 620

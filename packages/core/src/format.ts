@@ -4,15 +4,16 @@ import type {
   FormatDocumentOptions,
   NormalizedValue,
   UnitValue,
-  WorldOrbitDraftAnnotation,
+  WorldOrbitAtlasAnnotation,
+  WorldOrbitAtlasDocument,
+  WorldOrbitAtlasSystem,
+  WorldOrbitAtlasViewpoint,
   WorldOrbitDraftDocument,
-  WorldOrbitDraftSystem,
-  WorldOrbitDraftViewpoint,
   WorldOrbitDocument,
   WorldOrbitObject,
   WorldOrbitSystem,
 } from "./types.js";
-import { upgradeDocumentToDraftV2 } from "./draft.js";
+import { upgradeDocumentToDraftV2, upgradeDocumentToV2 } from "./draft.js";
 
 const CANONICAL_FIELD_ORDER = [
   "title",
@@ -56,14 +57,35 @@ export function formatDocument(
 ): string {
   const schema = options.schema ?? "auto";
   const useDraft =
-    schema === "2.0-draft" || document.version === "2.0-draft";
+    schema === "2.0" ||
+    schema === "2.0-draft" ||
+    document.version === "2.0" ||
+    document.version === "2.0-draft";
 
   if (useDraft) {
-    const draftDocument =
-      document.version === "2.0-draft"
+    if (schema === "2.0-draft") {
+      const legacyDraftDocument =
+        document.version === "2.0-draft"
+          ? document
+          : document.version === "2.0"
+            ? {
+                ...document,
+                version: "2.0-draft" as const,
+              }
+            : upgradeDocumentToDraftV2(document as WorldOrbitDocument);
+      return formatDraftDocument(legacyDraftDocument);
+    }
+
+    const atlasDocument =
+      document.version === "2.0"
         ? document
-        : upgradeDocumentToDraftV2(document as WorldOrbitDocument);
-    return formatDraftDocument(draftDocument);
+        : document.version === "2.0-draft"
+          ? {
+              ...document,
+              version: "2.0" as const,
+            }
+          : upgradeDocumentToV2(document as WorldOrbitDocument);
+    return formatAtlasDocument(atlasDocument);
   }
 
   const lines: string[] = [];
@@ -84,11 +106,11 @@ export function formatDocument(
   return lines.join("\n");
 }
 
-export function formatDraftDocument(document: WorldOrbitDraftDocument): string {
-  const lines = ["schema 2.0-draft", ""];
+export function formatAtlasDocument(document: WorldOrbitAtlasDocument): string {
+  const lines = ["schema 2.0", ""];
 
   if (document.system) {
-    lines.push(...formatDraftSystem(document.system));
+    lines.push(...formatAtlasSystem(document.system));
   }
 
   const sortedObjects = [...document.objects].sort(compareObjects);
@@ -100,7 +122,38 @@ export function formatDraftDocument(document: WorldOrbitDraftDocument): string {
     if (index > 0) {
       lines.push("");
     }
-    lines.push(...formatDraftObject(object));
+    lines.push(...formatAtlasObject(object));
+  });
+
+  return lines.join("\n");
+}
+
+export function formatDraftDocument(
+  document: WorldOrbitAtlasDocument | WorldOrbitDraftDocument,
+): string {
+  const legacy: WorldOrbitDraftDocument =
+    document.version === "2.0-draft"
+      ? document
+      : {
+          ...document,
+          version: "2.0-draft",
+        };
+  const lines = ["schema 2.0-draft", ""];
+
+  if (legacy.system) {
+    lines.push(...formatAtlasSystem(legacy.system));
+  }
+
+  const sortedObjects = [...legacy.objects].sort(compareObjects);
+  if (sortedObjects.length > 0 && lines.at(-1) !== "") {
+    lines.push("");
+  }
+
+  sortedObjects.forEach((object, index) => {
+    if (index > 0) {
+      lines.push("");
+    }
+    lines.push(...formatAtlasObject(object));
   });
 
   return lines.join("\n");
@@ -110,7 +163,7 @@ function formatSystem(system: WorldOrbitSystem): string[] {
   return formatLines("system", system.id, system.properties, null, system.info);
 }
 
-function formatDraftSystem(system: WorldOrbitDraftSystem): string[] {
+function formatAtlasSystem(system: WorldOrbitAtlasSystem): string[] {
   const lines = [`system ${system.id}`];
 
   if (system.title) {
@@ -146,12 +199,12 @@ function formatDraftSystem(system: WorldOrbitDraftSystem): string[] {
 
   for (const viewpoint of system.viewpoints) {
     lines.push("");
-    lines.push(...formatDraftViewpoint(viewpoint));
+    lines.push(...formatAtlasViewpoint(viewpoint));
   }
 
   for (const annotation of system.annotations) {
     lines.push("");
-    lines.push(...formatDraftAnnotation(annotation));
+    lines.push(...formatAtlasAnnotation(annotation));
   }
 
   return lines;
@@ -161,7 +214,7 @@ function formatObject(object: WorldOrbitObject): string[] {
   return formatLines(object.type, object.id, object.properties, object.placement, object.info);
 }
 
-function formatDraftObject(object: WorldOrbitObject): string[] {
+function formatAtlasObject(object: WorldOrbitObject): string[] {
   return formatLines(`object ${object.type}`, object.id, object.properties, object.placement, object.info);
 }
 
@@ -223,7 +276,7 @@ function formatProperties(properties: Record<string, NormalizedValue>): string[]
     .map((key) => `${key} ${formatValue(properties[key])}`);
 }
 
-function formatDraftViewpoint(viewpoint: WorldOrbitDraftViewpoint): string[] {
+function formatAtlasViewpoint(viewpoint: WorldOrbitAtlasViewpoint): string[] {
   const lines = [`viewpoint ${viewpoint.id}`, `  label ${quoteIfNeeded(viewpoint.label)}`];
 
   if (viewpoint.focusObjectId) {
@@ -272,7 +325,7 @@ function formatDraftViewpoint(viewpoint: WorldOrbitDraftViewpoint): string[] {
   return lines;
 }
 
-function formatDraftAnnotation(annotation: WorldOrbitDraftAnnotation): string[] {
+function formatAtlasAnnotation(annotation: WorldOrbitAtlasAnnotation): string[] {
   const lines = [`annotation ${annotation.id}`, `  label ${quoteIfNeeded(annotation.label)}`];
 
   if (annotation.targetObjectId) {
@@ -328,7 +381,7 @@ function formatAtReference(reference: AtReference): string {
 }
 
 function formatDraftLayers(
-  layers: WorldOrbitDraftViewpoint["layers"],
+  layers: WorldOrbitAtlasViewpoint["layers"],
 ): string[] {
   const tokens: string[] = [];
   const orbitFront = layers["orbits-front"];

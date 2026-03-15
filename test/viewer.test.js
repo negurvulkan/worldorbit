@@ -4,7 +4,7 @@ import test from "node:test";
 import { JSDOM } from "jsdom";
 
 import { parse } from "@worldorbit/core";
-import { createInteractiveViewer } from "@worldorbit/viewer";
+import { createAtlasViewer, createInteractiveViewer } from "@worldorbit/viewer";
 
 const source = `
 system Iyath
@@ -26,8 +26,8 @@ moon Leth orbit Naar distance 220000km angle 18deg inclination 12deg
 structure Relay kind relay at Naar:L4
 `.trim();
 
-const draftSource = `
-schema 2.0-draft
+const atlasSource = `
+schema 2.0
 
 system Iyath
   title "Iyath System"
@@ -56,6 +56,8 @@ object structure Relay
   at Naar:L4
   kind relay
 `.trim();
+
+const legacyDraftSource = atlasSource.replace("schema 2.0", "schema 2.0-draft");
 
 function installDomGlobals(window) {
   const previous = {
@@ -231,7 +233,7 @@ test("interactive viewer mounts, updates, selects, exports, and destroys cleanly
   }
 });
 
-test("interactive viewer can load schema 2 draft source and preserve draft preset defaults", () => {
+test("interactive viewer can load schema 2.0 source and preserve atlas preset defaults", () => {
   const dom = new JSDOM(`<div id="preview"></div>`, {
     pretendToBeVisual: true,
   });
@@ -254,7 +256,7 @@ test("interactive viewer can load schema 2 draft source and preserve draft prese
 
   try {
     const viewer = createInteractiveViewer(preview, {
-      source: draftSource,
+      source: atlasSource,
     });
 
     assert.equal(viewer.getScene().renderPreset, "atlas-card");
@@ -263,6 +265,59 @@ test("interactive viewer can load schema 2 draft source and preserve draft prese
     assert.ok(preview.querySelector("svg"));
 
     viewer.destroy();
+  } finally {
+    restoreGlobals();
+    dom.window.close();
+  }
+});
+
+test("atlas viewer exposes built-in atlas controls and inspector state", () => {
+  const dom = new JSDOM(`<div id="preview"></div>`, {
+    pretendToBeVisual: true,
+  });
+  const restoreGlobals = installDomGlobals(dom.window);
+  const preview = dom.window.document.getElementById("preview");
+  const inspectorSnapshots = [];
+
+  preview.getBoundingClientRect = () => ({
+    x: 0,
+    y: 0,
+    left: 0,
+    top: 0,
+    right: 960,
+    bottom: 560,
+    width: 960,
+    height: 560,
+    toJSON() {
+      return {};
+    },
+  });
+
+  try {
+    const atlasViewer = createAtlasViewer(preview, {
+      source: legacyDraftSource,
+      onInspectorChange(snapshot) {
+        inspectorSnapshots.push(snapshot);
+      },
+    });
+
+    assert.ok(preview.querySelector("[data-atlas-toolbar]"));
+    assert.ok(preview.querySelector("[data-atlas-inspector]"));
+    assert.ok(atlasViewer.listSearchResults().some((result) => result.objectId === "Relay"));
+
+    atlasViewer.setSearchQuery("relay");
+    assert.equal(atlasViewer.listSearchResults()[0]?.objectId, "Relay");
+    atlasViewer.setObjectTypeFilter("structure");
+    assert.equal(atlasViewer.goToViewpoint("overview"), true);
+
+    const bookmark = atlasViewer.captureBookmark("overview", "Overview");
+    assert.equal(atlasViewer.applyBookmark(bookmark), true);
+    assert.equal(atlasViewer.getAtlasState().version, "2.0");
+    assert.equal(atlasViewer.getInspectorSnapshot().scene.renderPreset, "atlas-card");
+    assert.ok(inspectorSnapshots.length > 0);
+
+    atlasViewer.destroy();
+    assert.equal(preview.textContent?.trim() ?? "", "");
   } finally {
     restoreGlobals();
     dom.window.close();

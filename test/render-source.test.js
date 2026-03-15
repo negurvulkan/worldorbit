@@ -3,8 +3,8 @@ import test from "node:test";
 
 import { renderSourceToSvg } from "@worldorbit/viewer";
 
-const draftSource = `
-schema 2.0-draft
+const atlasSource = `
+schema 2.0
 
 system Iyath
   title "Iyath System"
@@ -26,11 +26,21 @@ object planet Naar
   image /demo/assets/naar-map.png
 `.trim();
 
-test("renderSourceToSvg can render schema 2 draft source directly", () => {
-  const svg = renderSourceToSvg(draftSource);
+const legacyDraftSource = atlasSource.replace("schema 2.0", "schema 2.0-draft");
+
+test("renderSourceToSvg can render canonical schema 2.0 source directly", () => {
+  const svg = renderSourceToSvg(atlasSource);
 
   assert.match(svg, /<svg/);
   assert.match(svg, /Iyath System/);
   assert.match(svg, /\/demo\/assets\/naar-map\.png/);
   assert.match(svg, /viewBox="0 0 960 560"/);
+});
+
+test("renderSourceToSvg still accepts legacy schema 2.0-draft input", () => {
+  const svg = renderSourceToSvg(legacyDraftSource);
+
+  assert.match(svg, /<svg/);
+  assert.match(svg, /Iyath System/);
+  assert.match(svg, /\/demo\/assets\/naar-map\.png/);
 });

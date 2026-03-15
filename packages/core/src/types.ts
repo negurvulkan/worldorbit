@@ -24,9 +24,11 @@ export type Unit =
   | "deg";
 
 export type WorldOrbitDocumentVersion = "1.0";
+export type WorldOrbitAtlasDocumentVersion = "2.0";
 export type WorldOrbitDraftDocumentVersion = "2.0-draft";
 export type WorldOrbitAnyDocumentVersion =
   | WorldOrbitDocumentVersion
+  | WorldOrbitAtlasDocumentVersion
   | WorldOrbitDraftDocumentVersion;
 export type ViewProjection = "topdown" | "isometric";
 export type RenderPresetName = "diagram" | "presentation" | "atlas-card" | "markdown";
@@ -93,11 +95,20 @@ export interface WorldOrbitDocument {
   objects: WorldOrbitObject[];
 }
 
+export interface WorldOrbitAtlasDocument {
+  format: "worldorbit";
+  version: WorldOrbitAtlasDocumentVersion;
+  sourceVersion: WorldOrbitDocumentVersion;
+  system: WorldOrbitAtlasSystem | null;
+  objects: WorldOrbitObject[];
+  diagnostics: WorldOrbitDiagnostic[];
+}
+
 export interface WorldOrbitDraftDocument {
   format: "worldorbit";
   version: WorldOrbitDraftDocumentVersion;
   sourceVersion: WorldOrbitDocumentVersion;
-  system: WorldOrbitDraftSystem | null;
+  system: WorldOrbitAtlasSystem | null;
   objects: WorldOrbitObject[];
   diagnostics: WorldOrbitDiagnostic[];
 }
@@ -409,7 +420,7 @@ export interface DiagnosticResult<T> {
   diagnostics: WorldOrbitDiagnostic[];
 }
 
-export interface WorldOrbitDraftDefaults {
+export interface WorldOrbitAtlasDefaults {
   view: ViewProjection;
   scale: string | null;
   units: string | null;
@@ -417,7 +428,7 @@ export interface WorldOrbitDraftDefaults {
   theme: string | null;
 }
 
-export interface WorldOrbitDraftViewpoint {
+export interface WorldOrbitAtlasViewpoint {
   id: string;
   label: string;
   summary: string;
@@ -431,7 +442,7 @@ export interface WorldOrbitDraftViewpoint {
   filter: RenderSceneViewpointFilter | null;
 }
 
-export interface WorldOrbitDraftAnnotation {
+export interface WorldOrbitAtlasAnnotation {
   id: string;
   label: string;
   targetObjectId: string | null;
@@ -440,15 +451,20 @@ export interface WorldOrbitDraftAnnotation {
   sourceObjectId: string | null;
 }
 
-export interface WorldOrbitDraftSystem {
+export interface WorldOrbitAtlasSystem {
   type: "system";
   id: string;
   title: string | null;
-  defaults: WorldOrbitDraftDefaults;
+  defaults: WorldOrbitAtlasDefaults;
   atlasMetadata: Record<string, string>;
-  viewpoints: WorldOrbitDraftViewpoint[];
-  annotations: WorldOrbitDraftAnnotation[];
+  viewpoints: WorldOrbitAtlasViewpoint[];
+  annotations: WorldOrbitAtlasAnnotation[];
 }
+
+export type WorldOrbitDraftDefaults = WorldOrbitAtlasDefaults;
+export type WorldOrbitDraftViewpoint = WorldOrbitAtlasViewpoint;
+export type WorldOrbitDraftAnnotation = WorldOrbitAtlasAnnotation;
+export type WorldOrbitDraftSystem = WorldOrbitAtlasSystem;
 
 export interface FormatDocumentOptions {
   schema?: WorldOrbitAnyDocumentVersion | "auto";
@@ -456,12 +472,14 @@ export interface FormatDocumentOptions {
 
 export type FormattableWorldOrbitDocument =
   | WorldOrbitDocument
+  | WorldOrbitAtlasDocument
   | WorldOrbitDraftDocument;
 
 export interface LoadedWorldOrbitSource {
   schemaVersion: WorldOrbitAnyDocumentVersion;
   ast: AstDocument | null;
   document: WorldOrbitDocument;
-  draftDocument: WorldOrbitDraftDocument | null;
+  atlasDocument: WorldOrbitAtlasDocument | null;
+  draftDocument: WorldOrbitAtlasDocument | WorldOrbitDraftDocument | null;
   diagnostics: WorldOrbitDiagnostic[];
 }

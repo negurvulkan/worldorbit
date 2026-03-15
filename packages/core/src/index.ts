@@ -13,9 +13,14 @@ export {
   validateDocumentWithDiagnostics,
 } from "./diagnostics.js";
 export { renderDocumentToScene, rotatePoint } from "./scene.js";
-export { formatDocument, formatDraftDocument } from "./format.js";
-export { materializeDraftDocument, upgradeDocumentToDraftV2 } from "./draft.js";
-export { parseWorldOrbitDraft } from "./draft-parse.js";
+export { formatAtlasDocument, formatDocument, formatDraftDocument } from "./format.js";
+export {
+  materializeAtlasDocument,
+  materializeDraftDocument,
+  upgradeDocumentToDraftV2,
+  upgradeDocumentToV2,
+} from "./draft.js";
+export { parseWorldOrbitAtlas, parseWorldOrbitDraft } from "./draft-parse.js";
 export {
   detectWorldOrbitSchemaVersion,
   loadWorldOrbitSource,
