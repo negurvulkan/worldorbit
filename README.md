@@ -2,7 +2,7 @@
 
 WorldOrbit is a text-first DSL and rendering pipeline for fictional orbital systems.
 
-`v1.5.0` adds projection-aware scene generation, numeric scale control, object textures, and richer 2D rendering across SVG, the interactive viewer, and Markdown embeds.
+The current `v1.x` line includes projection-aware scene generation, numeric scale control, object textures, richer 2D rendering, and the first atlas-oriented viewer foundations across SVG, the interactive viewer, and Markdown embeds.
 
 - `@worldorbit/core`: parser, schema, normalization, validation, formatting, and scene generation
 - `@worldorbit/viewer`: SVG rendering, interactive browser viewer, themes, and embed helpers
@@ -101,7 +101,10 @@ Viewer features in the current `v1.x` line:
 - selection and hover callbacks
 - projection-aware topdown and isometric scenes
 - live render overrides for `projection` and `scaleModel`
+- render presets: `diagram`, `presentation`, `atlas-card`, `markdown`
 - ellipse and split-arc orbit rendering with projected ring and belt bands
+- scene-provided labels, groups, and stable layer ordering for atlas-style rendering
+- viewer details hooks and selection/hover chains for parent and orbit context
 - hydration helpers:
   - `createWorldOrbitEmbedMarkup(...)`
   - `mountWorldOrbitEmbeds(...)`
@@ -127,6 +130,13 @@ Supported projections:
 - `isometric`
 
 Document `system view` and `system scale` remain the defaults, while SVG, viewer, and Markdown calls can override them per render.
+
+Renderers and embeds also accept named presets:
+
+- `diagram`
+- `presentation`
+- `atlas-card`
+- `markdown`
 
 #### Object textures
 

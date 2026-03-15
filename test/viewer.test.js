@@ -53,7 +53,9 @@ test("interactive viewer mounts, updates, selects, exports, and destroys cleanly
   const restoreGlobals = installDomGlobals(dom.window);
   const preview = dom.window.document.getElementById("preview");
   const selections = [];
+  const selectionDetails = [];
   const hovers = [];
+  const hoverDetails = [];
   const views = [];
 
   preview.getBoundingClientRect = () => ({
@@ -73,13 +75,20 @@ test("interactive viewer mounts, updates, selects, exports, and destroys cleanly
   try {
     const viewer = createInteractiveViewer(preview, {
       source,
+      preset: "atlas-card",
       width: 1080,
       height: 720,
       onSelectionChange(selection) {
         selections.push(selection?.objectId ?? null);
       },
+      onSelectionDetailsChange(details) {
+        selectionDetails.push(details?.objectId ?? null);
+      },
       onHoverChange(selection) {
         hovers.push(selection?.objectId ?? null);
+      },
+      onHoverDetailsChange(details) {
+        hoverDetails.push(details?.objectId ?? null);
       },
       onViewChange(state) {
         views.push(state);
@@ -90,19 +99,23 @@ test("interactive viewer mounts, updates, selects, exports, and destroys cleanly
     assert.ok(preview.querySelector("#worldorbit-camera-root"));
     assert.ok(views.length > 0);
     assert.equal(viewer.getScene().projection, "isometric");
+    assert.equal(viewer.getScene().renderPreset, "atlas-card");
 
     viewer.setDocument(parse(source).document);
     viewer.setRenderOptions({
+      preset: "diagram",
       projection: "topdown",
       scaleModel: {
         bodyRadiusMultiplier: 1.4,
       },
     });
+    assert.equal(viewer.getRenderOptions().preset, "diagram");
     assert.equal(viewer.getRenderOptions().projection, "topdown");
     assert.equal(viewer.getRenderOptions().scaleModel?.bodyRadiusMultiplier, 1.4);
     assert.equal(viewer.getScene().projection, "topdown");
 
     viewer.setRenderOptions({
+      preset: "atlas-card",
       projection: "isometric",
       scaleModel: {
         bodyRadiusMultiplier: 1.25,
@@ -118,10 +131,15 @@ test("interactive viewer mounts, updates, selects, exports, and destroys cleanly
 
     assert.equal(hovers.at(-1), "Naar");
     assert.equal(selections.at(-1), "Naar");
+    assert.equal(selectionDetails.at(-1), "Naar");
+    assert.equal(hoverDetails.at(-1), "Naar");
     assert.match(target?.getAttribute("class") ?? "", /wo-object-selected/);
     assert.match(viewer.exportSvg(), /wo-object-selected/);
     assert.match(viewer.exportSvg(), /assets\/naar-map\.png/);
     assert.match(viewer.exportSvg(), /wo-orbit-back/);
+    assert.match(viewer.exportSvg(), /data-layer-id="labels"/);
+    assert.equal(viewer.getObjectDetails("Naar")?.parent?.objectId, "Iyath");
+    assert.ok((viewer.getObjectDetails("Naar")?.ancestors.length ?? 0) >= 1);
 
     const selectionCount = selections.length;
     viewer.destroy();

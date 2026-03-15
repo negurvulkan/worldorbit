@@ -25,6 +25,7 @@ export type Unit =
 
 export type WorldOrbitDocumentVersion = "1.0";
 export type ViewProjection = "topdown" | "isometric";
+export type RenderPresetName = "diagram" | "presentation" | "atlas-card" | "markdown";
 
 export interface CoordinatePoint {
   x: number;
@@ -184,6 +185,7 @@ export interface SceneRenderOptions {
   width?: number;
   height?: number;
   padding?: number;
+  preset?: RenderPresetName;
   projection?: "document" | ViewProjection;
   scaleModel?: Partial<RenderScaleModel>;
 }
@@ -203,6 +205,10 @@ export interface RenderSceneObject {
   renderId: string;
   objectId: string;
   object: WorldOrbitObject;
+  parentId: string | null;
+  ancestorIds: string[];
+  childIds: string[];
+  groupId: string | null;
   x: number;
   y: number;
   radius: number;
@@ -222,6 +228,7 @@ export interface RenderOrbitVisual {
   objectId: string;
   object: WorldOrbitObject;
   parentId: string;
+  groupId: string | null;
   kind: "circle" | "ellipse";
   cx: number;
   cy: number;
@@ -242,6 +249,7 @@ export interface RenderLeaderLine {
   renderId: string;
   objectId: string;
   object: WorldOrbitObject;
+  groupId: string | null;
   x1: number;
   y1: number;
   x2: number;
@@ -250,10 +258,51 @@ export interface RenderLeaderLine {
   hidden: boolean;
 }
 
+export interface RenderSceneLabel {
+  renderId: string;
+  objectId: string;
+  object: WorldOrbitObject;
+  groupId: string | null;
+  label: string;
+  secondaryLabel: string;
+  x: number;
+  y: number;
+  secondaryY: number;
+  textAnchor: "start" | "middle" | "end";
+  direction: "above" | "below" | "left" | "right";
+  hidden: boolean;
+}
+
+export type SceneLayerId =
+  | "background"
+  | "guides"
+  | "orbits-back"
+  | "orbits-front"
+  | "objects"
+  | "labels"
+  | "metadata";
+
+export interface RenderSceneLayer {
+  id: SceneLayerId;
+  renderIds: string[];
+}
+
+export interface RenderSceneGroup {
+  renderId: string;
+  rootObjectId: string | null;
+  label: string;
+  objectIds: string[];
+  orbitIds: string[];
+  labelIds: string[];
+  leaderIds: string[];
+  contentBounds: RenderBounds;
+}
+
 export interface RenderScene {
   width: number;
   height: number;
   padding: number;
+  renderPreset: RenderPresetName | null;
   projection: ViewProjection;
   scaleModel: RenderScaleModel;
   title: string;
@@ -263,9 +312,12 @@ export interface RenderScene {
   layoutPreset: SceneLayoutPreset;
   metadata: Record<string, string>;
   contentBounds: RenderBounds;
+  layers: RenderSceneLayer[];
+  groups: RenderSceneGroup[];
   objects: RenderSceneObject[];
   orbitVisuals: RenderOrbitVisual[];
   leaders: RenderLeaderLine[];
+  labels: RenderSceneLabel[];
 }
 
 export type SceneLayoutPreset = "compact" | "balanced" | "presentation";

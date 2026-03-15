@@ -1,10 +1,14 @@
 import type {
   CoordinatePoint,
+  RenderOrbitVisual,
+  RenderSceneGroup,
+  RenderSceneLabel,
   RenderScaleModel,
   RenderScene,
   RenderSceneObject,
   SceneRenderOptions,
   ViewProjection,
+  WorldOrbitObject,
   WorldOrbitDocument,
 } from "@worldorbit/core";
 
@@ -64,6 +68,19 @@ export interface ViewerState {
   selectedObjectId: string | null;
 }
 
+export interface ViewerObjectDetails {
+  objectId: string;
+  object: WorldOrbitObject;
+  renderObject: RenderSceneObject;
+  label: RenderSceneLabel | null;
+  group: RenderSceneGroup | null;
+  orbit: RenderOrbitVisual | null;
+  relatedOrbits: RenderOrbitVisual[];
+  parent: RenderSceneObject | null;
+  children: RenderSceneObject[];
+  ancestors: RenderSceneObject[];
+}
+
 export interface InteractiveViewerOptions extends ViewerRenderOptions {
   source?: string;
   document?: WorldOrbitDocument;
@@ -79,7 +96,9 @@ export interface InteractiveViewerOptions extends ViewerRenderOptions {
   zoomStep?: number;
   rotationStep?: number;
   onSelectionChange?: (selectedObject: RenderSceneObject | null) => void;
+  onSelectionDetailsChange?: (details: ViewerObjectDetails | null) => void;
   onHoverChange?: (hoveredObject: RenderSceneObject | null) => void;
+  onHoverDetailsChange?: (details: ViewerObjectDetails | null) => void;
   onViewChange?: (state: ViewerState) => void;
 }
 
@@ -90,6 +109,8 @@ export interface WorldOrbitViewer {
   getScene(): RenderScene;
   getRenderOptions(): ViewerRenderOptions;
   setRenderOptions(options: Partial<ViewerRenderOptions>): void;
+  getObjectDetails(id: string): ViewerObjectDetails | null;
+  getSelectionDetails(): ViewerObjectDetails | null;
   getState(): ViewerState;
   setState(state: Partial<ViewerState>): void;
   zoomBy(factor: number, anchor?: CoordinatePoint): void;
@@ -110,6 +131,7 @@ export interface WorldOrbitEmbedPayload {
     theme?: WorldOrbitTheme | WorldOrbitThemeName;
     layers?: ViewerLayerOptions;
     subtitle?: string;
+    preset?: SceneRenderOptions["preset"];
   };
 }
 

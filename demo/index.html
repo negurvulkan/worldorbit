@@ -227,7 +227,7 @@
 
       .viewer-controls {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(5, minmax(0, 1fr));
         gap: 12px;
         padding: 0 18px 18px;
       }
@@ -329,14 +329,14 @@
   <body>
     <main>
       <section class="hero">
-        <span class="eyebrow">WorldOrbit Projection Preview</span>
+        <span class="eyebrow">WorldOrbit Atlas Foundations</span>
         <h1>Isometric Worlds</h1>
         <p>
           Diese Demo laeuft direkt auf den neuen Paketen <code>@worldorbit/core</code>
           und <code>@worldorbit/viewer</code>. Sie zeigt die neue Projektion- und
           Scale-Pipeline vom DSL ueber die Render-Scene bis zum interaktiven Viewer
-          mit isometrischen Orbits, Atmosphaeren, Texturen und live einstellbaren
-          Maßstaeben.
+          mit isometrischen Orbits, Atmosphaeren, Texturen, Atlas-Presets und live
+          einstellbaren Maßstaeben.
         </p>
       </section>
 
@@ -377,6 +377,15 @@
               </div>
             </div>
             <div class="viewer-controls">
+              <div class="control-card">
+                <strong>Preset</strong>
+                <select id="preset" aria-label="Render preset">
+                  <option value="diagram">Diagram</option>
+                  <option value="presentation">Presentation</option>
+                  <option value="atlas-card">Atlas Card</option>
+                  <option value="markdown">Markdown</option>
+                </select>
+              </div>
               <div class="control-card">
                 <strong>Projection</strong>
                 <select id="projection" aria-label="Projection">

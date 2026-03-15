@@ -32,13 +32,14 @@ system Iyath
 star Iyath
 planet Naar orbit Iyath semiMajor 1.18au eccentricity 0.08 angle 28deg inclination 24deg phase 42deg image /demo/assets/naar-map.png atmosphere nitrogen-oxygen
 `.trim(),
-    { mode: "static", projection: "isometric" },
+    { mode: "static", projection: "isometric", preset: "markdown" },
   );
 
   assert.match(html, /<svg/);
   assert.match(html, /Iyath/);
   assert.match(html, /\/demo\/assets\/naar-map\.png/);
   assert.match(html, /wo-orbit-back/);
+  assert.match(html, /viewBox="0 0 920 540"/);
 });
 
 test("renderWorldOrbitBlock emits a hydration payload for interactive mode", () => {
@@ -51,6 +52,7 @@ planet Naar orbit Iyath semiMajor 1.18au eccentricity 0.08 angle 28deg inclinati
 `.trim(),
     {
       mode: "interactive",
+      preset: "atlas-card",
       projection: "isometric",
       scaleModel: {
         bodyRadiusMultiplier: 1.25,
@@ -70,6 +72,8 @@ planet Naar orbit Iyath semiMajor 1.18au eccentricity 0.08 angle 28deg inclinati
   assert.equal(planet?.imageHref, "/demo/assets/naar-map.png");
   assert.equal(payload.scene.projection, "isometric");
   assert.equal(payload.scene.scaleModel.bodyRadiusMultiplier, 1.25);
+  assert.equal(payload.scene.renderPreset, "atlas-card");
+  assert.match(html, /data-worldorbit-preset="atlas-card"/);
 });
 
 test("remark plugin transforms fenced blocks into static markup", async () => {

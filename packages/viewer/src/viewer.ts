@@ -12,6 +12,7 @@ import {
 import { renderSceneToSvg } from "./render.js";
 import type {
   InteractiveViewerOptions,
+  ViewerObjectDetails,
   ViewerRenderOptions,
   ViewerState,
   WorldOrbitViewer,
@@ -82,6 +83,7 @@ export function createInteractiveViewer(
     width: options.width,
     height: options.height,
     padding: options.padding,
+    preset: options.preset,
     projection: options.projection,
     scaleModel: options.scaleModel ? { ...options.scaleModel } : undefined,
     theme: options.theme,
@@ -239,36 +241,23 @@ export function createInteractiveViewer(
 
   const handleMouseOver = (event: MouseEvent): void => {
     const objectId = getClosestObjectId(event.target);
-    if (hoveredObjectId === objectId) {
-      return;
-    }
-
-    hoveredObjectId = objectId;
-    options.onHoverChange?.(getObjectById(objectId));
+    applyHover(objectId);
   };
 
   const handleMouseLeave = (): void => {
-    if (!hoveredObjectId) {
-      return;
-    }
-
-    hoveredObjectId = null;
-    options.onHoverChange?.(null);
+    applyHover(null);
   };
 
   const handleFocusIn = (event: FocusEvent): void => {
     const objectId = getClosestObjectId(event.target);
-    if (!objectId || hoveredObjectId === objectId) {
+    if (!objectId) {
       return;
     }
-
-    hoveredObjectId = objectId;
-    options.onHoverChange?.(getObjectById(objectId));
+    applyHover(objectId);
   };
 
   const handleFocusOut = (): void => {
-    hoveredObjectId = null;
-    options.onHoverChange?.(null);
+    applyHover(null);
   };
 
   const handleKeyDown = (event: KeyboardEvent): void => {
@@ -362,6 +351,12 @@ export function createInteractiveViewer(
     },
     getRenderOptions(): ViewerRenderOptions {
       return cloneRenderOptions(renderOptions);
+    },
+    getObjectDetails(id: string): ViewerObjectDetails | null {
+      return buildObjectDetails(id);
+    },
+    getSelectionDetails(): ViewerObjectDetails | null {
+      return buildObjectDetails(state.selectedObjectId);
     },
     setRenderOptions(options: Partial<ViewerRenderOptions>): void {
       const sceneAffecting = hasSceneAffectingRenderOptions(options);
@@ -466,6 +461,13 @@ export function createInteractiveViewer(
         : null,
       false,
     );
+    applyHover(
+      hoveredObjectId &&
+        scene.objects.some((object) => object.objectId === hoveredObjectId && !object.hidden)
+        ? hoveredObjectId
+        : null,
+      false,
+    );
     updateCameraTransform();
     options.onViewChange?.({ ...state });
   }
@@ -519,9 +521,30 @@ export function createInteractiveViewer(
         ?.classList.add("wo-object-selected");
     }
 
+    syncAtlasHighlights();
+
     if (emitCallback) {
       options.onSelectionChange?.(getSelectedObject());
+      options.onSelectionDetailsChange?.(buildObjectDetails(state.selectedObjectId));
       options.onViewChange?.({ ...state });
+    }
+  }
+
+  function applyHover(objectId: string | null, emitCallback = true): void {
+    if (hoveredObjectId === objectId && emitCallback) {
+      return;
+    }
+
+    hoveredObjectId =
+      objectId && scene.objects.some((object) => object.objectId === objectId && !object.hidden)
+        ? objectId
+        : null;
+
+    syncAtlasHighlights();
+
+    if (emitCallback) {
+      options.onHoverChange?.(getObjectById(hoveredObjectId));
+      options.onHoverDetailsChange?.(buildObjectDetails(hoveredObjectId));
     }
   }
 
@@ -531,6 +554,100 @@ export function createInteractiveViewer(
 
   function getObjectById(objectId: string | null): RenderSceneObject | null {
     return scene.objects.find((object) => object.objectId === objectId && !object.hidden) ?? null;
+  }
+
+  function buildObjectDetails(objectId: string | null): ViewerObjectDetails | null {
+    const renderObject = getObjectById(objectId);
+    if (!renderObject) {
+      return null;
+    }
+
+    return {
+      objectId: renderObject.objectId,
+      object: renderObject.object,
+      renderObject,
+      label: scene.labels.find((label) => label.objectId === renderObject.objectId && !label.hidden) ?? null,
+      group: scene.groups.find((group) => group.renderId === renderObject.groupId) ?? null,
+      orbit: scene.orbitVisuals.find((orbit) => orbit.objectId === renderObject.objectId && !orbit.hidden) ?? null,
+      relatedOrbits: scene.orbitVisuals.filter(
+        (orbit) =>
+          !orbit.hidden &&
+          (orbit.objectId === renderObject.objectId ||
+            renderObject.ancestorIds.includes(orbit.objectId) ||
+            renderObject.childIds.includes(orbit.objectId)),
+      ),
+      parent: getObjectById(renderObject.parentId),
+      children: renderObject.childIds.map((childId) => getObjectById(childId)).filter(Boolean) as RenderSceneObject[],
+      ancestors: renderObject.ancestorIds
+        .map((ancestorId) => getObjectById(ancestorId))
+        .filter(Boolean) as RenderSceneObject[],
+    };
+  }
+
+  function syncAtlasHighlights(): void {
+    for (const element of container.querySelectorAll<HTMLElement>(
+      ".wo-chain-selected, .wo-chain-hover, .wo-ancestor-selected, .wo-ancestor-hover, .wo-orbit-related-selected, .wo-orbit-related-hover",
+    )) {
+      element.classList.remove(
+        "wo-chain-selected",
+        "wo-chain-hover",
+        "wo-ancestor-selected",
+        "wo-ancestor-hover",
+        "wo-orbit-related-selected",
+        "wo-orbit-related-hover",
+      );
+    }
+
+    applyChainClasses(state.selectedObjectId, {
+      objectClass: "wo-chain-selected",
+      ancestorClass: "wo-ancestor-selected",
+      orbitClass: "wo-orbit-related-selected",
+    });
+    applyChainClasses(hoveredObjectId, {
+      objectClass: "wo-chain-hover",
+      ancestorClass: "wo-ancestor-hover",
+      orbitClass: "wo-orbit-related-hover",
+    });
+  }
+
+  function applyChainClasses(
+    objectId: string | null,
+    classes: { objectClass: string; ancestorClass: string; orbitClass: string },
+  ): void {
+    const details = buildObjectDetails(objectId);
+    if (!details) {
+      return;
+    }
+
+    const chainIds = new Set([
+      details.objectId,
+      ...details.renderObject.childIds,
+      ...details.renderObject.ancestorIds,
+    ]);
+
+    for (const id of chainIds) {
+      for (const element of container.querySelectorAll<HTMLElement>(
+        `[data-object-id="${cssEscape(id)}"]`,
+      )) {
+        element.classList.add(classes.objectClass);
+      }
+    }
+
+    for (const ancestor of details.ancestors) {
+      for (const element of container.querySelectorAll<HTMLElement>(
+        `[data-object-id="${cssEscape(ancestor.objectId)}"]`,
+      )) {
+        element.classList.add(classes.ancestorClass);
+      }
+    }
+
+    for (const orbit of details.relatedOrbits) {
+      for (const element of container.querySelectorAll<HTMLElement>(
+        `[data-orbit-object-id="${cssEscape(orbit.objectId)}"]`,
+      )) {
+        element.classList.add(classes.orbitClass);
+      }
+    }
   }
 
   function getScenePointFromClient(clientX: number, clientY: number): CoordinatePoint {
@@ -633,6 +750,7 @@ function hasSceneAffectingRenderOptions(options: Partial<ViewerRenderOptions>): 
     options.width !== undefined ||
     options.height !== undefined ||
     options.padding !== undefined ||
+    options.preset !== undefined ||
     options.projection !== undefined ||
     options.scaleModel !== undefined
   );

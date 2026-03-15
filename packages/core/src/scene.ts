@@ -4,6 +4,10 @@ import type {
   NormalizedValue,
   RenderBounds,
   RenderLeaderLine,
+  RenderPresetName,
+  RenderSceneGroup,
+  RenderSceneLabel,
+  RenderSceneLayer,
   RenderOrbitVisual,
   RenderScaleModel,
   RenderScene,
@@ -44,6 +48,7 @@ interface OrbitVisualDraft {
 
 interface LeaderLineDraft {
   object: WorldOrbitObject;
+  groupId: string | null;
   x1: number;
   y1: number;
   x2: number;
@@ -70,6 +75,21 @@ interface OrbitMetricContext {
   pixelSpread: number;
 }
 
+interface SceneRelationshipContext {
+  parentIds: Map<string, string | null>;
+  childIds: Map<string, string[]>;
+  ancestorIds: Map<string, string[]>;
+  groupIds: Map<string, string>;
+  groupRoots: Map<string, string | null>;
+}
+
+interface SceneFrame {
+  width: number;
+  height: number;
+  padding: number;
+  preset: RenderPresetName | null;
+}
+
 const AU_IN_KM = 149_597_870.7;
 const EARTH_RADIUS_IN_KM = 6_371;
 const SOLAR_RADIUS_IN_KM = 695_700;
@@ -81,9 +101,10 @@ export function renderDocumentToScene(
   document: WorldOrbitDocument,
   options: SceneRenderOptions = {},
 ): RenderScene {
-  const width = options.width ?? 1200;
-  const height = options.height ?? 780;
-  const padding = options.padding ?? 72;
+  const frame = resolveSceneFrame(options);
+  const width = frame.width;
+  const height = frame.height;
+  const padding = frame.padding;
   const layoutPreset = resolveLayoutPreset(document);
   const projection = resolveProjection(document, options.projection);
   const scaleModel = resolveScaleModel(layoutPreset, options.scaleModel);
@@ -91,6 +112,7 @@ export function renderDocumentToScene(
   const systemId = document.system?.id ?? null;
 
   const objectMap = new Map(document.objects.map((object) => [object.id, object]));
+  const relationships = buildSceneRelationships(document.objects, objectMap);
   const positions = new Map<string, PositionedObject>();
   const orbitDrafts: OrbitVisualDraft[] = [];
   const leaderDrafts: LeaderLineDraft[] = [];
@@ -187,6 +209,7 @@ export function renderDocumentToScene(
 
     leaderDrafts.push({
       object,
+      groupId: relationships.groupIds.get(object.id) ?? null,
       x1: x - 60,
       y1: y,
       x2: x - 18,
@@ -227,6 +250,7 @@ export function renderDocumentToScene(
     if (resolved.anchorX !== undefined && resolved.anchorY !== undefined) {
       leaderDrafts.push({
         object,
+        groupId: relationships.groupIds.get(object.id) ?? null,
         x1: resolved.anchorX,
         y1: resolved.anchorY,
         x2: resolved.x,
@@ -239,23 +263,29 @@ export function renderDocumentToScene(
   });
 
   const objects = [...positions.values()].map((position) =>
-    createSceneObject(position, scaleModel),
+    createSceneObject(position, scaleModel, relationships),
   );
-  const orbitVisuals = orbitDrafts.map((draft) => createOrbitVisual(draft));
+  const orbitVisuals = orbitDrafts.map((draft) =>
+    createOrbitVisual(draft, relationships.groupIds.get(draft.object.id) ?? null),
+  );
   const leaders = leaderDrafts.map((draft) => createLeaderLine(draft));
+  const labels = createSceneLabels(objects, height, scaleModel.labelMultiplier);
+  const layers = createSceneLayers(orbitVisuals, leaders, objects, labels);
+  const groups = createSceneGroups(objects, orbitVisuals, leaders, labels, relationships);
   const contentBounds = calculateContentBounds(
     width,
     height,
     objects,
     orbitVisuals,
     leaders,
-    scaleModel.labelMultiplier,
+    labels,
   );
 
   return {
     width,
     height,
     padding,
+    renderPreset: frame.preset,
     projection,
     scaleModel,
     title:
@@ -271,11 +301,15 @@ export function renderDocumentToScene(
       view: projection,
       scale: String(document.system?.properties.scale ?? layoutPreset),
       units: String(document.system?.properties.units ?? "mixed"),
+      preset: frame.preset ?? "custom",
     },
     contentBounds,
+    layers,
+    groups,
     objects,
     orbitVisuals,
     leaders,
+    labels,
   };
 }
 
@@ -308,6 +342,32 @@ function resolveLayoutPreset(document: WorldOrbitDocument): SceneLayoutPreset {
       return "presentation";
     default:
       return "balanced";
+  }
+}
+
+function resolveSceneFrame(options: SceneRenderOptions): SceneFrame {
+  const defaults = scenePresetDefaults(options.preset);
+  return {
+    width: options.width ?? defaults.width,
+    height: options.height ?? defaults.height,
+    padding: options.padding ?? defaults.padding,
+    preset: options.preset ?? null,
+  };
+}
+
+function scenePresetDefaults(
+  preset: RenderPresetName | undefined,
+): { width: number; height: number; padding: number } {
+  switch (preset) {
+    case "presentation":
+      return { width: 1440, height: 900, padding: 88 };
+    case "atlas-card":
+      return { width: 960, height: 560, padding: 56 };
+    case "markdown":
+      return { width: 920, height: 540, padding: 48 };
+    case "diagram":
+    default:
+      return { width: 1200, height: 780, padding: 72 };
   }
 }
 
@@ -384,12 +444,17 @@ function layoutPresetSpacing(layoutPreset: SceneLayoutPreset): number {
 function createSceneObject(
   position: PositionedObject,
   scaleModel: RenderScaleModel,
+  relationships: SceneRelationshipContext,
 ): RenderSceneObject {
   const { object, x, y, radius, sortKey, anchorX, anchorY } = position;
   return {
     renderId: createRenderId(object.id),
     objectId: object.id,
     object,
+    parentId: relationships.parentIds.get(object.id) ?? null,
+    ancestorIds: relationships.ancestorIds.get(object.id) ?? [],
+    childIds: relationships.childIds.get(object.id) ?? [],
+    groupId: relationships.groupIds.get(object.id) ?? null,
     x,
     y,
     radius,
@@ -409,12 +474,16 @@ function createSceneObject(
   };
 }
 
-function createOrbitVisual(draft: OrbitVisualDraft): RenderOrbitVisual {
+function createOrbitVisual(
+  draft: OrbitVisualDraft,
+  groupId: string | null,
+): RenderOrbitVisual {
   return {
     renderId: `${createRenderId(draft.object.id)}-orbit`,
     objectId: draft.object.id,
     object: draft.object,
     parentId: draft.parentId,
+    groupId,
     kind: draft.kind,
     cx: draft.cx,
     cy: draft.cy,
@@ -435,6 +504,7 @@ function createLeaderLine(draft: LeaderLineDraft): RenderLeaderLine {
     renderId: `${createRenderId(draft.object.id)}-leader-${draft.mode}`,
     objectId: draft.object.id,
     object: draft.object,
+    groupId: draft.groupId,
     x1: draft.x1,
     y1: draft.y1,
     x2: draft.x2,
@@ -444,13 +514,161 @@ function createLeaderLine(draft: LeaderLineDraft): RenderLeaderLine {
   };
 }
 
+function createSceneLabels(
+  objects: RenderSceneObject[],
+  sceneHeight: number,
+  labelMultiplier: number,
+): RenderSceneLabel[] {
+  const labels: RenderSceneLabel[] = [];
+  const occupied: Array<{ left: number; right: number; top: number; bottom: number }> = [];
+  const visibleObjects = [...objects]
+    .filter((object) => !object.hidden)
+    .sort((left, right) => left.sortKey - right.sortKey);
+
+  for (const object of visibleObjects) {
+    const direction = object.y > sceneHeight * 0.62 ? -1 : 1;
+    const labelHalfWidth = estimateLabelHalfWidth(object, labelMultiplier);
+    let labelY = object.y + direction * (object.radius + 18 * labelMultiplier);
+    let secondaryY = labelY + direction * (16 * labelMultiplier);
+    let bounds = createLabelRect(object.x, labelY, secondaryY, labelHalfWidth, direction);
+    let attempts = 0;
+
+    while (occupied.some((entry) => rectsOverlap(entry, bounds)) && attempts < 10) {
+      labelY += direction * 14 * labelMultiplier;
+      secondaryY += direction * 14 * labelMultiplier;
+      bounds = createLabelRect(object.x, labelY, secondaryY, labelHalfWidth, direction);
+      attempts += 1;
+    }
+
+    occupied.push(bounds);
+    labels.push({
+      renderId: `${object.renderId}-label`,
+      objectId: object.objectId,
+      object: object.object,
+      groupId: object.groupId,
+      label: object.label,
+      secondaryLabel: object.secondaryLabel,
+      x: object.x,
+      y: labelY,
+      secondaryY,
+      textAnchor: "middle",
+      direction: direction < 0 ? "above" : "below",
+      hidden: object.hidden,
+    });
+  }
+
+  return labels;
+}
+
+function createSceneLayers(
+  orbitVisuals: RenderOrbitVisual[],
+  leaders: RenderLeaderLine[],
+  objects: RenderSceneObject[],
+  labels: RenderSceneLabel[],
+): RenderSceneLayer[] {
+  const backOrbitIds = orbitVisuals
+    .filter((visual) => !visual.hidden && Boolean(visual.backArcPath))
+    .map((visual) => visual.renderId);
+  const frontOrbitIds = orbitVisuals
+    .filter((visual) => !visual.hidden)
+    .map((visual) => visual.renderId);
+
+  return [
+    { id: "background", renderIds: ["wo-bg", "wo-bg-glow", "wo-grid"] },
+    {
+      id: "guides",
+      renderIds: leaders.filter((leader) => !leader.hidden).map((leader) => leader.renderId),
+    },
+    { id: "orbits-back", renderIds: backOrbitIds },
+    { id: "orbits-front", renderIds: frontOrbitIds },
+    {
+      id: "objects",
+      renderIds: objects.filter((object) => !object.hidden).map((object) => object.renderId),
+    },
+    {
+      id: "labels",
+      renderIds: labels.filter((label) => !label.hidden).map((label) => label.renderId),
+    },
+    { id: "metadata", renderIds: ["wo-title", "wo-subtitle", "wo-meta"] },
+  ];
+}
+
+function createSceneGroups(
+  objects: RenderSceneObject[],
+  orbitVisuals: RenderOrbitVisual[],
+  leaders: RenderLeaderLine[],
+  labels: RenderSceneLabel[],
+  relationships: SceneRelationshipContext,
+): RenderSceneGroup[] {
+  const groups = new Map<string, RenderSceneGroup>();
+
+  const ensureGroup = (groupId: string | null): RenderSceneGroup | null => {
+    if (!groupId) {
+      return null;
+    }
+
+    const existing = groups.get(groupId);
+    if (existing) {
+      return existing;
+    }
+
+    const rootObjectId = relationships.groupRoots.get(groupId) ?? null;
+    const created: RenderSceneGroup = {
+      renderId: groupId,
+      rootObjectId,
+      label: rootObjectId ?? groupId,
+      objectIds: [],
+      orbitIds: [],
+      labelIds: [],
+      leaderIds: [],
+      contentBounds: createBounds(0, 0, 0, 0),
+    };
+    groups.set(groupId, created);
+    return created;
+  };
+
+  for (const object of objects) {
+    const group = ensureGroup(object.groupId);
+    if (group && !object.hidden) {
+      group.objectIds.push(object.objectId);
+    }
+  }
+
+  for (const orbit of orbitVisuals) {
+    const group = ensureGroup(orbit.groupId);
+    if (group && !orbit.hidden) {
+      group.orbitIds.push(orbit.objectId);
+    }
+  }
+
+  for (const leader of leaders) {
+    const group = ensureGroup(leader.groupId);
+    if (group && !leader.hidden) {
+      group.leaderIds.push(leader.objectId);
+    }
+  }
+
+  for (const label of labels) {
+    const group = ensureGroup(label.groupId);
+    if (group && !label.hidden) {
+      group.labelIds.push(label.objectId);
+    }
+  }
+
+  for (const group of groups.values()) {
+    group.contentBounds = calculateGroupBounds(group, objects, orbitVisuals, leaders, labels);
+  }
+
+  return [...groups.values()].sort((left, right) => left.label.localeCompare(right.label));
+}
+
 function calculateContentBounds(
   width: number,
   height: number,
   objects: RenderSceneObject[],
   orbitVisuals: RenderOrbitVisual[],
   leaders: RenderLeaderLine[],
-  labelMultiplier: number,
+  labels: RenderSceneLabel[],
 ): RenderBounds {
   let minX = Number.POSITIVE_INFINITY;
   let minY = Number.POSITIVE_INFINITY;
@@ -477,7 +695,12 @@ function calculateContentBounds(
 
   for (const object of objects) {
     if (object.hidden) continue;
-    includeObjectBounds(object, height, labelMultiplier, include);
+    includeObjectBounds(object, include);
+  }
+
+  for (const label of labels) {
+    if (label.hidden) continue;
+    includeLabelBounds(label, include);
   }
 
   if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
@@ -543,28 +766,33 @@ function createBounds(
 
 function includeObjectBounds(
   object: RenderSceneObject,
-  sceneHeight: number,
-  labelMultiplier: number,
   include: (x: number, y: number) => void,
 ): void {
-  const labelDirection = object.y > sceneHeight * 0.62 ? -1 : 1;
-  const labelY = object.y + labelDirection * (object.radius + 18 * labelMultiplier);
-  const secondaryY = labelY + labelDirection * (16 * labelMultiplier);
-  const labelHalfWidth = estimateLabelHalfWidth(object, labelMultiplier);
-
   include(
-    object.x - Math.max(object.visualRadius + 24, labelHalfWidth),
+    object.x - object.visualRadius - 24,
     object.y - object.visualRadius - 16,
   );
   include(
-    object.x + Math.max(object.visualRadius + 24, labelHalfWidth),
+    object.x + object.visualRadius + 24,
     object.y + object.visualRadius + 36,
   );
+}
 
-  include(object.x - labelHalfWidth, labelY - 18);
-  include(object.x + labelHalfWidth, labelY + 8);
-  include(object.x - labelHalfWidth, secondaryY - 14);
-  include(object.x + labelHalfWidth, secondaryY + 8);
+function includeLabelBounds(
+  label: RenderSceneLabel,
+  include: (x: number, y: number) => void,
+): void {
+  const labelScale = 1;
+  const labelHalfWidth = estimateLabelHalfWidthFromText(
+    label.label,
+    label.secondaryLabel,
+    labelScale,
+  );
+
+  include(label.x - labelHalfWidth, label.y - 18);
+  include(label.x + labelHalfWidth, label.y + 8);
+  include(label.x - labelHalfWidth, label.secondaryY - 14);
+  include(label.x + labelHalfWidth, label.secondaryY + 8);
 }
 
 function placeObject(
@@ -684,6 +912,7 @@ function placeOrbitingChildren(
 
     leaderDrafts.push({
       object: child,
+      groupId: context.objectMap.has(child.id) ? createGroupId(resolveGroupRootObjectId(child, context.objectMap)) : null,
       x1: anchorX,
       y1: anchorY,
       x2: x,
@@ -1051,6 +1280,218 @@ function resolveLagrangePosition(
   }
 }
 
+function buildSceneRelationships(
+  objects: WorldOrbitObject[],
+  objectMap: Map<string, WorldOrbitObject>,
+): SceneRelationshipContext {
+  const parentIds = new Map<string, string | null>();
+  const childIds = new Map<string, string[]>();
+
+  for (const object of objects) {
+    const parentId = resolveParentId(object, objectMap);
+    parentIds.set(object.id, parentId);
+    if (parentId) {
+      const existing = childIds.get(parentId);
+      if (existing) {
+        existing.push(object.id);
+      } else {
+        childIds.set(parentId, [object.id]);
+      }
+    }
+    if (!childIds.has(object.id)) {
+      childIds.set(object.id, []);
+    }
+  }
+
+  const ancestorIds = new Map<string, string[]>();
+  const groupIds = new Map<string, string>();
+  const groupRoots = new Map<string, string | null>();
+
+  const buildAncestors = (objectId: string): string[] => {
+    const cached = ancestorIds.get(objectId);
+    if (cached) {
+      return cached;
+    }
+
+    const seen = new Set<string>();
+    const results: string[] = [];
+    let cursor = parentIds.get(objectId) ?? null;
+
+    while (cursor && !seen.has(cursor)) {
+      results.push(cursor);
+      seen.add(cursor);
+      cursor = parentIds.get(cursor) ?? null;
+    }
+
+    ancestorIds.set(objectId, results);
+    return results;
+  };
+
+  const resolveGroupRootObjectId = (objectId: string): string => {
+    const cached = groupRoots.get(groupIds.get(objectId) ?? "");
+    if (cached) {
+      return cached;
+    }
+
+    const parentId = parentIds.get(objectId) ?? null;
+    const object = objectMap.get(objectId);
+    let rootObjectId = objectId;
+
+    if (object?.placement && object.placement.mode !== "free" && parentId) {
+      rootObjectId = resolveGroupRootObjectId(parentId);
+    }
+
+    return rootObjectId;
+  };
+
+  for (const object of objects) {
+    buildAncestors(object.id);
+    const rootObjectId = resolveGroupRootObjectId(object.id);
+    const groupId = createGroupId(rootObjectId);
+    groupIds.set(object.id, groupId);
+    groupRoots.set(groupId, rootObjectId);
+  }
+
+  return {
+    parentIds,
+    childIds,
+    ancestorIds,
+    groupIds,
+    groupRoots,
+  };
+}
+
+function resolveParentId(
+  object: WorldOrbitObject,
+  objectMap: Map<string, WorldOrbitObject>,
+): string | null {
+  const placement = object.placement;
+  if (!placement) {
+    return null;
+  }
+
+  switch (placement.mode) {
+    case "orbit":
+    case "surface":
+      return objectMap.has(placement.target) ? placement.target : null;
+    case "at":
+      switch (placement.reference.kind) {
+        case "anchor":
+          return objectMap.has(placement.reference.objectId) ? placement.reference.objectId : null;
+        case "named":
+          return objectMap.has(placement.reference.name) ? placement.reference.name : null;
+        case "lagrange":
+          if (placement.reference.secondary && objectMap.has(placement.reference.secondary)) {
+            return placement.reference.secondary;
+          }
+          return objectMap.has(placement.reference.primary) ? placement.reference.primary : null;
+      }
+    case "free":
+      return null;
+  }
+}
+
+function calculateGroupBounds(
+  group: RenderSceneGroup,
+  objects: RenderSceneObject[],
+  orbitVisuals: RenderOrbitVisual[],
+  leaders: RenderLeaderLine[],
+  labels: RenderSceneLabel[],
+): RenderBounds {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+
+  const include = (x: number, y: number): void => {
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
+  };
+
+  for (const object of objects) {
+    if (!object.hidden && group.objectIds.includes(object.objectId)) {
+      includeObjectBounds(object, include);
+    }
+  }
+
+  for (const orbit of orbitVisuals) {
+    if (!orbit.hidden && group.orbitIds.includes(orbit.objectId)) {
+      includeOrbitBounds(orbit, include);
+    }
+  }
+
+  for (const leader of leaders) {
+    if (!leader.hidden && group.leaderIds.includes(leader.objectId)) {
+      include(leader.x1, leader.y1);
+      include(leader.x2, leader.y2);
+    }
+  }
+
+  for (const label of labels) {
+    if (!label.hidden && group.labelIds.includes(label.objectId)) {
+      includeLabelBounds(label, include);
+    }
+  }
+
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
+    return createBounds(0, 0, 0, 0);
+  }
+
+  return createBounds(minX, minY, maxX, maxY);
+}
+
+function resolveGroupRootObjectId(
+  object: WorldOrbitObject,
+  objectMap: Map<string, WorldOrbitObject>,
+): string {
+  let current = object;
+  const seen = new Set<string>();
+
+  while (current.placement && current.placement.mode !== "free" && !seen.has(current.id)) {
+    seen.add(current.id);
+    const parentId = resolveParentId(current, objectMap);
+    if (!parentId) {
+      break;
+    }
+    const parent = objectMap.get(parentId);
+    if (!parent) {
+      break;
+    }
+    current = parent;
+  }
+
+  return current.id;
+}
+
+function createLabelRect(
+  x: number,
+  labelY: number,
+  secondaryY: number,
+  labelHalfWidth: number,
+  direction: number,
+): { left: number; right: number; top: number; bottom: number } {
+  return {
+    left: x - labelHalfWidth,
+    right: x + labelHalfWidth,
+    top: Math.min(labelY, secondaryY) - (direction < 0 ? 18 : 12),
+    bottom: Math.max(labelY, secondaryY) + (direction < 0 ? 8 : 12),
+  };
+}
+
+function rectsOverlap(
+  left: { left: number; right: number; top: number; bottom: number },
+  right: { left: number; right: number; top: number; bottom: number },
+): boolean {
+  return !(
+    left.right < right.left ||
+    right.right < left.left ||
+    left.bottom < right.top ||
+    right.bottom < left.top
+  );
+}
+
 function deriveParentAnchor(
   objectId: string,
   positions: Map<string, PositionedObject>,
@@ -1297,6 +1738,10 @@ function createRenderId(objectId: string): string {
   return `wo-${normalized}`;
 }
 
+function createGroupId(objectId: string): string {
+  return `${createRenderId(objectId)}-group`;
+}
+
 function customColorFor(value: NormalizedValue | undefined): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
 }
@@ -1305,6 +1750,16 @@ function estimateLabelHalfWidth(object: RenderSceneObject, labelMultiplier: numb
   const primaryWidth = object.label.length * 4.6 * labelMultiplier + 18;
   const secondaryWidth = object.secondaryLabel.length * 3.9 * labelMultiplier + 18;
   return Math.max(primaryWidth, secondaryWidth, object.visualRadius + 18);
+}
+
+function estimateLabelHalfWidthFromText(
+  label: string,
+  secondaryLabel: string,
+  labelMultiplier: number,
+): number {
+  const primaryWidth = label.length * 4.6 * labelMultiplier + 18;
+  const secondaryWidth = secondaryLabel.length * 3.9 * labelMultiplier + 18;
+  return Math.max(primaryWidth, secondaryWidth, 24);
 }
 
 function capitalizeLabel(value: string): string {

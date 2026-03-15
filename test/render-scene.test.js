@@ -93,11 +93,17 @@ test("scene creation exposes objects, visuals, visible-content bounds, and metad
   assert.equal(scene.layoutPreset, "presentation");
   assert.equal(scene.width, 960);
   assert.equal(scene.scaleModel.orbitDistanceMultiplier, 1.2);
+  assert.equal(scene.renderPreset, null);
   assert.ok(scene.contentBounds.width > 0);
   assert.ok(scene.contentBounds.height > 0);
+  assert.ok(scene.layers.some((layer) => layer.id === "labels"));
+  assert.ok(scene.groups.length >= 1);
+  assert.ok(scene.labels.length >= 1);
   assert.ok(planet);
   assert.ok(planet.x > 0);
   assert.ok(planet.y > 0);
+  assert.equal(planet.parentId, "Iyath");
+  assert.ok(Array.isArray(planet.ancestorIds));
   assert.equal(planet.imageHref, "assets/naar-map.png");
   assert.equal(belt?.band, true);
   assert.ok(outerGate);
@@ -121,6 +127,7 @@ test("isometric scenes expose ellipse geometry, scale model overrides, and proje
   const scene = renderDocumentToScene(parse(isoSource).document, {
     width: 960,
     height: 640,
+    preset: "atlas-card",
     scaleModel: {
       bodyRadiusMultiplier: 1.25,
       labelMultiplier: 1.1,
@@ -134,6 +141,7 @@ test("isometric scenes expose ellipse geometry, scale model overrides, and proje
 
   assert.equal(scene.projection, "isometric");
   assert.equal(scene.viewMode, "isometric");
+  assert.equal(scene.renderPreset, "atlas-card");
   assert.equal(scene.scaleModel.bodyRadiusMultiplier, 1.25);
   assert.equal(scene.scaleModel.labelMultiplier, 1.1);
   assert.equal(planetOrbit?.kind, "ellipse");
@@ -143,6 +151,8 @@ test("isometric scenes expose ellipse geometry, scale model overrides, and proje
   assert.ok((ringOrbit?.bandThickness ?? 0) >= 8);
   assert.ok(relay);
   assert.ok(skyhook);
+  assert.ok(scene.groups.some((group) => group.objectIds.includes("Naar")));
+  assert.ok(scene.labels.some((label) => label.objectId === "Naar"));
 
   if (!relay || !skyhook) {
     assert.fail("Projected anchor placements should exist in the isometric scene");
@@ -186,7 +196,7 @@ structure HiddenFarGate kind gate free 8.4au
 
 test("scene svg keeps a dedicated transformable world layer, image clips, and configurable layers", () => {
   const result = parse(source);
-  const scene = renderDocumentToScene(result.document);
+  const scene = renderDocumentToScene(result.document, { preset: "markdown" });
   const svg = renderSceneToSvg(scene, {
     layers: {
       metadata: true,
@@ -201,6 +211,7 @@ test("scene svg keeps a dedicated transformable world layer, image clips, and co
   assert.match(svg, /clipPath id="wo-naar-clip"/);
   assert.doesNotMatch(svg, /data-object-id="HiddenGate"/);
   assert.match(svg, /Topdown view/);
+  assert.match(svg, /data-layer-id="labels"/);
 });
 
 test("isometric svg renders split orbit paths, atmosphere styling, and projected ring bands", () => {
@@ -209,9 +220,10 @@ test("isometric svg renders split orbit paths, atmosphere styling, and projected
 
   assert.match(svg, /wo-orbit-back/);
   assert.match(svg, /wo-orbit-front/);
-  assert.match(svg, /<path class="wo-orbit wo-orbit-front"/);
+  assert.match(svg, /<path class="wo-orbit wo-orbit-node wo-orbit-front"/);
   assert.match(svg, /rgba\(122, 194, 255, 0\.75\)/);
   assert.match(svg, /data-object-id="Naar"/);
+  assert.match(svg, /data-group-id="wo-iyath-group"/);
 });
 
 test("scene svg clips textured comet, structure, and phenomenon objects", () => {

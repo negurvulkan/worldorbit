@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.6.0
+
+- added atlas-oriented scene metadata with explicit render layers, object groups, and prepared label positions
+- introduced named render presets across scene generation, SVG rendering, embeds, and Markdown blocks
+- extended the interactive viewer with object details hooks plus hover/selection chain highlighting
+- refreshed the demo and regression suite around presets, groups, labels, and atlas-style embeds
+
 ## v1.5.0
 
 - added projection-aware scene generation with `topdown` and `isometric` output modes

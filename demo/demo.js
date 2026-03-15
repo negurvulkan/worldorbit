@@ -101,6 +101,7 @@ const rotateRightButton = document.querySelector("#rotate-right");
 const fitButton = document.querySelector("#fit-view");
 const resetViewButton = document.querySelector("#reset-view");
 const themeSelect = document.querySelector("#theme");
+const presetSelect = document.querySelector("#preset");
 const projectionSelect = document.querySelector("#projection");
 const orbitScaleInput = document.querySelector("#orbit-scale");
 const bodyScaleInput = document.querySelector("#body-scale");
@@ -112,6 +113,7 @@ const labelScaleValue = document.querySelector("#label-scale-value");
 let viewer = null;
 let currentDocument = null;
 let currentSelection = null;
+let currentSelectionDetails = null;
 let currentScene = null;
 let currentRenderOptions = getRenderOptionsFromControls();
 let renderTimer = 0;
@@ -129,6 +131,7 @@ function render() {
     const result = parse(sourceField.value);
     currentDocument = result.document;
     currentSelection = null;
+    currentSelectionDetails = null;
 
     if (!viewer) {
       viewer = createInteractiveViewer(preview, {
@@ -138,6 +141,9 @@ function render() {
         onSelectionChange(selection) {
           currentSelection = selection;
           updateSummary();
+        },
+        onSelectionDetailsChange(details) {
+          currentSelectionDetails = details;
           updateModelPanel();
         },
         onViewChange() {
@@ -161,6 +167,7 @@ function render() {
   } catch (error) {
     currentDocument = null;
     currentSelection = null;
+    currentSelectionDetails = null;
     currentScene = null;
     preview.innerHTML = "";
     modelOutput.textContent = "";
@@ -200,6 +207,7 @@ function getRenderOptionsFromControls() {
   return {
     width: 1080,
     height: 720,
+    preset: presetSelect.value,
     projection: projectionSelect.value,
     scaleModel: {
       orbitDistanceMultiplier: orbitScale,
@@ -224,9 +232,10 @@ function updateSummary() {
   }
 
   const base = `${currentDocument.objects.length} Objekte - ${currentScene.projection} - ${currentScene.layoutPreset} layout`;
+  const preset = currentScene.renderPreset ?? "custom";
   summary.textContent = currentSelection
-    ? `${base} - Auswahl: ${currentSelection.objectId}`
-    : base;
+    ? `${base} - ${preset} - Auswahl: ${currentSelection.objectId}`
+    : `${base} - ${preset}`;
 }
 
 function updateModelPanel() {
@@ -235,24 +244,35 @@ function updateModelPanel() {
     return;
   }
 
-  const payload = currentSelection
+  const payload = currentSelectionDetails
     ? {
         selectedObject: {
-          id: currentSelection.objectId,
-          type: currentSelection.object.type,
-          renderFields: pickRenderFields(currentSelection.object.properties),
-          placement: pickRenderPlacement(currentSelection.object.placement),
-          info: currentSelection.object.info,
+          id: currentSelectionDetails.objectId,
+          type: currentSelectionDetails.object.type,
+          renderFields: pickRenderFields(currentSelectionDetails.object.properties),
+          placement: pickRenderPlacement(currentSelectionDetails.object.placement),
+          info: currentSelectionDetails.object.info,
+        },
+        atlasDetails: {
+          group: currentSelectionDetails.group,
+          parent: currentSelectionDetails.parent?.objectId ?? null,
+          children: currentSelectionDetails.children.map((child) => child.objectId),
+          ancestors: currentSelectionDetails.ancestors.map((ancestor) => ancestor.objectId),
+          relatedOrbits: currentSelectionDetails.relatedOrbits.map((orbit) => orbit.objectId),
+          label: currentSelectionDetails.label,
         },
         renderNode: {
           projection: currentScene.projection,
-          x: currentSelection.x,
-          y: currentSelection.y,
-          radius: currentSelection.radius,
-          sortKey: currentSelection.sortKey,
+          x: currentSelectionDetails.renderObject.x,
+          y: currentSelectionDetails.renderObject.y,
+          radius: currentSelectionDetails.renderObject.radius,
+          sortKey: currentSelectionDetails.renderObject.sortKey,
         },
         scene: {
+          preset: currentScene.renderPreset,
           layoutPreset: currentScene.layoutPreset,
+          groups: currentScene.groups,
+          layers: currentScene.layers,
           scaleModel: currentScene.scaleModel,
         },
         documentSummary: {
@@ -264,8 +284,11 @@ function updateModelPanel() {
     : {
         document: currentDocument,
         sceneDefaults: {
+          preset: currentScene.renderPreset,
           projection: currentScene.projection,
           layoutPreset: currentScene.layoutPreset,
+          groups: currentScene.groups,
+          layers: currentScene.layers,
           scaleModel: currentScene.scaleModel,
         },
       };
@@ -358,6 +381,7 @@ function updateEmbedPanel() {
     {
       theme: themeSelect.value,
       className: "worldorbit-embed demo-sample",
+      preset: currentRenderOptions.preset,
     },
   );
 }
@@ -408,6 +432,7 @@ rotateRightButton.addEventListener("click", () => viewer?.rotateBy(15));
 fitButton.addEventListener("click", () => viewer?.fitToSystem());
 resetViewButton.addEventListener("click", () => viewer?.resetView());
 themeSelect.addEventListener("change", applyRenderControls);
+presetSelect.addEventListener("change", applyRenderControls);
 projectionSelect.addEventListener("change", applyRenderControls);
 orbitScaleInput.addEventListener("input", applyRenderControls);
 bodyScaleInput.addEventListener("input", applyRenderControls);

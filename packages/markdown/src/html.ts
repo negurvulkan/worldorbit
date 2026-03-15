@@ -28,6 +28,7 @@ export function renderWorldOrbitBlock(
         theme: options.theme,
         layers: options.layers,
         subtitle: options.subtitle,
+        preset: options.preset,
       });
     }
 

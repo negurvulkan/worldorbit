@@ -27,45 +27,43 @@ interface ObjectPalette {
   tail?: string;
 }
 
-interface RenderObjectMarkup {
-  body: string;
-  label: string;
-}
-
 export const WORLD_LAYER_ID = "worldorbit-camera-root";
 
 export function renderSceneToSvg(scene: RenderScene, options: SvgRenderOptions = {}): string {
   const theme = resolveTheme(options.theme);
-  const layers = resolveLayers(options.layers);
+  const presetDefaults = resolveRenderPreset(options.preset ?? scene.renderPreset ?? undefined);
+  const layers = resolveLayers({
+    ...presetDefaults.layers,
+    ...options.layers,
+  });
   const subtitle = options.subtitle ?? scene.subtitle;
   const visibleObjects = scene.objects
     .filter((object) => !object.hidden)
     .filter((object) => layers.structures || !isStructureLike(object.object))
     .sort((left, right) => left.sortKey - right.sortKey);
+  const visibleLabels = scene.labels
+    .filter((label) => !label.hidden)
+    .filter((label) => layers.structures || !isStructureLike(label.object));
   const imageDefinitions = buildImageDefinitions(visibleObjects);
-  const labelPlacements = computeLabelPlacements(scene, visibleObjects);
   const orbitMarkup = layers.orbits ? renderOrbitLayer(scene) : { back: "", front: "" };
   const leaderMarkup = layers.guides
     ? scene.leaders
         .filter((leader) => !leader.hidden)
+        .filter((leader) => layers.structures || !isStructureLike(leader.object))
         .map(
           (leader) =>
-            `<line class="wo-leader wo-leader-${leader.mode}" x1="${leader.x1}" y1="${leader.y1}" x2="${leader.x2}" y2="${leader.y2}" data-render-id="${escapeXml(leader.renderId)}" />`,
+            `<line class="wo-leader wo-leader-${leader.mode}" x1="${leader.x1}" y1="${leader.y1}" x2="${leader.x2}" y2="${leader.y2}" data-render-id="${escapeXml(leader.renderId)}" data-group-id="${escapeAttribute(leader.groupId ?? "")}" />`,
         )
         .join("")
     : "";
-  const renderedObjects = visibleObjects.map((object) =>
-    renderSceneObject(
-      scene,
-      object,
-      labelPlacements.get(object.objectId) ?? defaultLabelPlacement(scene, object),
-      options.selectedObjectId ?? null,
-      layers.labels,
-      theme,
-    ),
-  );
-  const objectMarkup = renderedObjects.map((entry) => entry.body).join("");
-  const labelMarkup = layers.labels ? renderedObjects.map((entry) => entry.label).join("") : "";
+  const objectMarkup = visibleObjects
+    .map((object) => renderSceneObject(object, options.selectedObjectId ?? null, theme))
+    .join("");
+  const labelMarkup = layers.labels
+    ? visibleLabels
+        .map((label) => renderSceneLabel(scene, label, options.selectedObjectId ?? null))
+        .join("")
+    : "";
 
   const metadataMarkup = layers.metadata
     ? `<text class="wo-title" x="56" y="64">${escapeXml(scene.title)}</text>
@@ -118,6 +116,16 @@ export function renderSceneToSvg(scene: RenderScene, options: SvgRenderOptions =
     .wo-object-selected .wo-selection-ring { stroke: ${theme.selected}; }
     .wo-object-label-selected .wo-label { fill: ${theme.accent}; }
     .wo-object-label-selected .wo-label-secondary { fill: ${theme.selected}; }
+    .wo-chain-selected .wo-selection-ring,
+    .wo-chain-hover .wo-selection-ring { display: block; }
+    .wo-ancestor-selected .wo-selection-ring,
+    .wo-ancestor-hover .wo-selection-ring { display: block; opacity: 0.66; }
+    .wo-chain-selected .wo-label,
+    .wo-chain-hover .wo-label { fill: ${theme.accent}; }
+    .wo-ancestor-selected .wo-label,
+    .wo-ancestor-hover .wo-label { fill: ${theme.ink}; opacity: 0.82; }
+    .wo-orbit-related-selected,
+    .wo-orbit-related-hover { stroke: ${theme.accentStrong}; opacity: 1; }
     .wo-selection-ring { display: none; fill: none; stroke-width: 2; stroke-dasharray: 6 5; }
     .wo-object-image { pointer-events: none; }
   </style>
@@ -126,11 +134,11 @@ export function renderSceneToSvg(scene: RenderScene, options: SvgRenderOptions =
   <g data-worldorbit-world="true">
     <g data-worldorbit-camera-root="${WORLD_LAYER_ID}" id="${WORLD_LAYER_ID}">
       <g data-worldorbit-world-content="true">
-        ${orbitMarkup.back}
-        ${leaderMarkup}
-        ${objectMarkup}
-        ${orbitMarkup.front}
-        ${labelMarkup}
+        ${layers.orbits ? `<g data-layer-id="orbits-back">${orbitMarkup.back}</g>` : ""}
+        ${layers.guides ? `<g data-layer-id="guides">${leaderMarkup}</g>` : ""}
+        <g data-layer-id="objects">${objectMarkup}</g>
+        ${layers.orbits ? `<g data-layer-id="orbits-front">${orbitMarkup.front}</g>` : ""}
+        ${layers.labels ? `<g data-layer-id="labels">${labelMarkup}</g>` : ""}
       </g>
     </g>
   </g>
@@ -157,17 +165,18 @@ function renderOrbitLayer(scene: RenderScene): { back: string; front: string } {
 
   for (const visual of scene.orbitVisuals.filter((entry) => !entry.hidden)) {
     const strokeWidth = visual.bandThickness ?? (visual.band ? 10 : 1.5);
-    const orbitClass = visual.band ? "wo-orbit wo-orbit-band" : "wo-orbit";
+    const orbitClass = visual.band ? "wo-orbit wo-orbit-band wo-orbit-node" : "wo-orbit wo-orbit-node";
+    const dataAttributes = `data-render-id="${escapeXml(visual.renderId)}" data-orbit-object-id="${escapeAttribute(visual.objectId)}" data-parent-id="${escapeAttribute(visual.parentId)}" data-group-id="${escapeAttribute(visual.groupId ?? "")}"`;
 
     if (visual.backArcPath || visual.frontArcPath) {
       if (visual.backArcPath) {
         backParts.push(
-          `<path class="${orbitClass} wo-orbit-back" d="${visual.backArcPath}" stroke-width="${strokeWidth}" data-render-id="${escapeXml(visual.renderId)}" />`,
+          `<path class="${orbitClass} wo-orbit-back" d="${visual.backArcPath}" stroke-width="${strokeWidth}" ${dataAttributes} />`,
         );
       }
       if (visual.frontArcPath) {
         frontParts.push(
-          `<path class="${orbitClass} wo-orbit-front" d="${visual.frontArcPath}" stroke-width="${strokeWidth}" data-render-id="${escapeXml(visual.renderId)}" />`,
+          `<path class="${orbitClass} wo-orbit-front" d="${visual.frontArcPath}" stroke-width="${strokeWidth}" ${dataAttributes} />`,
         );
       }
       continue;
@@ -177,13 +186,13 @@ function renderOrbitLayer(scene: RenderScene): { back: string; front: string } {
       const rx = visual.rx ?? visual.radius ?? 0;
       const ry = visual.ry ?? visual.radius ?? 0;
       frontParts.push(
-        `<ellipse class="${orbitClass} wo-orbit-front" cx="${visual.cx}" cy="${visual.cy}" rx="${rx}" ry="${ry}" transform="rotate(${visual.rotationDeg} ${visual.cx} ${visual.cy})" stroke-width="${strokeWidth}" data-render-id="${escapeXml(visual.renderId)}" />`,
+        `<ellipse class="${orbitClass} wo-orbit-front" cx="${visual.cx}" cy="${visual.cy}" rx="${rx}" ry="${ry}" transform="rotate(${visual.rotationDeg} ${visual.cx} ${visual.cy})" stroke-width="${strokeWidth}" ${dataAttributes} />`,
       );
       continue;
     }
 
     frontParts.push(
-      `<circle class="${orbitClass} wo-orbit-front" cx="${visual.cx}" cy="${visual.cy}" r="${visual.radius ?? 0}" stroke-width="${strokeWidth}" data-render-id="${escapeXml(visual.renderId)}" />`,
+      `<circle class="${orbitClass} wo-orbit-front" cx="${visual.cx}" cy="${visual.cy}" r="${visual.radius ?? 0}" stroke-width="${strokeWidth}" ${dataAttributes} />`,
     );
   }
 
@@ -201,13 +210,10 @@ function buildImageDefinitions(objects: RenderSceneObject[]): string {
 }
 
 function renderSceneObject(
-  scene: RenderScene,
   sceneObject: RenderSceneObject,
-  labelPlacement: LabelPlacement,
   selectedObjectId: string | null,
-  showLabels: boolean,
   theme: ReturnType<typeof resolveTheme>,
-): RenderObjectMarkup {
+): string {
   const { object, x, y, radius, visualRadius } = sceneObject;
   const selectionClass = selectedObjectId === sceneObject.objectId ? " wo-object-selected" : "";
   const palette = resolveObjectPalette(sceneObject, theme);
@@ -215,23 +221,26 @@ function renderSceneObject(
   const outlineMarkup = imageMarkup
     ? renderObjectBody(object, x, y, radius, palette, { outlineOnly: true })
     : "";
-  const labelScale = scene.scaleModel.labelMultiplier;
-
-  return {
-    body: `<g class="wo-object wo-object-${object.type}${selectionClass}" data-object-id="${escapeXml(sceneObject.objectId)}" data-render-id="${escapeXml(sceneObject.renderId)}" tabindex="0" role="button" aria-label="${escapeXml(`${object.type} ${sceneObject.objectId}`)}">
+  return `<g class="wo-object wo-object-${object.type}${selectionClass}" data-object-id="${escapeXml(sceneObject.objectId)}" data-parent-id="${escapeAttribute(sceneObject.parentId ?? "")}" data-group-id="${escapeAttribute(sceneObject.groupId ?? "")}" data-render-id="${escapeXml(sceneObject.renderId)}" tabindex="0" role="button" aria-label="${escapeXml(`${object.type} ${sceneObject.objectId}`)}">
     <circle class="wo-selection-ring" cx="${x}" cy="${y}" r="${visualRadius + 8}" />
     ${renderAtmosphere(sceneObject, palette)}
     ${renderObjectBody(object, x, y, radius, palette)}
     ${imageMarkup}
     ${outlineMarkup}
-  </g>`,
-    label: showLabels
-      ? `<g class="wo-object-label${selectionClass ? " wo-object-label-selected" : ""}" data-object-id="${escapeXml(sceneObject.objectId)}">
-    <text class="wo-label" x="${x}" y="${labelPlacement.labelY}" text-anchor="middle" font-size="${14 * labelScale}">${escapeXml(sceneObject.label)}</text>
-    <text class="wo-label-secondary" x="${x}" y="${labelPlacement.secondaryY}" text-anchor="middle" font-size="${11 * labelScale}">${escapeXml(sceneObject.secondaryLabel)}</text>
-  </g>`
-      : "",
-  };
+  </g>`;
+}
+
+function renderSceneLabel(
+  scene: RenderScene,
+  label: RenderScene["labels"][number],
+  selectedObjectId: string | null,
+): string {
+  const selectionClass = selectedObjectId === label.objectId ? " wo-object-label-selected" : "";
+  const labelScale = scene.scaleModel.labelMultiplier;
+  return `<g class="wo-object-label${selectionClass}" data-object-id="${escapeXml(label.objectId)}" data-group-id="${escapeAttribute(label.groupId ?? "")}" data-render-id="${escapeXml(label.renderId)}">
+    <text class="wo-label" x="${label.x}" y="${label.y}" text-anchor="${label.textAnchor}" font-size="${14 * labelScale}">${escapeXml(label.label)}</text>
+    <text class="wo-label-secondary" x="${label.x}" y="${label.secondaryY}" text-anchor="${label.textAnchor}" font-size="${11 * labelScale}">${escapeXml(label.secondaryLabel)}</text>
+  </g>`;
 }
 
 function renderObjectBody(
@@ -531,6 +540,58 @@ function atmosphereColor(value: NormalizedValue | undefined): string | undefined
   return "rgba(180, 222, 255, 0.68)";
 }
 
+function resolveRenderPreset(
+  preset: SvgRenderOptions["preset"],
+): { layers?: SvgRenderOptions["layers"] } {
+  switch (preset) {
+    case "presentation":
+      return {
+        layers: {
+          background: true,
+          guides: true,
+          orbits: true,
+          labels: true,
+          structures: true,
+          metadata: true,
+        },
+      };
+    case "atlas-card":
+      return {
+        layers: {
+          background: true,
+          guides: false,
+          orbits: true,
+          labels: true,
+          structures: true,
+          metadata: true,
+        },
+      };
+    case "markdown":
+      return {
+        layers: {
+          background: true,
+          guides: false,
+          orbits: true,
+          labels: true,
+          structures: true,
+          metadata: false,
+        },
+      };
+    case "diagram":
+    default:
+      return {
+        layers: {
+          background: true,
+          guides: true,
+          orbits: true,
+          labels: true,
+          structures: true,
+          metadata: true,
+        },
+      };
+  }
+}
+
 function numericValue(value: NormalizedValue | undefined): number | null {
   if (typeof value === "number") {
     return value;
@@ -579,6 +640,7 @@ function renderMetadata(scene: RenderScene): string {
   return [
     `${scene.layoutPreset} layout`,
     `${scene.viewMode} view`,
+    `${scene.renderPreset ?? "custom"} preset`,
     `schema ${scene.metadata.version ?? "1.0"}`,
   ].join(" - ");
 }

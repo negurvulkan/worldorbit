@@ -31,7 +31,7 @@ export function createEmbedPayload(
 
 export function createWorldOrbitEmbedMarkup(
   payload: WorldOrbitEmbedPayload,
-  options: Pick<MountWorldOrbitEmbedsOptions, "theme" | "layers" | "subtitle"> & {
+  options: Pick<MountWorldOrbitEmbedsOptions, "theme" | "layers" | "subtitle" | "preset"> & {
     className?: string;
   } = {},
 ): string {
@@ -42,6 +42,7 @@ export function createWorldOrbitEmbedMarkup(
       theme: options.theme ?? payload.options?.theme,
       layers: options.layers ?? payload.options?.layers,
       subtitle: options.subtitle ?? payload.options?.subtitle,
+      preset: options.preset ?? payload.options?.preset,
     },
   };
 
@@ -49,9 +50,10 @@ export function createWorldOrbitEmbedMarkup(
     theme: mergedPayload.options?.theme,
     layers: mergedPayload.options?.layers,
     subtitle: mergedPayload.options?.subtitle,
+    preset: mergedPayload.options?.preset,
   });
 
-  return `<div class="${escapeAttribute(options.className ?? "worldorbit-embed")}" data-worldorbit-embed="true" data-worldorbit-mode="${payload.mode}" data-worldorbit-payload="${escapeAttribute(serializeWorldOrbitEmbedPayload(mergedPayload))}">${html}</div>`;
+  return `<div class="${escapeAttribute(options.className ?? "worldorbit-embed")}" data-worldorbit-embed="true" data-worldorbit-mode="${payload.mode}" data-worldorbit-preset="${escapeAttribute(mergedPayload.options?.preset ?? payload.scene.renderPreset ?? "custom")}" data-worldorbit-payload="${escapeAttribute(serializeWorldOrbitEmbedPayload(mergedPayload))}">${html}</div>`;
 }
 
 export function mountWorldOrbitEmbeds(
@@ -67,6 +69,7 @@ export function mountWorldOrbitEmbeds(
     const theme = options.theme ?? payload.options?.theme;
     const layers = options.layers ?? payload.options?.layers;
     const subtitle = options.subtitle ?? payload.options?.subtitle;
+    const preset = options.preset ?? payload.options?.preset ?? payload.scene.renderPreset ?? undefined;
 
     if (mode === "interactive") {
       const viewer = createInteractiveViewer(element, {
@@ -75,6 +78,7 @@ export function mountWorldOrbitEmbeds(
         width: options.width ?? payload.scene.width,
         height: options.height ?? payload.scene.height,
         padding: options.padding ?? payload.scene.padding,
+        preset,
         theme,
         layers,
         subtitle,
@@ -86,6 +90,7 @@ export function mountWorldOrbitEmbeds(
         width: options.width ?? payload.scene.width,
         height: options.height ?? payload.scene.height,
         padding: options.padding ?? payload.scene.padding,
+        preset,
         theme,
         layers,
         subtitle,
