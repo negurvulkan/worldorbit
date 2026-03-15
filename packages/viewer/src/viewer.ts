@@ -23,8 +23,13 @@ import {
 } from "./atlas-state.js";
 import { renderViewerMinimap } from "./minimap.js";
 import { renderSceneToSvg } from "./render.js";
+import {
+  buildViewerTooltipDetails,
+  renderDefaultTooltipContent,
+} from "./tooltip.js";
 import type {
   InteractiveViewerOptions,
+  TooltipMode,
   ViewerAtlasState,
   ViewerBookmark,
   ViewerFilter,
@@ -32,6 +37,7 @@ import type {
   ViewerRenderOptions,
   ViewerSearchResult,
   ViewerState,
+  ViewerTooltipDetails,
   WorldOrbitViewer,
 } from "./types.js";
 import {
@@ -66,6 +72,7 @@ const DEFAULT_VIEWER_LIMITS = {
   zoomStep: 1.2,
   rotationStep: 15,
 };
+const TOOLTIP_STYLE_ID = "worldorbit-viewer-tooltip-style";
 
 export function createInteractiveViewer(
   container: HTMLElement,
@@ -93,6 +100,7 @@ export function createInteractiveViewer(
     pointer: options.pointer ?? true,
     touch: options.touch ?? true,
     selection: options.selection ?? true,
+    tooltipMode: options.tooltipMode ?? "hover",
     minimap: options.minimap ?? false,
     panStep: options.panStep ?? DEFAULT_VIEWER_LIMITS.panStep,
     zoomStep: options.zoomStep ?? DEFAULT_VIEWER_LIMITS.zoomStep,
@@ -122,6 +130,7 @@ export function createInteractiveViewer(
   let svgElement: SVGSVGElement | null = null;
   let cameraRoot: SVGGElement | null = null;
   let minimapRoot: HTMLElement | null = null;
+  let tooltipRoot: HTMLElement | null = null;
   let suppressClick = false;
   let activePointerId: number | null = null;
   let lastPointerPoint: CoordinatePoint | null = null;
@@ -130,12 +139,16 @@ export function createInteractiveViewer(
   let touchPoints = new Map<number, CoordinatePoint>();
   let touchGesture: TouchGestureState | null = null;
   let hoveredObjectId: string | null = null;
+  let pinnedTooltipObjectId: string | null = null;
+  let activeTooltipObjectId: string | null = null;
+  let activeTooltipDetails: ViewerTooltipDetails | null = null;
   let activeViewpointId: string | null = null;
 
   if (previousTabIndex === null) {
     container.tabIndex = 0;
   }
 
+  installViewerTooltipStyles();
   container.classList.add("wo-viewer-container");
   container.style.touchAction = behavior.touch ? "none" : previousTouchAction;
   if (!container.style.position) {
@@ -263,7 +276,12 @@ export function createInteractiveViewer(
       return;
     }
 
-    applySelection(getClosestObjectId(event.target));
+    const objectId = getClosestObjectId(event.target);
+    applySelection(objectId);
+    if (behavior.tooltipMode === "pinned") {
+      pinnedTooltipObjectId = objectId;
+      updateTooltip();
+    }
   };
 
   const handleMouseOver = (event: MouseEvent): void => {
@@ -296,10 +314,21 @@ export function createInteractiveViewer(
     if ((event.key === "Enter" || event.key === " ") && objectId) {
       event.preventDefault();
       applySelection(objectId);
+      if (behavior.tooltipMode === "pinned") {
+        pinnedTooltipObjectId = objectId;
+        updateTooltip();
+      }
       return;
     }
 
     switch (event.key) {
+      case "Escape":
+        if (behavior.tooltipMode === "pinned" && pinnedTooltipObjectId) {
+          event.preventDefault();
+          pinnedTooltipObjectId = null;
+          updateTooltip();
+        }
+        return;
       case "+":
       case "=":
         event.preventDefault();
@@ -448,6 +477,9 @@ export function createInteractiveViewer(
     getSelectionDetails(): ViewerObjectDetails | null {
       return buildObjectDetails(state.selectedObjectId);
     },
+    getTooltipDetails(): ViewerTooltipDetails | null {
+      return activeTooltipDetails;
+    },
     getAtlasState(): ViewerAtlasState {
       return createAtlasStateSnapshot(
         state,
@@ -528,12 +560,22 @@ export function createInteractiveViewer(
       activeViewpointId = null;
       updateState(focusViewerState(scene, state, id, constraints));
       applySelection(id);
+      if (behavior.tooltipMode === "pinned") {
+        pinnedTooltipObjectId = getObjectById(id)?.objectId ?? null;
+        updateTooltip();
+      }
+    },
+    pinTooltip(id: string | null): void {
+      pinnedTooltipObjectId = getObjectById(id)?.objectId ?? null;
+      updateTooltip();
     },
     resetView(): void {
       const resetState = fitViewerState(scene, { ...DEFAULT_VIEWER_STATE }, constraints);
       activeViewpointId = null;
       updateState(resetState);
       applySelection(null);
+      pinnedTooltipObjectId = null;
+      updateTooltip();
     },
     exportSvg(): string {
       return renderSceneToSvg(scene, {
@@ -559,6 +601,10 @@ export function createInteractiveViewer(
       container.removeEventListener("focusin", handleFocusIn);
       container.removeEventListener("focusout", handleFocusOut);
       container.removeEventListener("keydown", handleKeyDown);
+      tooltipRoot?.remove();
+      tooltipRoot = null;
+      minimapRoot?.remove();
+      minimapRoot = null;
       container.classList.remove("wo-viewer-container");
       container.style.touchAction = previousTouchAction;
       container.style.position = previousPosition;
@@ -590,11 +636,21 @@ export function createInteractiveViewer(
     svgElement = container.querySelector('[data-worldorbit-svg="true"]');
     cameraRoot = container.querySelector("#worldorbit-camera-root");
     minimapRoot = null;
+    tooltipRoot = null;
 
     if (behavior.minimap) {
       minimapRoot = document.createElement("div");
       minimapRoot.dataset.worldorbitMinimapRoot = "true";
       container.append(minimapRoot);
+    }
+
+    if (behavior.tooltipMode !== "disabled") {
+      tooltipRoot = document.createElement("div");
+      tooltipRoot.className = "wo-viewer-tooltip-root";
+      tooltipRoot.dataset.worldorbitTooltip = "true";
+      tooltipRoot.hidden = true;
+      tooltipRoot.addEventListener("click", handleTooltipClick);
+      container.append(tooltipRoot);
     }
 
     if (!svgElement || !cameraRoot) {
@@ -619,6 +675,10 @@ export function createInteractiveViewer(
         : null,
       false,
     );
+    pinnedTooltipObjectId =
+      pinnedTooltipObjectId && getObjectById(pinnedTooltipObjectId)
+        ? pinnedTooltipObjectId
+        : null;
     updateCameraTransform();
     notifyFilterChange();
     notifyViewpointChange();
@@ -653,6 +713,7 @@ export function createInteractiveViewer(
 
     cameraRoot.setAttribute("transform", composeViewerTransform(scene, state));
     updateMinimap();
+    updateTooltip();
   }
 
   function applySelection(objectId: string | null, emitCallback = true): void {
@@ -677,6 +738,7 @@ export function createInteractiveViewer(
     }
 
     syncAtlasHighlights();
+    updateTooltip();
 
     if (emitCallback) {
       options.onSelectionChange?.(getSelectedObject());
@@ -697,6 +759,7 @@ export function createInteractiveViewer(
         : null;
 
     syncAtlasHighlights();
+    updateTooltip();
 
     if (emitCallback) {
       options.onHoverChange?.(getObjectById(hoveredObjectId));
@@ -970,6 +1033,188 @@ export function createInteractiveViewer(
 
     minimapRoot.innerHTML = renderViewerMinimap(scene, state, getVisibleSceneObjects());
   }
+
+  function updateTooltip(): void {
+    if (behavior.tooltipMode === "disabled" || !tooltipRoot) {
+      setTooltipDetails(null);
+      return;
+    }
+
+    const resolved = resolveTooltipTarget();
+    if (!resolved) {
+      tooltipRoot.hidden = true;
+      tooltipRoot.innerHTML = "";
+      tooltipRoot.removeAttribute("data-mode");
+      setTooltipDetails(null);
+      return;
+    }
+
+    const details = buildObjectDetails(resolved.objectId);
+    if (!details) {
+      tooltipRoot.hidden = true;
+      tooltipRoot.innerHTML = "";
+      tooltipRoot.removeAttribute("data-mode");
+      setTooltipDetails(null);
+      return;
+    }
+
+    const tooltipDetails = buildViewerTooltipDetails(details);
+    activeTooltipObjectId = resolved.objectId;
+    tooltipRoot.hidden = false;
+    tooltipRoot.dataset.mode = resolved.mode;
+    tooltipRoot.classList.toggle("is-pinned", resolved.mode === "pinned");
+    tooltipRoot.style.pointerEvents = "auto";
+    tooltipRoot.style.visibility = "hidden";
+    renderTooltipContent(tooltipRoot, tooltipDetails, resolved.mode);
+    positionTooltip(tooltipRoot, details.renderObject);
+    tooltipRoot.style.visibility = "visible";
+    setTooltipDetails(tooltipDetails);
+  }
+
+  function resolveTooltipTarget(): { objectId: string; mode: TooltipMode } | null {
+    if (pinnedTooltipObjectId && getObjectById(pinnedTooltipObjectId)) {
+      return {
+        objectId: pinnedTooltipObjectId,
+        mode: "pinned",
+      };
+    }
+
+    if (hoveredObjectId && getObjectById(hoveredObjectId)) {
+      return {
+        objectId: hoveredObjectId,
+        mode: "hover",
+      };
+    }
+
+    return null;
+  }
+
+  function renderTooltipContent(
+    element: HTMLElement,
+    details: ViewerTooltipDetails,
+    mode: TooltipMode,
+  ): void {
+    const customMarkup = options.tooltipRenderer?.(details, mode);
+    element.innerHTML = "";
+
+    if (typeof customMarkup === "string") {
+      element.innerHTML = customMarkup;
+    } else if (customMarkup instanceof HTMLElement) {
+      element.append(customMarkup);
+    } else {
+      element.innerHTML = renderDefaultTooltipContent(details, mode);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "wo-tooltip-actions";
+
+    if (mode === "pinned") {
+      const unpinButton = document.createElement("button");
+      unpinButton.type = "button";
+      unpinButton.className = "wo-tooltip-action";
+      unpinButton.dataset.tooltipAction = "unpin";
+      unpinButton.textContent = "Unpin";
+      actions.append(unpinButton);
+    } else {
+      const pinButton = document.createElement("button");
+      pinButton.type = "button";
+      pinButton.className = "wo-tooltip-action";
+      pinButton.dataset.tooltipAction = "pin";
+      pinButton.dataset.objectId = details.objectId;
+      pinButton.textContent = "Pin";
+      actions.append(pinButton);
+    }
+
+    if (actions.childElementCount > 0) {
+      element.append(actions);
+    }
+  }
+
+  function positionTooltip(
+    element: HTMLElement,
+    renderObject: RenderSceneObject,
+  ): void {
+    if (!svgElement) {
+      return;
+    }
+
+    const anchor = {
+      x: renderObject.anchorX ?? renderObject.x,
+      y:
+        renderObject.anchorY ??
+        renderObject.y - Math.max(renderObject.visualRadius, renderObject.radius),
+    };
+    const viewportPoint = projectWorldPoint(anchor);
+    const svgRect = svgElement.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const pointX =
+      svgRect.left -
+      containerRect.left +
+      (viewportPoint.x / Math.max(scene.width, 1)) * svgRect.width;
+    const pointY =
+      svgRect.top -
+      containerRect.top +
+      (viewportPoint.y / Math.max(scene.height, 1)) * svgRect.height;
+    const maxLeft = Math.max(container.clientWidth - element.offsetWidth - 12, 12);
+    const maxTop = Math.max(container.clientHeight - element.offsetHeight - 12, 12);
+    const preferAbove = pointY > container.clientHeight * 0.48;
+    const nextLeft = clampValue(pointX + 18, 12, maxLeft);
+    const nextTop = clampValue(
+      preferAbove ? pointY - element.offsetHeight - 18 : pointY + 18,
+      12,
+      maxTop,
+    );
+
+    element.style.left = `${nextLeft}px`;
+    element.style.top = `${nextTop}px`;
+  }
+
+  function projectWorldPoint(point: CoordinatePoint): CoordinatePoint {
+    const center = {
+      x: scene.width / 2,
+      y: scene.height / 2,
+    };
+    const rotated = rotatePoint(point, center, state.rotationDeg);
+    return {
+      x: center.x + (rotated.x - center.x) * state.scale + state.translateX,
+      y: center.y + (rotated.y - center.y) * state.scale + state.translateY,
+    };
+  }
+
+  function handleTooltipClick(event: MouseEvent): void {
+    const target = (event.target as HTMLElement | null)?.closest<HTMLElement>("[data-tooltip-action]");
+    if (!target) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    switch (target.dataset.tooltipAction) {
+      case "pin":
+        pinnedTooltipObjectId = target.dataset.objectId ?? activeTooltipObjectId;
+        break;
+      case "unpin":
+        pinnedTooltipObjectId = null;
+        break;
+    }
+
+    updateTooltip();
+  }
+
+  function setTooltipDetails(details: ViewerTooltipDetails | null): void {
+    const changed =
+      activeTooltipDetails?.objectId !== details?.objectId ||
+      activeTooltipDetails?.description !== details?.description ||
+      activeTooltipDetails?.imageHref !== details?.imageHref;
+
+    activeTooltipDetails = details;
+    activeTooltipObjectId = details?.objectId ?? null;
+
+    if (changed) {
+      options.onTooltipChange?.(details);
+    }
+  }
 }
 
 function resolveInitialInput(options: InteractiveViewerOptions): ViewerInput {
@@ -1161,4 +1406,81 @@ function cssEscape(value: string): string {
   }
 
   return value.replace(/["\\]/g, "\\$&");
+}
+
+function installViewerTooltipStyles(): void {
+  if (typeof document === "undefined" || document.getElementById(TOOLTIP_STYLE_ID)) {
+    return;
+  }
+
+  const style = document.createElement("style");
+  style.id = TOOLTIP_STYLE_ID;
+  style.textContent = `
+    .wo-viewer-tooltip-root {
+      position: absolute;
+      z-index: 12;
+      min-width: 220px;
+      max-width: min(320px, calc(100% - 24px));
+      padding: 14px;
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(7, 16, 25, 0.92);
+      box-shadow: 0 18px 32px rgba(0,0,0,0.28);
+      color: #edf6ff;
+      backdrop-filter: blur(12px);
+      font: 500 13px/1.5 "Segoe UI Variable", "Segoe UI", sans-serif;
+    }
+    .wo-viewer-tooltip-root[data-mode="hover"] { pointer-events: auto; }
+    .wo-viewer-tooltip-root[data-mode="pinned"] { pointer-events: auto; }
+    .wo-tooltip-card { display: grid; gap: 10px; }
+    .wo-tooltip-head { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 12px; align-items: center; }
+    .wo-tooltip-heading { display: grid; gap: 3px; }
+    .wo-tooltip-heading strong { font: 700 16px/1.2 "Segoe UI Variable Display", "Segoe UI", sans-serif; }
+    .wo-tooltip-heading span, .wo-tooltip-relations { color: rgba(237, 246, 255, 0.7); }
+    .wo-tooltip-image {
+      width: 52px;
+      height: 52px;
+      object-fit: cover;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+    }
+    .wo-tooltip-image-placeholder {
+      display: grid;
+      place-items: center;
+      font: 700 18px/1 "Segoe UI Variable Display", "Segoe UI", sans-serif;
+      color: #ffce8a;
+    }
+    .wo-tooltip-description { margin: 0; }
+    .wo-tooltip-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+    .wo-tooltip-tag {
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.08);
+      color: #ffdda9;
+      font: 600 11px/1.4 "Segoe UI Variable", "Segoe UI", sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .wo-tooltip-fields { display: grid; gap: 6px; margin: 0; }
+    .wo-tooltip-field {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: baseline;
+    }
+    .wo-tooltip-field dt { color: rgba(237, 246, 255, 0.68); }
+    .wo-tooltip-field dd { margin: 0; font-weight: 600; text-align: right; }
+    .wo-tooltip-actions { display: flex; justify-content: flex-end; margin-top: 10px; }
+    .wo-tooltip-action {
+      border: 1px solid rgba(240, 180, 100, 0.24);
+      border-radius: 999px;
+      background: rgba(240, 180, 100, 0.12);
+      color: #edf6ff;
+      cursor: pointer;
+      padding: 6px 12px;
+      font: 600 12px/1.3 "Segoe UI Variable", "Segoe UI", sans-serif;
+    }
+  `;
+  document.head.append(style);
 }

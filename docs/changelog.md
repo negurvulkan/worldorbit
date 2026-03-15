@@ -1,5 +1,31 @@
 # Changelog
 
+## v2.4.0
+
+- delivered the first public `@worldorbit/editor` package with `createWorldOrbitEditor(...)`, shared atlas-document editing, undo/redo, diagnostics, live source syncing, preview output, and first orbit handles
+- extended the stage overlay so `orbit`, `at`, `surface`, and `free` placements can now be adjusted directly on the canvas while still roundtripping back into canonical `schema 2.0` source
+- added the `WorldOrbit Studio` reference app at `/studio/` as a browser-hosted editor surface built on the new editor package
+- extended object editing across placement fields, atlas defaults, viewpoints, annotations, metadata, and canonical `schema 2.0` roundtripping
+- moved the workspace and package versions directly to `2.4.0` while keeping the changelog history serial across the internal `2.1` to `2.4` development blocks
+
+## v2.3.0
+
+- added visual atlas editing foundations through the new editor workspace layout: atlas outline, stage, inspector, live source pane, and synchronized preview panels
+- connected atlas defaults, viewpoint configuration, annotation editing, and atlas metadata editing to the same editor state and canonical formatter path
+- aligned the preview/embed pipeline so editor changes immediately update both exported SVG and hydrated embed markup
+
+## v2.2.0
+
+- introduced the shared editor foundation in `@worldorbit/core` and `@worldorbit/editor`, including atlas-document cloning, path addressing, upsert/remove helpers, and editor-friendly atlas diagnostic resolution
+- established the editor history model, selection model, and `schema 2.0` text roundtrip as the canonical authoring path
+- added package-level build and smoke-test support for the new editor package
+
+## v2.1.0
+
+- added rich tooltip cards to `@worldorbit/viewer` with shared detail payloads, default card rendering, hover/pinned behavior, and browser-side pin/unpin controls
+- exposed tooltip APIs on `createInteractiveViewer(...)` through `tooltipMode`, `tooltipRenderer`, `onTooltipChange`, `getTooltipDetails()`, and `pinTooltip(...)`
+- kept tooltip behavior consistent across the low-level viewer, atlas viewer, and interactive embed mounts
+
 ## v2.0.0
 
 - stabilized the canonical atlas schema on `schema 2.0` and added first-class `WorldOrbitAtlasDocument` loading, formatting, upgrading, and materialization APIs

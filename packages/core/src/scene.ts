@@ -207,7 +207,14 @@ export function renderDocumentToScene(
   }
 
   freeObjects.forEach((object, index) => {
-    const x = width - padding - 140;
+    const x =
+      width -
+      padding -
+      140 -
+      freePlacementOffsetPx(
+        object.placement?.mode === "free" ? object.placement.distance : undefined,
+        scaleModel,
+      );
     const rowStep =
       Math.max(
         76,
@@ -1978,6 +1985,18 @@ function toDistanceMetric(value: UnitValue | null): number | null {
     default:
       return value.value;
   }
+}
+
+function freePlacementOffsetPx(
+  distance: UnitValue | undefined,
+  scaleModel: RenderScaleModel,
+): number {
+  const metric = toDistanceMetric(distance ?? null);
+  if (metric === null || metric <= 0) {
+    return 0;
+  }
+
+  return clampNumber(metric * 96 * scaleModel.freePlacementMultiplier, 0, 420);
 }
 
 function toVisualSizeMetric(

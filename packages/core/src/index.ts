@@ -22,6 +22,18 @@ export {
 } from "./draft.js";
 export { parseWorldOrbitAtlas, parseWorldOrbitDraft } from "./draft-parse.js";
 export {
+  cloneAtlasDocument,
+  createEmptyAtlasDocument,
+  getAtlasDocumentNode,
+  listAtlasDocumentPaths,
+  removeAtlasDocumentNode,
+  resolveAtlasDiagnosticPath,
+  resolveAtlasDiagnostics,
+  updateAtlasDocumentNode,
+  upsertAtlasDocumentNode,
+  validateAtlasDocumentWithDiagnostics,
+} from "./atlas-edit.js";
+export {
   detectWorldOrbitSchemaVersion,
   loadWorldOrbitSource,
   loadWorldOrbitSourceWithDiagnostics,

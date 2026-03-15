@@ -18,7 +18,7 @@ defaults
 
 atlas
   metadata
-    atlas.note "Reference atlas entry for the stable v2.0 schema."
+    atlas.note "Reference atlas entry for the direct-to-v2.4 schema/editor track."
 
 viewpoint overview
   label "Atlas Overview"

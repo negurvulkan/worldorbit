@@ -1,12 +1,13 @@
 # WorldOrbit
 
-WorldOrbit is a text-first DSL and atlas viewer platform for fictional orbital systems.
+WorldOrbit is a text-first DSL, atlas viewer, and editor platform for fictional orbital systems.
 
-`v2.0` stabilizes the atlas-oriented schema, scene contract, viewer APIs, and Markdown embed flow:
+`v2.4` keeps the stable atlas-oriented schema while adding rich tooltip UX, a first editor package, and the new Studio reference app:
 
 - `@worldorbit/core`: parsing, normalization, validation, canonical formatting, diagnostics, schema loading, and scene generation
 - `@worldorbit/viewer`: SVG rendering, low-level interactive viewing, high-level atlas viewing, themes, embeds, and custom elements
 - `@worldorbit/markdown`: Remark/Rehype integration for static or interactive WorldOrbit blocks
+- `@worldorbit/editor`: canvas-first atlas editing with inspector, live source, preview, undo/redo, and direct handles for `orbit`, `at`, `surface`, and `free` placements
 
 ## Quick Start
 
@@ -21,6 +22,7 @@ The workspace builds package outputs into:
 - `packages/core/dist`
 - `packages/viewer/dist`
 - `packages/markdown/dist`
+- `packages/editor/dist`
 
 The build also refreshes local package shims in `node_modules/@worldorbit/...` for package-style development imports.
 
@@ -182,7 +184,7 @@ const atlasViewer = createAtlasViewer(document.getElementById("atlas"), {
 });
 ```
 
-Viewer capabilities in `v2.0`:
+Viewer capabilities in `v2.4`:
 
 - scene-based SVG rendering
 - theme presets: `atlas`, `nightglass`, `ember`
@@ -192,10 +194,36 @@ Viewer capabilities in `v2.0`:
 - render presets: `diagram`, `presentation`, `atlas-card`, `markdown`
 - object textures through `image`
 - selection, hover, focus, fit, pan, zoom, and rotate
+- rich tooltip cards with pin/unpin support and shared object-detail payloads
 - scene viewpoints, filters, search, and bookmark capture
 - serialized atlas state for deep links and embeds
 - high-level `createAtlasViewer(...)` with built-in search, type filters, viewpoints, bookmarks, and inspector output
 - `defineWorldOrbitViewerElement(...)` with `mode="static" | "interactive" | "atlas"`
+
+## @worldorbit/editor
+
+Use `editor` when you want a browser-based authoring surface that still roundtrips to canonical `schema 2.0`.
+
+```ts
+import { createWorldOrbitEditor } from "@worldorbit/editor";
+
+const editor = createWorldOrbitEditor(document.getElementById("studio"), {
+  source,
+  showInspector: true,
+  showTextPane: true,
+  showPreview: true,
+});
+```
+
+Editor capabilities in `v2.4`:
+
+- atlas outline for system/defaults/metadata/viewpoints/annotations/objects
+- shared interactive stage built on `createInteractiveViewer(...)`
+- live inspector editing for atlas defaults, viewpoints, annotations, and object properties
+- live source synchronization with canonical `schema 2.0` formatting
+- diagnostics panel plus undo/redo history
+- static SVG and interactive embed preview
+- first orbit editing handles for phase and orbital scale
 
 ### Atlas viewer
 
@@ -261,12 +289,16 @@ Examples live in:
 - [examples/markdown/interactive.md](/H:/Projekte/worldorbit/examples/markdown/interactive.md)
 - [examples/markdown/build.mjs](/H:/Projekte/worldorbit/examples/markdown/build.mjs)
 
-The browser demo is available at [demo/index.html](/H:/Projekte/worldorbit/demo/index.html). It now defaults to canonical `schema 2.0` atlas source while continuing to accept stable `1.0` and legacy `2.0-draft` input.
+The browser demo is available at [demo/index.html](/H:/Projekte/worldorbit/demo/index.html). It now defaults to canonical `schema 2.0` atlas source while continuing to accept stable `1.0` and legacy `2.0-draft` input. The editor reference app is available at [studio/index.html](/H:/Projekte/worldorbit/studio/index.html).
 
 Serve the repository root and open:
 
 ```text
 http://localhost:8022/demo/
+```
+
+```text
+http://localhost:8022/studio/
 ```
 
 ## Documentation

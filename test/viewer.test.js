@@ -99,6 +99,7 @@ test("interactive viewer mounts, updates, selects, exports, and destroys cleanly
   const selectionDetails = [];
   const hovers = [];
   const hoverDetails = [];
+  const tooltipChanges = [];
   const views = [];
   const filters = [];
   const viewpoints = [];
@@ -124,6 +125,7 @@ test("interactive viewer mounts, updates, selects, exports, and destroys cleanly
       width: 1080,
       height: 720,
       minimap: true,
+      tooltipMode: "pinned",
       onSelectionChange(selection) {
         selections.push(selection?.objectId ?? null);
       },
@@ -135,6 +137,9 @@ test("interactive viewer mounts, updates, selects, exports, and destroys cleanly
       },
       onHoverDetailsChange(details) {
         hoverDetails.push(details?.objectId ?? null);
+      },
+      onTooltipChange(details) {
+        tooltipChanges.push(details?.objectId ?? null);
       },
       onViewChange(state) {
         views.push(state);
@@ -211,7 +216,13 @@ test("interactive viewer mounts, updates, selects, exports, and destroys cleanly
     assert.equal(selections.at(-1), "Naar");
     assert.equal(selectionDetails.at(-1), "Naar");
     assert.equal(hoverDetails.at(-1), "Naar");
+    assert.equal(tooltipChanges.at(-1), "Naar");
     assert.match(target?.getAttribute("class") ?? "", /wo-object-selected/);
+    assert.ok(preview.querySelector("[data-worldorbit-tooltip]"));
+    assert.equal(viewer.getTooltipDetails()?.objectId, "Naar");
+    viewer.pinTooltip(null);
+    preview.dispatchEvent(new dom.window.MouseEvent("mouseleave", { bubbles: true }));
+    assert.equal(viewer.getTooltipDetails(), null);
     assert.match(viewer.exportSvg(), /wo-object-selected/);
     assert.match(viewer.exportSvg(), /assets\/naar-map\.png/);
     assert.match(viewer.exportSvg(), /wo-orbit-back/);

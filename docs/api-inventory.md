@@ -2,7 +2,7 @@
 
 ## @worldorbit/core
 
-Stable `v2.0` APIs:
+Stable `v2.4` APIs:
 
 - `parse(source)`
 - `parseSafe(source)`
@@ -19,13 +19,23 @@ Stable `v2.0` APIs:
 - `formatAtlasDocument(document)`
 - `upgradeDocumentToV2(document, options?)`
 - `materializeAtlasDocument(document)`
+- `createEmptyAtlasDocument(systemId?)`
+- `cloneAtlasDocument(document)`
+- `listAtlasDocumentPaths(document)`
+- `getAtlasDocumentNode(document, path)`
+- `updateAtlasDocumentNode(document, path, updater)`
+- `upsertAtlasDocumentNode(document, path, value)`
+- `removeAtlasDocumentNode(document, path)`
+- `resolveAtlasDiagnostics(document, diagnostics)`
+- `resolveAtlasDiagnosticPath(document, diagnostic)`
+- `validateAtlasDocumentWithDiagnostics(document)`
 - `detectWorldOrbitSchemaVersion(source)`
 - `loadWorldOrbitSource(source)`
 - `loadWorldOrbitSourceWithDiagnostics(source)`
 - `load(source)`
 - `extractWorldOrbitBlocks(markdown)`
 
-Legacy compatibility APIs retained in `v2.0`:
+Legacy compatibility APIs retained in `v2.4`:
 
 - `parseWorldOrbitDraft(source)`
 - `formatDraftDocument(document)`
@@ -50,12 +60,14 @@ Core public types include:
 - `RenderSceneViewpoint`
 - `RenderPresetName`
 - `RenderScaleModel`
+- `AtlasDocumentPath`
+- `AtlasResolvedDiagnostic`
 - `WorldOrbitFieldSchema`
 - `MarkdownFenceBlock`
 
 ## @worldorbit/viewer
 
-Stable `v2.0` APIs:
+Stable `v2.4` APIs:
 
 - `renderSceneToSvg(scene, options?)`
 - `renderDocumentToSvg(document, options?)`
@@ -78,16 +90,32 @@ Viewer public types include:
 - `ViewerFilter`
 - `ViewerSearchResult`
 - `ViewerObjectDetails`
+- `ViewerTooltipDetails`
+- `ViewerTooltipField`
 - `ViewerAtlasState`
 - `ViewerBookmark`
 - `ViewerState`
+- `TooltipMode`
 - `WorldOrbitViewer`
 - `WorldOrbitAtlasViewer`
 - `WorldOrbitEmbedPayload`
 
+## @worldorbit/editor
+
+Stable `v2.4` APIs:
+
+- `createWorldOrbitEditor(container, options)`
+
+Editor public types include:
+
+- `WorldOrbitEditor`
+- `WorldOrbitEditorOptions`
+- `WorldOrbitEditorSelection`
+- `WorldOrbitEditorSnapshot`
+
 ## @worldorbit/markdown
 
-Stable `v2.0` APIs:
+Stable `v2.4` APIs:
 
 - `renderWorldOrbitBlock(source, options?)`
 - `renderWorldOrbitError(message)`

@@ -461,6 +461,25 @@ export interface WorldOrbitAtlasSystem {
   annotations: WorldOrbitAtlasAnnotation[];
 }
 
+export type AtlasDocumentPathKind =
+  | "system"
+  | "defaults"
+  | "metadata"
+  | "object"
+  | "viewpoint"
+  | "annotation";
+
+export interface AtlasDocumentPath {
+  kind: AtlasDocumentPathKind;
+  id?: string;
+  key?: string;
+}
+
+export interface AtlasResolvedDiagnostic {
+  diagnostic: WorldOrbitDiagnostic;
+  path: AtlasDocumentPath | null;
+}
+
 export type WorldOrbitDraftDefaults = WorldOrbitAtlasDefaults;
 export type WorldOrbitDraftViewpoint = WorldOrbitAtlasViewpoint;
 export type WorldOrbitDraftAnnotation = WorldOrbitAtlasAnnotation;

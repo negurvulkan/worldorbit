@@ -219,7 +219,7 @@ structure HiddenFarGate kind gate free 8.4au
   });
 
   assert.ok(
-    visibleScene.contentBounds.maxX > hiddenScene.contentBounds.maxX,
+    visibleScene.contentBounds.minX < hiddenScene.contentBounds.minX,
     "hidden free objects should not expand visible content bounds",
   );
 });

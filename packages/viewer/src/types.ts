@@ -16,6 +16,7 @@ import type {
 
 export type WorldOrbitThemeName = "atlas" | "nightglass" | "ember";
 export type WorldOrbitEmbedMode = "static" | "interactive";
+export type TooltipMode = "hover" | "pinned" | "disabled";
 
 export interface WorldOrbitTheme {
   name: string;
@@ -104,6 +105,25 @@ export interface ViewerObjectDetails {
   focusPath: RenderSceneObject[];
 }
 
+export interface ViewerTooltipField {
+  key: string;
+  label: string;
+  value: string;
+}
+
+export interface ViewerTooltipDetails {
+  objectId: string;
+  title: string;
+  typeLabel: string;
+  imageHref: string | null;
+  description: string | null;
+  tags: string[];
+  fields: ViewerTooltipField[];
+  parentLabel: string | null;
+  orbitLabel: string | null;
+  details: ViewerObjectDetails;
+}
+
 export interface ViewerAtlasState {
   version: "2.0";
   viewpointId: string | null;
@@ -160,6 +180,11 @@ export interface InteractiveViewerOptions extends ViewerRenderOptions {
   pointer?: boolean;
   touch?: boolean;
   selection?: boolean;
+  tooltipMode?: TooltipMode;
+  tooltipRenderer?: (
+    details: ViewerTooltipDetails,
+    mode: TooltipMode,
+  ) => HTMLElement | string;
   minimap?: boolean;
   panStep?: number;
   zoomStep?: number;
@@ -168,6 +193,7 @@ export interface InteractiveViewerOptions extends ViewerRenderOptions {
   onSelectionDetailsChange?: (details: ViewerObjectDetails | null) => void;
   onHoverChange?: (hoveredObject: RenderSceneObject | null) => void;
   onHoverDetailsChange?: (details: ViewerObjectDetails | null) => void;
+  onTooltipChange?: (details: ViewerTooltipDetails | null) => void;
   onFilterChange?: (filter: ViewerFilter | null, visibleObjects: RenderSceneObject[]) => void;
   onViewpointChange?: (viewpoint: RenderSceneViewpoint | null) => void;
   onViewChange?: (state: ViewerState) => void;
@@ -200,6 +226,7 @@ export interface WorldOrbitViewer {
   getFocusPath(id: string): RenderSceneObject[];
   getObjectDetails(id: string): ViewerObjectDetails | null;
   getSelectionDetails(): ViewerObjectDetails | null;
+  getTooltipDetails(): ViewerTooltipDetails | null;
   getAtlasState(): ViewerAtlasState;
   setAtlasState(state: ViewerAtlasState | string): void;
   serializeAtlasState(): string;
@@ -212,6 +239,7 @@ export interface WorldOrbitViewer {
   rotateBy(deg: number): void;
   fitToSystem(): void;
   focusObject(id: string): void;
+  pinTooltip(id: string | null): void;
   resetView(): void;
   exportSvg(): string;
   destroy(): void;

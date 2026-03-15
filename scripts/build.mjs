@@ -61,6 +61,21 @@ const projects = [
       dts: 'export * from "../../../packages/markdown/dist/index.js";\n',
     },
   },
+  {
+    project: "packages/editor",
+    shim: {
+      name: "@worldorbit/editor",
+      dir: "editor",
+      exports: {
+        ".": {
+          import: "./index.js",
+          types: "./index.d.ts",
+        },
+      },
+      js: 'export * from "../../../packages/editor/dist/index.js";\n',
+      dts: 'export * from "../../../packages/editor/dist/index.js";\n',
+    },
+  },
 ];
 
 for (const item of projects) {
