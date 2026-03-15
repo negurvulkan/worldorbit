@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.9.0
+
+- added direct source loading for both stable `1.0` and draft `2.0-draft` files through `loadWorldOrbitSource(...)`, `loadWorldOrbitSourceWithDiagnostics(...)`, and the `load(...)` convenience export
+- introduced `parseWorldOrbitDraft(...)` and `materializeDraftDocument(...)` so draft source can be parsed, inspected, and projected back into the stable render document explicitly
+- wired dual-source support through `renderSourceToSvg(...)`, `createInteractiveViewer(...)`, and Markdown block rendering so draft source strings now hydrate and render without a manual conversion step
+- preserved draft-authored viewpoint summaries and draft default presets across scene generation, viewer hydration, and Markdown embed payloads
+- refreshed the draft example, README, API inventory, migration notes, and regression suite around dual-source loading
+
 ## v1.8.0
 
 - added structured diagnostics APIs for parse, normalize, and validate phases through `parseWithDiagnostics(...)`, `normalizeWithDiagnostics(...)`, and `validateDocumentWithDiagnostics(...)`

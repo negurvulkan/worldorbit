@@ -62,6 +62,26 @@ export function upgradeDocumentToDraftV2(
   };
 }
 
+export function materializeDraftDocument(
+  document: WorldOrbitDraftDocument,
+): WorldOrbitDocument {
+  const system = document.system
+    ? {
+        type: "system" as const,
+        id: document.system.id,
+        properties: materializeDraftSystemProperties(document.system),
+        info: materializeDraftSystemInfo(document.system),
+      }
+    : null;
+
+  return {
+    format: "worldorbit",
+    version: "1.0",
+    system,
+    objects: document.objects.map(cloneWorldOrbitObject),
+  };
+}
+
 function createDraftSystem(
   document: WorldOrbitDocument,
   defaults: WorldOrbitDraftDefaults,
@@ -312,4 +332,122 @@ function humanizeIdentifier(value: string): string {
     .filter(Boolean)
     .map((segment) => segment[0].toUpperCase() + segment.slice(1))
     .join(" ");
+}
+
+function materializeDraftSystemProperties(
+  system: WorldOrbitDraftSystem,
+): NonNullable<WorldOrbitDocument["system"]>["properties"] {
+  const properties: NonNullable<WorldOrbitDocument["system"]>["properties"] = {};
+
+  if (system.title) {
+    properties.title = system.title;
+  }
+
+  properties.view = system.defaults.view;
+
+  if (system.defaults.scale) {
+    properties.scale = system.defaults.scale;
+  }
+
+  if (system.defaults.units) {
+    properties.units = system.defaults.units;
+  }
+
+  return properties;
+}
+
+function materializeDraftSystemInfo(system: WorldOrbitDraftSystem): Record<string, string> {
+  const info: Record<string, string> = {
+    ...system.atlasMetadata,
+  };
+
+  if (system.defaults.theme) {
+    info["atlas.theme"] = system.defaults.theme;
+  }
+
+  for (const viewpoint of system.viewpoints) {
+    const prefix = `viewpoint.${viewpoint.id}`;
+    info[`${prefix}.label`] = viewpoint.label;
+
+    if (viewpoint.summary) {
+      info[`${prefix}.summary`] = viewpoint.summary;
+    }
+    if (viewpoint.focusObjectId) {
+      info[`${prefix}.focus`] = viewpoint.focusObjectId;
+    }
+    if (viewpoint.selectedObjectId) {
+      info[`${prefix}.select`] = viewpoint.selectedObjectId;
+    }
+    if (viewpoint.projection) {
+      info[`${prefix}.projection`] = viewpoint.projection;
+    }
+    if (viewpoint.preset) {
+      info[`${prefix}.preset`] = viewpoint.preset;
+    }
+    if (viewpoint.zoom !== null) {
+      info[`${prefix}.zoom`] = String(viewpoint.zoom);
+    }
+    if (viewpoint.rotationDeg !== 0) {
+      info[`${prefix}.rotation`] = String(viewpoint.rotationDeg);
+    }
+
+    const serializedLayers = serializeViewpointLayers(viewpoint.layers);
+    if (serializedLayers) {
+      info[`${prefix}.layers`] = serializedLayers;
+    }
+
+    if (viewpoint.filter?.query) {
+      info[`${prefix}.query`] = viewpoint.filter.query;
+    }
+    if ((viewpoint.filter?.objectTypes.length ?? 0) > 0) {
+      info[`${prefix}.types`] = viewpoint.filter?.objectTypes.join(" ") ?? "";
+    }
+    if ((viewpoint.filter?.tags.length ?? 0) > 0) {
+      info[`${prefix}.tags`] = viewpoint.filter?.tags.join(" ") ?? "";
+    }
+    if ((viewpoint.filter?.groupIds.length ?? 0) > 0) {
+      info[`${prefix}.groups`] = viewpoint.filter?.groupIds.join(" ") ?? "";
+    }
+  }
+
+  for (const annotation of system.annotations) {
+    const prefix = `annotation.${annotation.id}`;
+    info[`${prefix}.label`] = annotation.label;
+
+    if (annotation.targetObjectId) {
+      info[`${prefix}.target`] = annotation.targetObjectId;
+    }
+
+    info[`${prefix}.body`] = annotation.body;
+
+    if (annotation.tags.length > 0) {
+      info[`${prefix}.tags`] = annotation.tags.join(" ");
+    }
+
+    if (annotation.sourceObjectId) {
+      info[`${prefix}.source`] = annotation.sourceObjectId;
+    }
+  }
+
+  return info;
+}
+
+function serializeViewpointLayers(
+  layers: WorldOrbitDraftViewpoint["layers"],
+): string {
+  const tokens: string[] = [];
+  const orbitFront = layers["orbits-front"];
+  const orbitBack = layers["orbits-back"];
+
+  if (orbitFront !== undefined || orbitBack !== undefined) {
+    tokens.push(orbitFront !== false || orbitBack !== false ? "orbits" : "-orbits");
+  }
+
+  for (const key of ["background", "guides", "objects", "labels", "metadata"] as const) {
+    if (layers[key] !== undefined) {
+      tokens.push(layers[key] ? key : `-${key}`);
+    }
+  }
+
+  return tokens.join(" ");
 }

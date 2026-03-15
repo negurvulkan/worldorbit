@@ -1,10 +1,9 @@
 import {
-  normalizeDocument,
-  parseWorldOrbit,
+  loadWorldOrbitSource,
   renderDocumentToScene,
   rotatePoint,
-  validateDocument,
   type CoordinatePoint,
+  type LoadedWorldOrbitSource,
   type RenderScene,
   type RenderSceneObject,
   type RenderSceneViewpoint,
@@ -998,8 +997,13 @@ function renderSceneFromInput(
       return input.value;
     case "document":
       return renderDocumentToScene(input.value, renderOptions);
-    case "source":
-      return renderDocumentToScene(parseSource(input.value), renderOptions);
+    case "source": {
+      const loaded = loadWorldOrbitSource(input.value);
+      return renderDocumentToScene(
+        loaded.document,
+        resolveSourceRenderOptions(loaded, renderOptions),
+      );
+    }
   }
 }
 
@@ -1063,11 +1067,18 @@ function hasSceneAffectingRenderOptions(options: Partial<ViewerRenderOptions>): 
   );
 }
 
-function parseSource(source: string): WorldOrbitDocument {
-  const ast = parseWorldOrbit(source);
-  const document = normalizeDocument(ast);
-  validateDocument(document);
-  return document;
+function resolveSourceRenderOptions(
+  loaded: LoadedWorldOrbitSource,
+  renderOptions: ViewerRenderOptions,
+): ViewerRenderOptions {
+  if (renderOptions.preset || !loaded.draftDocument?.system?.defaults.preset) {
+    return renderOptions;
+  }
+
+  return {
+    ...renderOptions,
+    preset: loaded.draftDocument.system.defaults.preset,
+  };
 }
 
 function createTouchGestureState(

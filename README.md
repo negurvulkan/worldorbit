@@ -2,7 +2,7 @@
 
 WorldOrbit is a text-first DSL and rendering pipeline for fictional orbital systems.
 
-The current `v1.x` line includes projection-aware scene generation, numeric scale control, object textures, richer 2D rendering, atlas-oriented viewer features, and a first `2.0-draft` schema-upgrade path across the core package.
+The current `v1.x` line includes projection-aware scene generation, numeric scale control, object textures, richer 2D rendering, atlas-oriented viewer features, and direct dual-source support for stable `1.0` plus draft `2.0-draft` authoring files.
 
 - `@worldorbit/core`: parser, schema, normalization, validation, formatting, and scene generation
 - `@worldorbit/viewer`: SVG rendering, interactive browser viewer, themes, and embed helpers
@@ -35,6 +35,7 @@ Use `core` when you need the language and model layer only.
 ```ts
 import {
   formatDocument,
+  loadWorldOrbitSource,
   parse,
   renderDocumentToScene,
 } from "@worldorbit/core";
@@ -46,6 +47,7 @@ planet Naar orbit Iyath distance 1.18au
 `.trim();
 
 const result = parse(source);
+const loaded = loadWorldOrbitSource(source);
 const scene = renderDocumentToScene(result.document, {
   projection: "isometric",
   scaleModel: {
@@ -68,17 +70,26 @@ Core exports include:
 - `validateDocumentWithDiagnostics(document)`
 - `renderDocumentToScene(document, options?)`
 - `formatDocument(document)`
+- `formatDraftDocument(document)`
 - `upgradeDocumentToDraftV2(document, options?)`
+- `materializeDraftDocument(document)`
+- `parseWorldOrbitDraft(source)`
+- `detectWorldOrbitSchemaVersion(source)`
+- `loadWorldOrbitSource(source)`
+- `loadWorldOrbitSourceWithDiagnostics(source)`
 - `extractWorldOrbitBlocks(markdown)`
 
 #### Schema 2 Draft
 
-`v1.8` adds a structured draft schema on top of the stable `1.0` document model. The existing parser still reads `v1` source, while `core` can now upgrade that document into a canonical `2.0-draft` authoring shape:
+`v1.9` keeps the stable `1.0` model as the render contract, but `core`, `viewer`, and `markdown` can now read `2.0-draft` source directly. The draft schema remains the richer authoring shape for atlas defaults, viewpoints, and annotations:
 
 ```ts
 import {
   formatDocument,
+  loadWorldOrbitSource,
+  materializeDraftDocument,
   parse,
+  parseWorldOrbitDraft,
   upgradeDocumentToDraftV2,
 } from "@worldorbit/core";
 
@@ -88,6 +99,9 @@ const draft = upgradeDocumentToDraftV2(result.document, {
 });
 
 const draftSource = formatDocument(draft);
+const loaded = loadWorldOrbitSource(draftSource);
+const parsedDraft = parseWorldOrbitDraft(draftSource);
+const stableDocument = materializeDraftDocument(parsedDraft);
 ```
 
 The draft model currently organizes:
@@ -96,6 +110,8 @@ The draft model currently organizes:
 - structured `viewpoints`
 - structured `annotations`
 - preserved atlas metadata carried forward from `system info`
+
+When a `2.0-draft` source is loaded directly, WorldOrbit materializes it back into the stable `1.0` render document internally. That keeps the parser/model boundary intact while letting viewers, Markdown embeds, and SVG output accept draft source strings without a separate conversion step.
 
 Diagnostics are also available without relying only on thrown errors:
 
@@ -269,7 +285,7 @@ Markdown output modes:
 - `static`: inline SVG
 - `interactive`: serialized scene payload plus hydration target
 
-Markdown embeds automatically honor document `view` / `scale` defaults, and can override them with the same render options used by `@worldorbit/viewer`.
+Markdown embeds automatically honor document `view` / `scale` defaults. Draft `defaults preset ...` values also flow through into the resolved scene when no runtime preset override is supplied.
 
 In the browser, hydrate generated interactive embeds with:
 
@@ -340,6 +356,7 @@ http://localhost:8022/demo/
 ## Documentation
 
 - migration guide: [docs/migration-v0.8-to-v1.0.md](/H:/Projekte/worldorbit/docs/migration-v0.8-to-v1.0.md)
+- draft migration guide: [docs/migration-v1-to-v2-draft.md](/H:/Projekte/worldorbit/docs/migration-v1-to-v2-draft.md)
 - API inventory: [docs/api-inventory.md](/H:/Projekte/worldorbit/docs/api-inventory.md)
 - changelog: [docs/changelog.md](/H:/Projekte/worldorbit/docs/changelog.md)
 

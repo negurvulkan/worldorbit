@@ -95,6 +95,7 @@ interface SceneFrame {
 interface ViewpointConfigDraft {
   id: string;
   label?: string;
+  summary?: string;
   focus?: string;
   select?: string;
   projection?: ViewProjection;
@@ -793,6 +794,12 @@ function applyViewpointField(
         draft.label = normalizedValue;
       }
       return;
+    case "summary":
+    case "description":
+      if (normalizedValue) {
+        draft.summary = normalizedValue;
+      }
+      return;
     case "focus":
     case "object":
       if (normalizedValue) {
@@ -868,7 +875,7 @@ function finalizeViewpointDraft(
   return {
     id: draft.id,
     label,
-    summary: createViewpointSummary(label, objectId, filter),
+    summary: draft.summary?.trim() || createViewpointSummary(label, objectId, filter),
     objectId,
     selectedObjectId,
     projection: draft.projection ?? projection,

@@ -14,11 +14,18 @@ export {
 } from "./diagnostics.js";
 export { renderDocumentToScene, rotatePoint } from "./scene.js";
 export { formatDocument, formatDraftDocument } from "./format.js";
-export { upgradeDocumentToDraftV2 } from "./draft.js";
+export { materializeDraftDocument, upgradeDocumentToDraftV2 } from "./draft.js";
+export { parseWorldOrbitDraft } from "./draft-parse.js";
+export {
+  detectWorldOrbitSchemaVersion,
+  loadWorldOrbitSource,
+  loadWorldOrbitSourceWithDiagnostics,
+} from "./load.js";
 export { extractWorldOrbitBlocks } from "./markdown.js";
 
 import { parseWithDiagnostics } from "./diagnostics.js";
 import { formatDocument } from "./format.js";
+import { loadWorldOrbitSource } from "./load.js";
 import { normalizeDocument } from "./normalize.js";
 import { parseWorldOrbit } from "./parse.js";
 import { renderDocumentToScene } from "./scene.js";
@@ -53,6 +60,10 @@ export function render(source: string): RenderResult {
     ...result,
     scene: renderDocumentToScene(result.document),
   };
+}
+
+export function load(source: string) {
+  return loadWorldOrbitSource(source);
 }
 
 export function parseSafe(source: string) {

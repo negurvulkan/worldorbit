@@ -1,8 +1,7 @@
 import {
-  normalizeDocument,
-  parseWorldOrbit,
+  loadWorldOrbitSource,
   renderDocumentToScene,
-  validateDocument,
+  type LoadedWorldOrbitSource,
 } from "@worldorbit/core";
 import {
   createEmbedPayload,
@@ -17,10 +16,11 @@ export function renderWorldOrbitBlock(
   options: WorldOrbitMarkdownOptions = {},
 ): string {
   try {
-    const ast = parseWorldOrbit(source);
-    const document = normalizeDocument(ast);
-    validateDocument(document);
-    const scene = renderDocumentToScene(document, options);
+    const loaded = loadWorldOrbitSource(source);
+    const scene = renderDocumentToScene(
+      loaded.document,
+      resolveSourceRenderOptions(loaded, options),
+    );
 
     if ((options.mode ?? "static") === "interactive") {
       return createWorldOrbitEmbedMarkup(
@@ -69,4 +69,18 @@ function escapeHtml(value: string): string {
 
 function escapeAttribute(value: string): string {
   return escapeHtml(value).replaceAll("\"", "&quot;");
+}
+
+function resolveSourceRenderOptions(
+  loaded: LoadedWorldOrbitSource,
+  options: WorldOrbitMarkdownOptions,
+): WorldOrbitMarkdownOptions {
+  if (options.preset || !loaded.draftDocument?.system?.defaults.preset) {
+    return options;
+  }
+
+  return {
+    ...options,
+    preset: loaded.draftDocument.system.defaults.preset,
+  };
 }

@@ -6,6 +6,8 @@ system Iyath
 defaults
   view isometric
   scale presentation
+  preset atlas-card
+  theme atlas
 
 viewpoint overview
   label "Iyath System Overview"

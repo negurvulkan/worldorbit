@@ -9,6 +9,7 @@ Stable v1.0 APIs:
 - `parseWithDiagnostics(source)`
 - `render(source)`
 - `parseWorldOrbit(source)`
+- `parseWorldOrbitDraft(source)`
 - `normalizeDocument(ast)`
 - `normalizeWithDiagnostics(ast)`
 - `validateDocument(document)`
@@ -18,12 +19,18 @@ Stable v1.0 APIs:
 - `formatDraftDocument(document)`
 - `stringify(document)`
 - `upgradeDocumentToDraftV2(document, options?)`
+- `materializeDraftDocument(document)`
+- `detectWorldOrbitSchemaVersion(source)`
+- `loadWorldOrbitSource(source)`
+- `loadWorldOrbitSourceWithDiagnostics(source)`
+- `load(source)`
 - `extractWorldOrbitBlocks(markdown)`
 
 Core public types include:
 
 - `WorldOrbitDocument`
 - `WorldOrbitDraftDocument`
+- `LoadedWorldOrbitSource`
 - `WorldOrbitObject`
 - `Placement`
 - `AtReference`

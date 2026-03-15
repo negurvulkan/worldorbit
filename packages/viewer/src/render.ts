@@ -1,9 +1,8 @@
 import {
-  normalizeDocument,
-  parseWorldOrbit,
+  loadWorldOrbitSource,
   renderDocumentToScene,
-  validateDocument,
   type NormalizedValue,
+  type LoadedWorldOrbitSource,
   type RenderScene,
   type RenderSceneObject,
   type UnitValue,
@@ -162,10 +161,22 @@ export function renderDocumentToSvg(
 }
 
 export function renderSourceToSvg(source: string, options: SvgRenderOptions = {}): string {
-  const ast = parseWorldOrbit(source);
-  const document = normalizeDocument(ast);
-  validateDocument(document);
-  return renderDocumentToSvg(document, options);
+  const loaded = loadWorldOrbitSource(source);
+  return renderDocumentToSvg(loaded.document, resolveSourceRenderOptions(loaded, options));
+}
+
+function resolveSourceRenderOptions(
+  loaded: LoadedWorldOrbitSource,
+  options: SvgRenderOptions,
+): SvgRenderOptions {
+  if (options.preset || !loaded.draftDocument?.system?.defaults.preset) {
+    return options;
+  }
+
+  return {
+    ...options,
+    preset: loaded.draftDocument.system.defaults.preset,
+  };
 }
 
 function renderOrbitLayer(

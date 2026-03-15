@@ -26,6 +26,37 @@ moon Leth orbit Naar distance 220000km angle 18deg inclination 12deg
 structure Relay kind relay at Naar:L4
 `.trim();
 
+const draftSource = `
+schema 2.0-draft
+
+system Iyath
+  title "Iyath System"
+
+defaults
+  view isometric
+  scale presentation
+  preset atlas-card
+
+viewpoint overview
+  label "Atlas Overview"
+  summary "Draft overview for the hydrated atlas path."
+  projection isometric
+
+object star Iyath
+
+object planet Naar
+  orbit Iyath
+  semiMajor 1.18au
+  eccentricity 0.08
+  angle 28deg
+  inclination 24deg
+  phase 42deg
+
+object structure Relay
+  at Naar:L4
+  kind relay
+`.trim();
+
 function installDomGlobals(window) {
   const previous = {
     window: globalThis.window,
@@ -194,6 +225,44 @@ test("interactive viewer mounts, updates, selects, exports, and destroys cleanly
       ?.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
 
     assert.equal(selections.length, selectionCount);
+  } finally {
+    restoreGlobals();
+    dom.window.close();
+  }
+});
+
+test("interactive viewer can load schema 2 draft source and preserve draft preset defaults", () => {
+  const dom = new JSDOM(`<div id="preview"></div>`, {
+    pretendToBeVisual: true,
+  });
+  const restoreGlobals = installDomGlobals(dom.window);
+  const preview = dom.window.document.getElementById("preview");
+
+  preview.getBoundingClientRect = () => ({
+    x: 0,
+    y: 0,
+    left: 0,
+    top: 0,
+    right: 960,
+    bottom: 560,
+    width: 960,
+    height: 560,
+    toJSON() {
+      return {};
+    },
+  });
+
+  try {
+    const viewer = createInteractiveViewer(preview, {
+      source: draftSource,
+    });
+
+    assert.equal(viewer.getScene().renderPreset, "atlas-card");
+    assert.equal(viewer.getScene().projection, "isometric");
+    assert.equal(viewer.listViewpoints()[0]?.summary, "Draft overview for the hydrated atlas path.");
+    assert.ok(preview.querySelector("svg"));
+
+    viewer.destroy();
   } finally {
     restoreGlobals();
     dom.window.close();

@@ -24,6 +24,33 @@ planet Naar orbit Iyath distance 1.18au image /demo/assets/naar-map.png
 \`\`\`
 `.trim();
 
+const draftBlock = `
+schema 2.0-draft
+
+system Iyath
+  title "Iyath System"
+
+defaults
+  view isometric
+  scale presentation
+  preset atlas-card
+
+viewpoint overview
+  label "Atlas Overview"
+  summary "Draft overview for markdown hydration."
+
+object star Iyath
+
+object planet Naar
+  orbit Iyath
+  semiMajor 1.18au
+  eccentricity 0.08
+  angle 28deg
+  inclination 24deg
+  phase 42deg
+  image /demo/assets/naar-map.png
+`.trim();
+
 test("renderWorldOrbitBlock emits inline svg for static mode", () => {
   const html = renderWorldOrbitBlock(
     `
@@ -86,6 +113,22 @@ planet Naar orbit Iyath semiMajor 1.18au eccentricity 0.08 angle 28deg inclinati
   assert.equal(payload.options?.minimap, true);
   assert.match(html, /data-worldorbit-preset="atlas-card"/);
   assert.match(html, /data-worldorbit-viewpoint="overview"/);
+});
+
+test("renderWorldOrbitBlock accepts schema 2 draft input and preserves draft preset defaults", () => {
+  const html = renderWorldOrbitBlock(draftBlock, {
+    mode: "interactive",
+  });
+
+  assert.match(html, /data-worldorbit-preset="atlas-card"/);
+
+  const payloadMatch = html.match(/data-worldorbit-payload="([^"]+)"/);
+  assert.ok(payloadMatch);
+
+  const payload = deserializeWorldOrbitEmbedPayload(payloadMatch[1]);
+  assert.equal(payload.scene.renderPreset, "atlas-card");
+  assert.equal(payload.scene.projection, "isometric");
+  assert.equal(payload.scene.viewpoints[0]?.summary, "Draft overview for markdown hydration.");
 });
 
 test("remark plugin transforms fenced blocks into static markup", async () => {

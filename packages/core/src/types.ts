@@ -457,3 +457,11 @@ export interface FormatDocumentOptions {
 export type FormattableWorldOrbitDocument =
   | WorldOrbitDocument
   | WorldOrbitDraftDocument;
+
+export interface LoadedWorldOrbitSource {
+  schemaVersion: WorldOrbitAnyDocumentVersion;
+  ast: AstDocument | null;
+  document: WorldOrbitDocument;
+  draftDocument: WorldOrbitDraftDocument | null;
+  diagnostics: WorldOrbitDiagnostic[];
+}
