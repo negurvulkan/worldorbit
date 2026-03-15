@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.5.0
+
+- added projection-aware scene generation with `topdown` and `isometric` output modes
+- introduced the public `RenderScaleModel` plus runtime projection and scale overrides across core, viewer, and markdown
+- upgraded orbit rendering to use ellipse geometry, split front/back orbit arcs, and projected ring and belt bands
+- extended the interactive viewer with `getRenderOptions()` and `setRenderOptions(...)` for live projection and scale changes
+- refreshed the demo, examples, README, and tests around isometric scenes, textures, atmospheres, and scale controls
+
 ## v1.1.1
 
 - added PNG-style object textures through the `image` field for supported object types

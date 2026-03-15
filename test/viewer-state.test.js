@@ -20,9 +20,10 @@ const constraints = {
 
 const source = `
 system Iyath
+  view isometric
 star Iyath
-planet Naar orbit Iyath distance 1.18au
-moon Leth orbit Naar distance 220000km
+planet Naar orbit Iyath semiMajor 1.18au eccentricity 0.08 angle 28deg inclination 24deg phase 42deg
+moon Leth orbit Naar distance 220000km angle 18deg inclination 12deg
 structure Relay kind relay at Naar:L4
 `.trim();
 
@@ -83,4 +84,5 @@ test("pan, rotate, fit, and focus produce bounded camera states", () => {
   assert.ok(focused.scale >= 1.8);
   assert.equal(focused.selectedObjectId, "Naar");
   assert.match(composeViewerTransform(scene, focused), /scale\(/);
+  assert.equal(scene.projection, "isometric");
 });

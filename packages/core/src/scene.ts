@@ -5,11 +5,13 @@ import type {
   RenderBounds,
   RenderLeaderLine,
   RenderOrbitVisual,
+  RenderScaleModel,
   RenderScene,
   RenderSceneObject,
   SceneLayoutPreset,
   SceneRenderOptions,
   UnitValue,
+  ViewProjection,
   WorldOrbitDocument,
   WorldOrbitObject,
 } from "./types.js";
@@ -19,6 +21,7 @@ interface PositionedObject {
   x: number;
   y: number;
   radius: number;
+  sortKey: number;
   anchorX?: number;
   anchorY?: number;
 }
@@ -26,9 +29,17 @@ interface PositionedObject {
 interface OrbitVisualDraft {
   object: WorldOrbitObject;
   parentId: string;
+  kind: "circle" | "ellipse";
   cx: number;
   cy: number;
-  radius: number;
+  radius?: number;
+  rx?: number;
+  ry?: number;
+  rotationDeg: number;
+  band: boolean;
+  bandThickness?: number;
+  frontArcPath?: string;
+  backArcPath?: string;
 }
 
 interface LeaderLineDraft {
@@ -45,11 +56,26 @@ interface PlacementContext {
   surfaceChildren: Map<string, WorldOrbitObject[]>;
   objectMap: Map<string, WorldOrbitObject>;
   spacingFactor: number;
+  projection: ViewProjection;
+  scaleModel: RenderScaleModel;
+}
+
+interface OrbitMetricContext {
+  metrics: Array<number | null>;
+  minMetric: number;
+  maxMetric: number;
+  metricSpread: number;
+  innerPx: number;
+  stepPx: number;
+  pixelSpread: number;
 }
 
 const AU_IN_KM = 149_597_870.7;
 const EARTH_RADIUS_IN_KM = 6_371;
 const SOLAR_RADIUS_IN_KM = 695_700;
+const ISO_FLATTENING = 0.68;
+const MIN_ISO_MINOR_SCALE = 0.2;
+const ARC_SAMPLE_COUNT = 28;
 
 export function renderDocumentToScene(
   document: WorldOrbitDocument,
@@ -59,8 +85,9 @@ export function renderDocumentToScene(
   const height = options.height ?? 780;
   const padding = options.padding ?? 72;
   const layoutPreset = resolveLayoutPreset(document);
+  const projection = resolveProjection(document, options.projection);
+  const scaleModel = resolveScaleModel(layoutPreset, options.scaleModel);
   const spacingFactor = layoutPresetSpacing(layoutPreset);
-  const viewMode = String(document.system?.properties.view ?? "topdown");
   const systemId = document.system?.id ?? null;
 
   const objectMap = new Map(document.objects.map((object) => [object.id, object]));
@@ -107,6 +134,8 @@ export function renderDocumentToScene(
     surfaceChildren,
     objectMap,
     spacingFactor,
+    projection,
+    scaleModel,
   };
   const primaryRoot =
     rootObjects.find((object) => object.type === "star") ?? rootObjects[0] ?? null;
@@ -117,14 +146,19 @@ export function renderDocumentToScene(
 
   const secondaryRoots = rootObjects.filter((object) => object.id !== primaryRoot?.id);
   if (secondaryRoots.length > 0) {
-    const rootRingRadius = Math.min(width, height) * 0.28 * spacingFactor;
+    const rootRingRadius =
+      Math.min(width, height) *
+      0.28 *
+      spacingFactor *
+      scaleModel.orbitDistanceMultiplier;
 
     secondaryRoots.forEach((object, index) => {
       const angle = angleForIndex(index, secondaryRoots.length, -Math.PI / 2);
+      const offset = projectPolarOffset(angle, rootRingRadius, projection, 1);
       placeObject(
         object,
-        centerX + Math.cos(angle) * rootRingRadius,
-        centerY + Math.sin(angle) * rootRingRadius,
+        centerX + offset.x,
+        centerY + offset.y,
         0,
         positions,
         orbitDrafts,
@@ -135,21 +169,20 @@ export function renderDocumentToScene(
   }
 
   freeObjects.forEach((object, index) => {
-    const x = width - padding - 130;
-    const y =
-      padding +
-      90 +
-      index *
-        Math.max(
-          70,
-          ((height - padding * 2 - 180) / Math.max(1, freeObjects.length)) * spacingFactor,
-        );
+    const x = width - padding - 140;
+    const rowStep =
+      Math.max(
+        76,
+        ((height - padding * 2 - 180) / Math.max(1, freeObjects.length)) * spacingFactor,
+      ) * scaleModel.freePlacementMultiplier;
+    const y = padding + 92 + index * rowStep;
 
     positions.set(object.id, {
       object,
       x,
       y,
-      radius: visualRadiusFor(object),
+      radius: visualRadiusFor(object, 0, scaleModel),
+      sortKey: computeSortKey(x, y, 0),
     });
 
     leaderDrafts.push({
@@ -161,7 +194,7 @@ export function renderDocumentToScene(
       mode: "free",
     });
 
-    placeOrbitingChildren(object, positions, orbitDrafts, leaderDrafts, context);
+    placeOrbitingChildren(object, positions, orbitDrafts, leaderDrafts, context, 1);
   });
 
   atObjects.forEach((object, index) => {
@@ -178,14 +211,15 @@ export function renderDocumentToScene(
       width,
       height,
       padding,
-      spacingFactor,
+      context,
     );
 
     positions.set(object.id, {
       object,
       x: resolved.x,
       y: resolved.y,
-      radius: visualRadiusFor(object),
+      radius: visualRadiusFor(object, 2, scaleModel),
+      sortKey: computeSortKey(resolved.x, resolved.y, 2),
       anchorX: resolved.anchorX,
       anchorY: resolved.anchorY,
     });
@@ -201,29 +235,40 @@ export function renderDocumentToScene(
       });
     }
 
-    placeOrbitingChildren(object, positions, orbitDrafts, leaderDrafts, context);
+    placeOrbitingChildren(object, positions, orbitDrafts, leaderDrafts, context, 2);
   });
 
-  const objects = [...positions.values()].map((position) => createSceneObject(position));
+  const objects = [...positions.values()].map((position) =>
+    createSceneObject(position, scaleModel),
+  );
   const orbitVisuals = orbitDrafts.map((draft) => createOrbitVisual(draft));
   const leaders = leaderDrafts.map((draft) => createLeaderLine(draft));
-  const contentBounds = calculateContentBounds(width, height, objects, orbitVisuals, leaders);
+  const contentBounds = calculateContentBounds(
+    width,
+    height,
+    objects,
+    orbitVisuals,
+    leaders,
+    scaleModel.labelMultiplier,
+  );
 
   return {
     width,
     height,
     padding,
+    projection,
+    scaleModel,
     title:
       String(document.system?.properties.title ?? document.system?.id ?? "WorldOrbit") ||
       "WorldOrbit",
-    subtitle: `${capitalizeLabel(viewMode)} view - ${capitalizeLabel(layoutPreset)} layout`,
+    subtitle: `${capitalizeLabel(projection)} view - ${capitalizeLabel(layoutPreset)} layout`,
     systemId,
-    viewMode,
+    viewMode: projection,
     layoutPreset,
     metadata: {
       format: document.format,
       version: document.version,
-      view: viewMode,
+      view: projection,
       scale: String(document.system?.properties.scale ?? layoutPreset),
       units: String(document.system?.properties.units ?? "mixed"),
     },
@@ -239,7 +284,7 @@ export function rotatePoint(
   center: CoordinatePoint,
   rotationDeg: number,
 ): CoordinatePoint {
-  const radians = (rotationDeg * Math.PI) / 180;
+  const radians = degreesToRadians(rotationDeg);
   const cos = Math.cos(radians);
   const sin = Math.sin(radians);
   const dx = point.x - center.x;
@@ -266,19 +311,81 @@ function resolveLayoutPreset(document: WorldOrbitDocument): SceneLayoutPreset {
   }
 }
 
+function resolveProjection(
+  document: WorldOrbitDocument,
+  projection: SceneRenderOptions["projection"],
+): ViewProjection {
+  if (projection === "topdown" || projection === "isometric") {
+    return projection;
+  }
+
+  return String(document.system?.properties.view ?? "topdown").toLowerCase() === "isometric"
+    ? "isometric"
+    : "topdown";
+}
+
+function resolveScaleModel(
+  layoutPreset: SceneLayoutPreset,
+  overrides: Partial<RenderScaleModel> | undefined,
+): RenderScaleModel {
+  const defaults = defaultScaleModel(layoutPreset);
+  return {
+    ...defaults,
+    ...overrides,
+  };
+}
+
+function defaultScaleModel(layoutPreset: SceneLayoutPreset): RenderScaleModel {
+  switch (layoutPreset) {
+    case "compact":
+      return {
+        orbitDistanceMultiplier: 0.84,
+        bodyRadiusMultiplier: 0.92,
+        labelMultiplier: 0.9,
+        freePlacementMultiplier: 0.9,
+        ringThicknessMultiplier: 0.92,
+        minBodyRadius: 4,
+        maxBodyRadius: 36,
+      };
+    case "presentation":
+      return {
+        orbitDistanceMultiplier: 1.2,
+        bodyRadiusMultiplier: 1.18,
+        labelMultiplier: 1.08,
+        freePlacementMultiplier: 1.05,
+        ringThicknessMultiplier: 1.16,
+        minBodyRadius: 5,
+        maxBodyRadius: 48,
+      };
+    default:
+      return {
+        orbitDistanceMultiplier: 1,
+        bodyRadiusMultiplier: 1,
+        labelMultiplier: 1,
+        freePlacementMultiplier: 1,
+        ringThicknessMultiplier: 1,
+        minBodyRadius: 4,
+        maxBodyRadius: 40,
+      };
+  }
+}
+
 function layoutPresetSpacing(layoutPreset: SceneLayoutPreset): number {
   switch (layoutPreset) {
     case "compact":
-      return 0.8;
+      return 0.84;
     case "presentation":
-      return 1.22;
+      return 1.2;
     default:
       return 1;
   }
 }
 
-function createSceneObject(position: PositionedObject): RenderSceneObject {
-  const { object, x, y, radius, anchorX, anchorY } = position;
+function createSceneObject(
+  position: PositionedObject,
+  scaleModel: RenderScaleModel,
+): RenderSceneObject {
+  const { object, x, y, radius, sortKey, anchorX, anchorY } = position;
   return {
     renderId: createRenderId(object.id),
     objectId: object.id,
@@ -286,7 +393,8 @@ function createSceneObject(position: PositionedObject): RenderSceneObject {
     x,
     y,
     radius,
-    visualRadius: visualExtentForObject(object, radius),
+    visualRadius: visualExtentForObject(object, radius, scaleModel),
+    sortKey,
     anchorX,
     anchorY,
     label: object.id,
@@ -307,10 +415,17 @@ function createOrbitVisual(draft: OrbitVisualDraft): RenderOrbitVisual {
     objectId: draft.object.id,
     object: draft.object,
     parentId: draft.parentId,
+    kind: draft.kind,
     cx: draft.cx,
     cy: draft.cy,
     radius: draft.radius,
-    band: draft.object.type === "belt" || draft.object.type === "ring",
+    rx: draft.rx,
+    ry: draft.ry,
+    rotationDeg: draft.rotationDeg,
+    band: draft.band,
+    bandThickness: draft.bandThickness,
+    frontArcPath: draft.frontArcPath,
+    backArcPath: draft.backArcPath,
     hidden: draft.object.properties.hidden === true,
   };
 }
@@ -335,6 +450,7 @@ function calculateContentBounds(
   objects: RenderSceneObject[],
   orbitVisuals: RenderOrbitVisual[],
   leaders: RenderLeaderLine[],
+  labelMultiplier: number,
 ): RenderBounds {
   let minX = Number.POSITIVE_INFINITY;
   let minY = Number.POSITIVE_INFINITY;
@@ -350,9 +466,7 @@ function calculateContentBounds(
 
   for (const orbit of orbitVisuals) {
     if (orbit.hidden) continue;
-    const strokePadding = orbit.band ? 6 : 2;
-    include(orbit.cx - orbit.radius - strokePadding, orbit.cy - orbit.radius - strokePadding);
-    include(orbit.cx + orbit.radius + strokePadding, orbit.cy + orbit.radius + strokePadding);
+    includeOrbitBounds(orbit, include);
   }
 
   for (const leader of leaders) {
@@ -363,7 +477,7 @@ function calculateContentBounds(
 
   for (const object of objects) {
     if (object.hidden) continue;
-    includeObjectBounds(object, height, include);
+    includeObjectBounds(object, height, labelMultiplier, include);
   }
 
   if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
@@ -371,6 +485,42 @@ function calculateContentBounds(
   }
 
   return createBounds(minX, minY, maxX, maxY);
+}
+
+function includeOrbitBounds(
+  orbit: RenderOrbitVisual,
+  include: (x: number, y: number) => void,
+): void {
+  const strokePadding =
+    orbit.bandThickness !== undefined
+      ? orbit.bandThickness / 2 + 4
+      : orbit.band
+        ? 10
+        : 3;
+
+  if (orbit.kind === "circle" && orbit.radius !== undefined) {
+    include(orbit.cx - orbit.radius - strokePadding, orbit.cy - orbit.radius - strokePadding);
+    include(orbit.cx + orbit.radius + strokePadding, orbit.cy + orbit.radius + strokePadding);
+    return;
+  }
+
+  const rx = orbit.rx ?? orbit.radius ?? 0;
+  const ry = orbit.ry ?? orbit.radius ?? 0;
+  const points = sampleEllipseArcPoints(
+    orbit.cx,
+    orbit.cy,
+    rx,
+    ry,
+    orbit.rotationDeg,
+    0,
+    Math.PI * 2,
+    ARC_SAMPLE_COUNT * 2,
+  );
+
+  for (const point of points) {
+    include(point.x - strokePadding, point.y - strokePadding);
+    include(point.x + strokePadding, point.y + strokePadding);
+  }
 }
 
 function createBounds(
@@ -394,26 +544,27 @@ function createBounds(
 function includeObjectBounds(
   object: RenderSceneObject,
   sceneHeight: number,
+  labelMultiplier: number,
   include: (x: number, y: number) => void,
 ): void {
   const labelDirection = object.y > sceneHeight * 0.62 ? -1 : 1;
-  const labelY = object.y + labelDirection * (object.radius + 18);
-  const secondaryY = labelY + labelDirection * 15;
-  const labelHalfWidth = estimateLabelHalfWidth(object);
+  const labelY = object.y + labelDirection * (object.radius + 18 * labelMultiplier);
+  const secondaryY = labelY + labelDirection * (16 * labelMultiplier);
+  const labelHalfWidth = estimateLabelHalfWidth(object, labelMultiplier);
 
   include(
     object.x - Math.max(object.visualRadius + 24, labelHalfWidth),
-    object.y - object.visualRadius - 12,
+    object.y - object.visualRadius - 16,
   );
   include(
     object.x + Math.max(object.visualRadius + 24, labelHalfWidth),
-    object.y + object.visualRadius + 34,
+    object.y + object.visualRadius + 36,
   );
 
-  include(object.x - labelHalfWidth, labelY - 16);
-  include(object.x + labelHalfWidth, labelY + 6);
-  include(object.x - labelHalfWidth, secondaryY - 12);
-  include(object.x + labelHalfWidth, secondaryY + 6);
+  include(object.x - labelHalfWidth, labelY - 18);
+  include(object.x + labelHalfWidth, labelY + 8);
+  include(object.x - labelHalfWidth, secondaryY - 14);
+  include(object.x + labelHalfWidth, secondaryY + 8);
 }
 
 function placeObject(
@@ -434,10 +585,11 @@ function placeObject(
     object,
     x,
     y,
-    radius: visualRadiusFor(object, depth),
+    radius: visualRadiusFor(object, depth, context.scaleModel),
+    sortKey: computeSortKey(x, y, depth),
   });
 
-  placeOrbitingChildren(object, positions, orbitDrafts, leaderDrafts, context);
+  placeOrbitingChildren(object, positions, orbitDrafts, leaderDrafts, context, depth + 1);
 }
 
 function placeOrbitingChildren(
@@ -446,6 +598,7 @@ function placeOrbitingChildren(
   orbitDrafts: OrbitVisualDraft[],
   leaderDrafts: LeaderLineDraft[],
   context: PlacementContext,
+  depth: number,
 ): void {
   const parent = positions.get(object.id);
   if (!parent) {
@@ -453,39 +606,78 @@ function placeOrbitingChildren(
   }
 
   const orbiting = [...(context.orbitChildren.get(object.id) ?? [])].sort(compareOrbiting);
-  const orbitRadii = computeOrbitRadii(orbiting, parent.radius, context.spacingFactor);
+  const orbitMetricContext = computeOrbitMetricContext(
+    orbiting,
+    parent.radius,
+    context.spacingFactor,
+    context.scaleModel,
+  );
 
   orbiting.forEach((child, index) => {
-    const angle = resolveOrbitAngle(child, index, orbiting.length);
-    const orbitRadius = orbitRadii[index];
-    const x = parent.x + Math.cos(angle) * orbitRadius;
-    const y = parent.y + Math.sin(angle) * orbitRadius;
+    const orbitGeometry = resolveOrbitGeometry(
+      child,
+      index,
+      orbiting.length,
+      parent,
+      orbitMetricContext,
+      context,
+    );
 
     orbitDrafts.push({
       object: child,
       parentId: object.id,
-      cx: parent.x,
-      cy: parent.y,
-      radius: orbitRadius,
+      kind: orbitGeometry.kind,
+      cx: orbitGeometry.cx,
+      cy: orbitGeometry.cy,
+      radius: orbitGeometry.radius,
+      rx: orbitGeometry.rx,
+      ry: orbitGeometry.ry,
+      rotationDeg: orbitGeometry.rotationDeg,
+      band: orbitGeometry.band,
+      bandThickness: orbitGeometry.bandThickness,
+      frontArcPath: orbitGeometry.frontArcPath,
+      backArcPath: orbitGeometry.backArcPath,
     });
 
-    placeObject(child, x, y, 1, positions, orbitDrafts, leaderDrafts, context);
+    placeObject(
+      child,
+      orbitGeometry.objectX,
+      orbitGeometry.objectY,
+      depth,
+      positions,
+      orbitDrafts,
+      leaderDrafts,
+      context,
+    );
   });
 
   const surfaceObjects = [...(context.surfaceChildren.get(object.id) ?? [])];
   surfaceObjects.forEach((child, index) => {
     const angle = angleForIndex(index, surfaceObjects.length, -Math.PI / 3);
-    const offset = 28 * context.spacingFactor;
-    const anchorX = parent.x + Math.cos(angle) * parent.radius;
-    const anchorY = parent.y + Math.sin(angle) * parent.radius;
-    const x = parent.x + Math.cos(angle) * (parent.radius + offset);
-    const y = parent.y + Math.sin(angle) * (parent.radius + offset);
+    const leaderDistance = 28 * context.spacingFactor;
+    const anchorOffset = projectPolarOffset(
+      angle,
+      parent.radius,
+      context.projection,
+      context.projection === "isometric" ? 0.9 : 1,
+    );
+    const bodyOffset = projectPolarOffset(
+      angle,
+      parent.radius + leaderDistance,
+      context.projection,
+      context.projection === "isometric" ? 0.9 : 1,
+    );
+    const anchorX = parent.x + anchorOffset.x;
+    const anchorY = parent.y + anchorOffset.y;
+    const x = parent.x + bodyOffset.x;
+    const y = parent.y + bodyOffset.y;
 
     positions.set(child.id, {
       object: child,
       x,
       y,
-      radius: visualRadiusFor(child, 2),
+      radius: visualRadiusFor(child, depth + 1, context.scaleModel),
+      sortKey: computeSortKey(x, y, depth + 1),
       anchorX,
       anchorY,
     });
@@ -499,7 +691,7 @@ function placeOrbitingChildren(
       mode: "surface",
     });
 
-    placeOrbitingChildren(child, positions, orbitDrafts, leaderDrafts, context);
+    placeOrbitingChildren(child, positions, orbitDrafts, leaderDrafts, context, depth + 1);
   });
 }
 
@@ -515,37 +707,161 @@ function compareOrbiting(left: WorldOrbitObject, right: WorldOrbitObject): numbe
   return left.id.localeCompare(right.id);
 }
 
-function computeOrbitRadii(
+function computeOrbitMetricContext(
   objects: WorldOrbitObject[],
   parentRadius: number,
   spacingFactor: number,
-): number[] {
-  if (objects.length === 0) {
-    return [];
-  }
-
+  scaleModel: RenderScaleModel,
+): OrbitMetricContext {
   const metrics = objects.map((object) => orbitMetric(object));
   const presentMetrics = metrics.filter((value): value is number => value !== null);
-  const inner = parentRadius + 54 * spacingFactor;
-  const step = (objects.length > 2 ? 54 : 64) * spacingFactor;
+  const innerPx =
+    parentRadius + 56 * spacingFactor * scaleModel.orbitDistanceMultiplier;
+  const stepPx =
+    (objects.length > 2 ? 54 : 64) * spacingFactor * scaleModel.orbitDistanceMultiplier;
 
-  if (presentMetrics.length >= 2) {
-    const minMetric = Math.min(...presentMetrics);
-    const maxMetric = Math.max(...presentMetrics);
-    const spread = maxMetric - minMetric || 1;
-
-    return objects.map((_, index) => {
-      const metric = metrics[index];
-      if (metric === null) {
-        return inner + index * step;
-      }
-
-      const normalized = (metric - minMetric) / spread;
-      return inner + normalized * Math.max(step * (objects.length - 1), step);
-    });
+  if (presentMetrics.length === 0) {
+    return {
+      metrics,
+      minMetric: 0,
+      maxMetric: 0,
+      metricSpread: 0,
+      innerPx,
+      stepPx,
+      pixelSpread: Math.max(stepPx * Math.max(objects.length - 1, 1), stepPx),
+    };
   }
 
-  return objects.map((_, index) => inner + index * step);
+  const minMetric = Math.min(...presentMetrics);
+  const maxMetric = Math.max(...presentMetrics);
+  const metricSpread = maxMetric - minMetric;
+
+  return {
+    metrics,
+    minMetric,
+    maxMetric,
+    metricSpread,
+    innerPx,
+    stepPx,
+    pixelSpread: Math.max(stepPx * Math.max(objects.length - 1, 1), stepPx),
+  };
+}
+
+function resolveOrbitGeometry(
+  object: WorldOrbitObject,
+  index: number,
+  count: number,
+  parent: PositionedObject,
+  metricContext: OrbitMetricContext,
+  context: PlacementContext,
+): {
+  kind: "circle" | "ellipse";
+  cx: number;
+  cy: number;
+  radius?: number;
+  rx?: number;
+  ry?: number;
+  rotationDeg: number;
+  band: boolean;
+  bandThickness?: number;
+  frontArcPath?: string;
+  backArcPath?: string;
+  objectX: number;
+  objectY: number;
+} {
+  const placement = object.placement;
+  const band = object.type === "belt" || object.type === "ring";
+  if (!placement || placement.mode !== "orbit") {
+    const fallbackRadius = metricContext.innerPx + index * metricContext.stepPx;
+    return {
+      kind: "circle",
+      cx: parent.x,
+      cy: parent.y,
+      radius: fallbackRadius,
+      rotationDeg: 0,
+      band,
+      bandThickness: band
+        ? 12 * context.scaleModel.ringThicknessMultiplier
+        : undefined,
+      objectX: parent.x,
+      objectY: parent.y - fallbackRadius,
+    };
+  }
+
+  const eccentricity = clampNumber(
+    typeof placement.eccentricity === "number" ? placement.eccentricity : 0,
+    0,
+    0.92,
+  );
+  const semiMajor = resolveOrbitRadiusPx(object, index, metricContext);
+  const baseMinor = Math.max(
+    semiMajor * Math.sqrt(1 - eccentricity * eccentricity),
+    semiMajor * 0.18,
+  );
+  const inclinationDeg = unitValueToDegrees(placement.inclination) ?? 0;
+  const inclinationScale =
+    context.projection === "isometric"
+      ? Math.max(MIN_ISO_MINOR_SCALE, Math.cos(degreesToRadians(inclinationDeg))) *
+        ISO_FLATTENING
+      : 1;
+  const semiMinor = Math.max(baseMinor * inclinationScale, semiMajor * 0.14);
+  const rotationDeg = unitValueToDegrees(placement.angle) ?? 0;
+  const focusOffset = semiMajor * eccentricity;
+  const centerOffset = rotateOffset(-focusOffset, 0, rotationDeg);
+  const cx = parent.x + centerOffset.x;
+  const cy = parent.y + centerOffset.y;
+  const phase = resolveOrbitPhase(placement.phase, index, count);
+  const objectPoint = ellipsePoint(cx, cy, semiMajor, semiMinor, rotationDeg, phase);
+  const useCircle =
+    context.projection === "topdown" &&
+    eccentricity <= 0.0001 &&
+    Math.abs(rotationDeg) <= 0.0001;
+  const bandThickness = band
+    ? resolveBandThickness(object, semiMajor, metricContext, context.scaleModel)
+    : undefined;
+
+  return {
+    kind: useCircle ? "circle" : "ellipse",
+    cx: useCircle ? parent.x : cx,
+    cy: useCircle ? parent.y : cy,
+    radius: useCircle ? semiMajor : undefined,
+    rx: useCircle ? undefined : semiMajor,
+    ry: useCircle ? undefined : semiMinor,
+    rotationDeg,
+    band,
+    bandThickness,
+    frontArcPath:
+      context.projection === "isometric" || band
+        ? buildEllipseArcPath(cx, cy, semiMajor, semiMinor, rotationDeg, 0, Math.PI)
+        : undefined,
+    backArcPath:
+      context.projection === "isometric" || band
+        ? buildEllipseArcPath(cx, cy, semiMajor, semiMinor, rotationDeg, Math.PI, Math.PI * 2)
+        : undefined,
+    objectX: objectPoint.x,
+    objectY: objectPoint.y,
+  };
+}
+
+function resolveOrbitRadiusPx(
+  object: WorldOrbitObject,
+  index: number,
+  metricContext: OrbitMetricContext,
+): number {
+  const metric = orbitMetric(object);
+  if (metric === null) {
+    return metricContext.innerPx + index * metricContext.stepPx;
+  }
+
+  if (metricContext.metricSpread > 0) {
+    return (
+      metricContext.innerPx +
+      ((metric - metricContext.minMetric) / metricContext.metricSpread) *
+        metricContext.pixelSpread
+    );
+  }
+
+  return metricContext.innerPx + Math.log10(metric + 1) * metricContext.stepPx;
 }
 
 function orbitMetric(object: WorldOrbitObject): number | null {
@@ -556,22 +872,51 @@ function orbitMetric(object: WorldOrbitObject): number | null {
   return toDistanceMetric(object.placement.semiMajor ?? object.placement.distance ?? null);
 }
 
-function resolveOrbitAngle(
-  object: WorldOrbitObject,
+function resolveOrbitPhase(
+  phase: UnitValue | undefined,
   index: number,
   count: number,
 ): number {
-  if (!object.placement || object.placement.mode !== "orbit") {
-    return angleForIndex(index, count, -Math.PI / 2);
-  }
-
-  const directAngle = object.placement.phase ?? object.placement.angle;
-  const degreeValue = directAngle ? unitValueToDegrees(directAngle) : null;
+  const degreeValue = phase ? unitValueToDegrees(phase) : null;
   if (degreeValue !== null) {
-    return (degreeValue - 90) * (Math.PI / 180);
+    return degreesToRadians(degreeValue - 90);
   }
 
   return angleForIndex(index, count, -Math.PI / 2);
+}
+
+function resolveBandThickness(
+  object: WorldOrbitObject,
+  orbitRadius: number,
+  metricContext: OrbitMetricContext,
+  scaleModel: RenderScaleModel,
+): number {
+  const innerMetric = toDistanceMetric(toUnitValue(object.properties.inner));
+  const outerMetric = toDistanceMetric(toUnitValue(object.properties.outer));
+  if (innerMetric !== null && outerMetric !== null) {
+    const thicknessMetric = Math.abs(outerMetric - innerMetric);
+    if (metricContext.metricSpread > 0) {
+      return clampNumber(
+        (thicknessMetric / metricContext.metricSpread) *
+          metricContext.pixelSpread *
+          scaleModel.ringThicknessMultiplier,
+        8,
+        54,
+      );
+    }
+    const referenceMetric = Math.max(Math.max(innerMetric, outerMetric), 0.0001);
+    return clampNumber(
+      (thicknessMetric / referenceMetric) *
+        orbitRadius *
+        0.75 *
+        scaleModel.ringThicknessMultiplier,
+      8,
+      48,
+    );
+  }
+
+  const fallbackBase = object.type === "belt" ? 18 : 12;
+  return fallbackBase * scaleModel.ringThicknessMultiplier;
 }
 
 function resolveAtPosition(
@@ -583,7 +928,7 @@ function resolveAtPosition(
   width: number,
   height: number,
   padding: number,
-  spacingFactor: number,
+  context: PlacementContext,
 ): { x: number; y: number; anchorX?: number; anchorY?: number } {
   if (reference.kind === "lagrange") {
     return resolveLagrangePosition(reference, positions, objectMap, width, height);
@@ -593,10 +938,16 @@ function resolveAtPosition(
     const anchor = positions.get(reference.objectId);
     if (anchor) {
       const angle = angleForIndex(index, count, Math.PI / 5);
-      const distance = (anchor.radius + 34) * spacingFactor;
+      const distance = (anchor.radius + 36) * context.scaleModel.labelMultiplier;
+      const offset = projectPolarOffset(
+        angle,
+        distance,
+        context.projection,
+        context.projection === "isometric" ? 0.92 : 1,
+      );
       return {
-        x: anchor.x + Math.cos(angle) * distance,
-        y: anchor.y + Math.sin(angle) * distance,
+        x: anchor.x + offset.x,
+        y: anchor.y + offset.y,
         anchorX: anchor.x,
         anchorY: anchor.y,
       };
@@ -607,10 +958,16 @@ function resolveAtPosition(
     const anchor = positions.get(reference.name);
     if (anchor) {
       const angle = angleForIndex(index, count, Math.PI / 6);
-      const distance = (anchor.radius + 34) * spacingFactor;
+      const distance = (anchor.radius + 36) * context.scaleModel.labelMultiplier;
+      const offset = projectPolarOffset(
+        angle,
+        distance,
+        context.projection,
+        context.projection === "isometric" ? 0.92 : 1,
+      );
       return {
-        x: anchor.x + Math.cos(angle) * distance,
-        y: anchor.y + Math.sin(angle) * distance,
+        x: anchor.x + offset.x,
+        y: anchor.y + offset.y,
         anchorX: anchor.x,
         anchorY: anchor.y,
       };
@@ -618,8 +975,12 @@ function resolveAtPosition(
   }
 
   return {
-    x: width - padding - 160,
-    y: height - padding - 80 - index * 56,
+    x: width - padding - 170,
+    y:
+      height -
+      padding -
+      86 -
+      index * 58 * context.scaleModel.freePlacementMultiplier,
   };
 }
 
@@ -649,19 +1010,44 @@ function resolveLagrangePosition(
   const uy = dy / distance;
   const nx = -uy;
   const ny = ux;
-  const offset = clamp(distance * 0.25, 24, 64);
+  const offset = clampNumber(distance * 0.25, 24, 68);
 
   switch (reference.point) {
     case "L1":
-      return { x: secondary.x - ux * offset, y: secondary.y - uy * offset, anchorX: secondary.x, anchorY: secondary.y };
+      return {
+        x: secondary.x - ux * offset,
+        y: secondary.y - uy * offset,
+        anchorX: secondary.x,
+        anchorY: secondary.y,
+      };
     case "L2":
-      return { x: secondary.x + ux * offset, y: secondary.y + uy * offset, anchorX: secondary.x, anchorY: secondary.y };
+      return {
+        x: secondary.x + ux * offset,
+        y: secondary.y + uy * offset,
+        anchorX: secondary.x,
+        anchorY: secondary.y,
+      };
     case "L3":
-      return { x: primary.x - ux * offset, y: primary.y - uy * offset, anchorX: primary.x, anchorY: primary.y };
+      return {
+        x: primary.x - ux * offset,
+        y: primary.y - uy * offset,
+        anchorX: primary.x,
+        anchorY: primary.y,
+      };
     case "L4":
-      return { x: secondary.x + (ux * 0.5 - nx * 0.8660254) * offset, y: secondary.y + (uy * 0.5 - ny * 0.8660254) * offset, anchorX: secondary.x, anchorY: secondary.y };
+      return {
+        x: secondary.x + (ux * 0.5 - nx * 0.8660254) * offset,
+        y: secondary.y + (uy * 0.5 - ny * 0.8660254) * offset,
+        anchorX: secondary.x,
+        anchorY: secondary.y,
+      };
     case "L5":
-      return { x: secondary.x + (ux * 0.5 + nx * 0.8660254) * offset, y: secondary.y + (uy * 0.5 + ny * 0.8660254) * offset, anchorX: secondary.x, anchorY: secondary.y };
+      return {
+        x: secondary.x + (ux * 0.5 + nx * 0.8660254) * offset,
+        y: secondary.y + (uy * 0.5 + ny * 0.8660254) * offset,
+        anchorX: secondary.x,
+        anchorY: secondary.y,
+      };
   }
 }
 
@@ -678,44 +1064,58 @@ function deriveParentAnchor(
   return positions.get(object.placement.target);
 }
 
-function visualRadiusFor(object: WorldOrbitObject, depth = 0): number {
-  const explicitRadius = toVisualSizeMetric(object.properties.radius);
+function visualRadiusFor(
+  object: WorldOrbitObject,
+  depth: number,
+  scaleModel: RenderScaleModel,
+): number {
+  const explicitRadius = toVisualSizeMetric(object.properties.radius, scaleModel);
   if (explicitRadius !== null) {
     return explicitRadius;
   }
 
+  const multiplier = scaleModel.bodyRadiusMultiplier;
   switch (object.type) {
     case "star":
-      return depth === 0 ? 28 : 20;
+      return clampNumber(
+        (depth === 0 ? 28 : 20) * multiplier,
+        scaleModel.minBodyRadius,
+        scaleModel.maxBodyRadius,
+      );
     case "planet":
-      return 12;
+      return clampNumber(12 * multiplier, scaleModel.minBodyRadius, scaleModel.maxBodyRadius);
     case "moon":
-      return 7;
+      return clampNumber(7 * multiplier, scaleModel.minBodyRadius, scaleModel.maxBodyRadius);
     case "belt":
-      return 5;
+      return clampNumber(5 * multiplier, scaleModel.minBodyRadius, scaleModel.maxBodyRadius);
     case "asteroid":
-      return 5;
+      return clampNumber(5 * multiplier, scaleModel.minBodyRadius, scaleModel.maxBodyRadius);
     case "comet":
-      return 6;
+      return clampNumber(6 * multiplier, scaleModel.minBodyRadius, scaleModel.maxBodyRadius);
     case "ring":
-      return 5;
+      return clampNumber(5 * multiplier, scaleModel.minBodyRadius, scaleModel.maxBodyRadius);
     case "structure":
-      return 6;
+      return clampNumber(6 * multiplier, scaleModel.minBodyRadius, scaleModel.maxBodyRadius);
     case "phenomenon":
-      return 8;
+      return clampNumber(8 * multiplier, scaleModel.minBodyRadius, scaleModel.maxBodyRadius);
   }
 }
 
-function visualExtentForObject(object: WorldOrbitObject, radius: number): number {
+function visualExtentForObject(
+  object: WorldOrbitObject,
+  radius: number,
+  scaleModel: RenderScaleModel,
+): number {
+  const atmosphereBoost = typeof object.properties.atmosphere === "string" ? 4 : 0;
   switch (object.type) {
     case "star":
       return radius * 2.4;
     case "phenomenon":
-      return radius * 1.2;
+      return radius * 1.25;
     case "structure":
       return radius + 2;
     default:
-      return radius;
+      return Math.min(radius + atmosphereBoost, scaleModel.maxBodyRadius + 10);
   }
 }
 
@@ -736,25 +1136,50 @@ function toDistanceMetric(value: UnitValue | null): number | null {
   }
 }
 
-function toVisualSizeMetric(value: NormalizedValue | undefined): number | null {
+function toVisualSizeMetric(
+  value: NormalizedValue | undefined,
+  scaleModel: RenderScaleModel,
+): number | null {
+  const unitValue = toUnitValue(value);
+  if (!unitValue) {
+    return null;
+  }
+
+  let size: number;
+  switch (unitValue.unit) {
+    case "sol":
+      size = clampNumber(unitValue.value * 22, 14, 40);
+      break;
+    case "re":
+      size = clampNumber(unitValue.value * 10, 6, 18);
+      break;
+    case "km":
+      size = clampNumber(Math.log10(Math.max(unitValue.value, 1)) * 2.6, 4, 16);
+      break;
+    default:
+      size = clampNumber(unitValue.value * 4, 4, 20);
+      break;
+  }
+
+  return clampNumber(
+    size * scaleModel.bodyRadiusMultiplier,
+    scaleModel.minBodyRadius,
+    scaleModel.maxBodyRadius,
+  );
+}
+
+function toUnitValue(value: NormalizedValue | undefined): UnitValue | null {
   if (!value || typeof value !== "object" || !("value" in value)) {
     return null;
   }
 
-  const unitValue = value as UnitValue;
-  switch (unitValue.unit) {
-    case "sol":
-      return clamp(unitValue.value * 22, 14, 40);
-    case "re":
-      return clamp(unitValue.value * 10, 6, 18);
-    case "km":
-      return clamp(Math.log10(Math.max(unitValue.value, 1)) * 2.6, 4, 16);
-    default:
-      return clamp(unitValue.value * 4, 4, 20);
-  }
+  return value as UnitValue;
 }
 
-function unitValueToDegrees(value: UnitValue): number | null {
+function unitValueToDegrees(value: UnitValue | undefined): number | null {
+  if (!value) {
+    return null;
+  }
   return value.unit === "deg" || value.unit === null ? value.value : null;
 }
 
@@ -763,7 +1188,88 @@ function angleForIndex(index: number, count: number, startAngle: number): number
   return startAngle + (index * Math.PI * 2) / count;
 }
 
-function clamp(value: number, min: number, max: number): number {
+function buildEllipseArcPath(
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+  rotationDeg: number,
+  start: number,
+  end: number,
+): string {
+  const points = sampleEllipseArcPoints(cx, cy, rx, ry, rotationDeg, start, end, ARC_SAMPLE_COUNT);
+  if (points.length === 0) {
+    return "";
+  }
+
+  return points
+    .map((point, index) =>
+      `${index === 0 ? "M" : "L"} ${formatNumber(point.x)} ${formatNumber(point.y)}`,
+    )
+    .join(" ");
+}
+
+function sampleEllipseArcPoints(
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+  rotationDeg: number,
+  start: number,
+  end: number,
+  segments: number,
+): CoordinatePoint[] {
+  const points: CoordinatePoint[] = [];
+  for (let index = 0; index <= segments; index += 1) {
+    const t = start + ((end - start) * index) / segments;
+    points.push(ellipsePoint(cx, cy, rx, ry, rotationDeg, t));
+  }
+  return points;
+}
+
+function ellipsePoint(
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+  rotationDeg: number,
+  angle: number,
+): CoordinatePoint {
+  const localX = rx * Math.cos(angle);
+  const localY = ry * Math.sin(angle);
+  const rotated = rotateOffset(localX, localY, rotationDeg);
+  return {
+    x: cx + rotated.x,
+    y: cy + rotated.y,
+  };
+}
+
+function rotateOffset(x: number, y: number, rotationDeg: number): CoordinatePoint {
+  const radians = degreesToRadians(rotationDeg);
+  return {
+    x: x * Math.cos(radians) - y * Math.sin(radians),
+    y: x * Math.sin(radians) + y * Math.cos(radians),
+  };
+}
+
+function projectPolarOffset(
+  angle: number,
+  distance: number,
+  projection: ViewProjection,
+  verticalFactor: number,
+): CoordinatePoint {
+  const yScale = projection === "isometric" ? ISO_FLATTENING * verticalFactor : verticalFactor;
+  return {
+    x: Math.cos(angle) * distance,
+    y: Math.sin(angle) * distance * yScale,
+  };
+}
+
+function computeSortKey(x: number, y: number, depth: number): number {
+  return y * 1_000 + x + depth * 0.01;
+}
+
+function clampNumber(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
@@ -795,12 +1301,20 @@ function customColorFor(value: NormalizedValue | undefined): string | undefined 
   return typeof value === "string" && value.trim() ? value : undefined;
 }
 
-function estimateLabelHalfWidth(object: RenderSceneObject): number {
-  const primaryWidth = object.label.length * 4.6 + 18;
-  const secondaryWidth = object.secondaryLabel.length * 3.9 + 18;
+function estimateLabelHalfWidth(object: RenderSceneObject, labelMultiplier: number): number {
+  const primaryWidth = object.label.length * 4.6 * labelMultiplier + 18;
+  const secondaryWidth = object.secondaryLabel.length * 3.9 * labelMultiplier + 18;
   return Math.max(primaryWidth, secondaryWidth, object.visualRadius + 18);
 }
 
 function capitalizeLabel(value: string): string {
   return value.length > 0 ? value[0].toUpperCase() + value.slice(1) : value;
+}
+
+function degreesToRadians(value: number): number {
+  return (value * Math.PI) / 180;
+}
+
+function formatNumber(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }

@@ -24,6 +24,7 @@ export type Unit =
   | "deg";
 
 export type WorldOrbitDocumentVersion = "1.0";
+export type ViewProjection = "topdown" | "isometric";
 
 export interface CoordinatePoint {
   x: number;
@@ -169,10 +170,22 @@ export interface FreePlacement {
   descriptor?: string;
 }
 
+export interface RenderScaleModel {
+  orbitDistanceMultiplier: number;
+  bodyRadiusMultiplier: number;
+  labelMultiplier: number;
+  freePlacementMultiplier: number;
+  ringThicknessMultiplier: number;
+  minBodyRadius: number;
+  maxBodyRadius: number;
+}
+
 export interface SceneRenderOptions {
   width?: number;
   height?: number;
   padding?: number;
+  projection?: "document" | ViewProjection;
+  scaleModel?: Partial<RenderScaleModel>;
 }
 
 export interface RenderBounds {
@@ -194,6 +207,7 @@ export interface RenderSceneObject {
   y: number;
   radius: number;
   visualRadius: number;
+  sortKey: number;
   anchorX?: number;
   anchorY?: number;
   label: string;
@@ -208,10 +222,17 @@ export interface RenderOrbitVisual {
   objectId: string;
   object: WorldOrbitObject;
   parentId: string;
+  kind: "circle" | "ellipse";
   cx: number;
   cy: number;
-  radius: number;
+  radius?: number;
+  rx?: number;
+  ry?: number;
+  rotationDeg: number;
   band: boolean;
+  bandThickness?: number;
+  frontArcPath?: string;
+  backArcPath?: string;
   hidden: boolean;
 }
 
@@ -233,6 +254,8 @@ export interface RenderScene {
   width: number;
   height: number;
   padding: number;
+  projection: ViewProjection;
+  scaleModel: RenderScaleModel;
   title: string;
   subtitle: string;
   systemId: string | null;

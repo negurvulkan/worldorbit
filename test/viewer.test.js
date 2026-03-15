@@ -8,9 +8,11 @@ import { createInteractiveViewer } from "@worldorbit/viewer";
 
 const source = `
 system Iyath
+  view isometric
 star Iyath
-planet Naar orbit Iyath distance 1.18au image assets/naar-map.png
-moon Leth orbit Naar distance 220000km
+  temperature 5840
+planet Naar orbit Iyath semiMajor 1.18au eccentricity 0.08 angle 28deg inclination 24deg phase 42deg image assets/naar-map.png atmosphere nitrogen-oxygen
+moon Leth orbit Naar distance 220000km angle 18deg inclination 12deg
 structure Relay kind relay at Naar:L4
 `.trim();
 
@@ -87,8 +89,26 @@ test("interactive viewer mounts, updates, selects, exports, and destroys cleanly
     assert.ok(preview.querySelector("svg"));
     assert.ok(preview.querySelector("#worldorbit-camera-root"));
     assert.ok(views.length > 0);
+    assert.equal(viewer.getScene().projection, "isometric");
 
     viewer.setDocument(parse(source).document);
+    viewer.setRenderOptions({
+      projection: "topdown",
+      scaleModel: {
+        bodyRadiusMultiplier: 1.4,
+      },
+    });
+    assert.equal(viewer.getRenderOptions().projection, "topdown");
+    assert.equal(viewer.getRenderOptions().scaleModel?.bodyRadiusMultiplier, 1.4);
+    assert.equal(viewer.getScene().projection, "topdown");
+
+    viewer.setRenderOptions({
+      projection: "isometric",
+      scaleModel: {
+        bodyRadiusMultiplier: 1.25,
+      },
+    });
+    assert.equal(viewer.getScene().projection, "isometric");
     viewer.focusObject("Naar");
     assert.equal(viewer.getState().selectedObjectId, "Naar");
 
@@ -101,6 +121,7 @@ test("interactive viewer mounts, updates, selects, exports, and destroys cleanly
     assert.match(target?.getAttribute("class") ?? "", /wo-object-selected/);
     assert.match(viewer.exportSvg(), /wo-object-selected/);
     assert.match(viewer.exportSvg(), /assets\/naar-map\.png/);
+    assert.match(viewer.exportSvg(), /wo-orbit-back/);
 
     const selectionCount = selections.length;
     viewer.destroy();

@@ -12,6 +12,7 @@ import {
 import { renderSceneToSvg } from "./render.js";
 import type {
   InteractiveViewerOptions,
+  ViewerRenderOptions,
   ViewerState,
   WorldOrbitViewer,
 } from "./types.js";
@@ -31,6 +32,11 @@ interface TouchGestureState {
   startCenter: CoordinatePoint;
   startDistance: number;
 }
+
+type ViewerInput =
+  | { kind: "source"; value: string }
+  | { kind: "document"; value: WorldOrbitDocument }
+  | { kind: "scene"; value: RenderScene };
 
 const DEFAULT_VIEWER_LIMITS = {
   minScale: 0.2,
@@ -72,10 +78,12 @@ export function createInteractiveViewer(
     rotationStep: options.rotationStep ?? DEFAULT_VIEWER_LIMITS.rotationStep,
   };
 
-  const renderOptions = {
+  let renderOptions: ViewerRenderOptions = {
     width: options.width,
     height: options.height,
     padding: options.padding,
+    projection: options.projection,
+    scaleModel: options.scaleModel ? { ...options.scaleModel } : undefined,
     theme: options.theme,
     layers: options.layers,
     subtitle: options.subtitle,
@@ -84,7 +92,8 @@ export function createInteractiveViewer(
   const previousTabIndex = container.getAttribute("tabindex");
   const previousTouchAction = container.style.touchAction;
 
-  let scene = resolveInitialScene(options, renderOptions);
+  let currentInput = resolveInitialInput(options);
+  let scene = renderSceneFromInput(currentInput, renderOptions);
   let state = { ...DEFAULT_VIEWER_STATE };
   let svgElement: SVGSVGElement | null = null;
   let cameraRoot: SVGGElement | null = null;
@@ -334,19 +343,33 @@ export function createInteractiveViewer(
 
   const api: WorldOrbitViewer = {
     setSource(source: string): void {
-      scene = renderDocumentToScene(parseSource(source), renderOptions);
+      currentInput = { kind: "source", value: source };
+      scene = renderSceneFromInput(currentInput, renderOptions);
       rerenderScene(true);
     },
     setDocument(document: WorldOrbitDocument): void {
-      scene = renderDocumentToScene(document, renderOptions);
+      currentInput = { kind: "document", value: document };
+      scene = renderSceneFromInput(currentInput, renderOptions);
       rerenderScene(true);
     },
     setScene(nextScene: RenderScene): void {
+      currentInput = { kind: "scene", value: nextScene };
       scene = nextScene;
       rerenderScene(true);
     },
     getScene(): RenderScene {
       return scene;
+    },
+    getRenderOptions(): ViewerRenderOptions {
+      return cloneRenderOptions(renderOptions);
+    },
+    setRenderOptions(options: Partial<ViewerRenderOptions>): void {
+      const sceneAffecting = hasSceneAffectingRenderOptions(options);
+      renderOptions = mergeRenderOptions(renderOptions, options);
+      if (currentInput.kind !== "scene" && sceneAffecting) {
+        scene = renderSceneFromInput(currentInput, renderOptions);
+      }
+      rerenderScene(sceneAffecting);
     },
     getState(): ViewerState {
       return { ...state };
@@ -533,23 +556,86 @@ export function createInteractiveViewer(
   }
 }
 
-function resolveInitialScene(
-  options: InteractiveViewerOptions,
-  renderOptions: { width?: number; height?: number; padding?: number },
-): RenderScene {
+function resolveInitialInput(options: InteractiveViewerOptions): ViewerInput {
   if (options.scene) {
-    return options.scene;
+    return { kind: "scene", value: options.scene };
   }
 
   if (options.document) {
-    return renderDocumentToScene(options.document, renderOptions);
+    return { kind: "document", value: options.document };
   }
 
   if (options.source) {
-    return renderDocumentToScene(parseSource(options.source), renderOptions);
+    return { kind: "source", value: options.source };
   }
 
   throw new Error("Interactive viewer requires an initial render input.");
+}
+
+function renderSceneFromInput(
+  input: ViewerInput,
+  renderOptions: ViewerRenderOptions,
+): RenderScene {
+  switch (input.kind) {
+    case "scene":
+      return input.value;
+    case "document":
+      return renderDocumentToScene(input.value, renderOptions);
+    case "source":
+      return renderDocumentToScene(parseSource(input.value), renderOptions);
+  }
+}
+
+function cloneRenderOptions(renderOptions: ViewerRenderOptions): ViewerRenderOptions {
+  return {
+    ...renderOptions,
+    scaleModel: renderOptions.scaleModel ? { ...renderOptions.scaleModel } : undefined,
+    layers: renderOptions.layers ? { ...renderOptions.layers } : undefined,
+    theme:
+      renderOptions.theme && typeof renderOptions.theme === "object"
+        ? { ...renderOptions.theme }
+        : renderOptions.theme,
+  };
+}
+
+function mergeRenderOptions(
+  current: ViewerRenderOptions,
+  next: Partial<ViewerRenderOptions>,
+): ViewerRenderOptions {
+  return {
+    ...current,
+    ...next,
+    scaleModel: next.scaleModel
+      ? {
+          ...(current.scaleModel ?? {}),
+          ...next.scaleModel,
+        }
+      : current.scaleModel
+        ? { ...current.scaleModel }
+        : undefined,
+    layers: next.layers
+      ? {
+          ...(current.layers ?? {}),
+          ...next.layers,
+        }
+      : current.layers
+        ? { ...current.layers }
+        : undefined,
+    theme:
+      next.theme && typeof next.theme === "object"
+        ? { ...next.theme }
+        : next.theme ?? current.theme,
+  };
+}
+
+function hasSceneAffectingRenderOptions(options: Partial<ViewerRenderOptions>): boolean {
+  return (
+    options.width !== undefined ||
+    options.height !== undefined ||
+    options.padding !== undefined ||
+    options.projection !== undefined ||
+    options.scaleModel !== undefined
+  );
 }
 
 function parseSource(source: string): WorldOrbitDocument {

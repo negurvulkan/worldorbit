@@ -1,15 +1,16 @@
-import { parse, renderDocumentToScene } from "@worldorbit/core";
+import { parse } from "@worldorbit/core";
 import { createInteractiveViewer, createWorldOrbitEmbedMarkup } from "@worldorbit/viewer";
 
 const sampleSource = `system Iyath
   title "Iyath System"
-  view topdown
+  view isometric
   scale presentation
 
 star Iyath
   class G2
   radius 1.08sol
   mass 1.02sol
+  temperature 5840
   color #ffd36a
 
 planet Naar
@@ -18,8 +19,15 @@ planet Naar
   image assets/naar-map.png
   orbit Iyath
   semiMajor 1.18au
-  eccentricity 0.03
+  eccentricity 0.08
+  angle 28deg
+  inclination 24deg
+  phase 42deg
   period 412d
+  radius 1.06re
+  temperature 289
+  albedo 0.34
+  atmosphere nitrogen-oxygen
   tags habitable homeworld
 
   info
@@ -29,11 +37,30 @@ planet Naar
 moon Leth
   orbit Naar
   distance 220000km
+  angle 34deg
+  inclination 18deg
+  phase 210deg
   period 18d
+  radius 0.27re
+  albedo 0.21
+
+ring Dawn-Ring
+  orbit Naar
+  distance 185000km
+  angle 22deg
+  inclination 18deg
+  inner 120000km
+  outer 190000km
 
 belt Ember-Belt
   orbit Iyath
-  distance 2.7au
+  semiMajor 2.7au
+  eccentricity 0.16
+  angle 14deg
+  inclination 11deg
+  phase 166deg
+  inner 2.45au
+  outer 2.95au
   tags mining debris
 
 structure L4-Relay
@@ -51,7 +78,12 @@ structure OuterGate
 phenomenon Helioscar
   kind anomaly
   orbit Iyath
-  distance 4.9au`;
+  semiMajor 4.9au
+  eccentricity 0.2
+  angle 36deg
+  inclination 9deg
+  phase 228deg
+  temperature 620`;
 
 const sourceField = document.querySelector("#source");
 const preview = document.querySelector("#preview");
@@ -69,14 +101,23 @@ const rotateRightButton = document.querySelector("#rotate-right");
 const fitButton = document.querySelector("#fit-view");
 const resetViewButton = document.querySelector("#reset-view");
 const themeSelect = document.querySelector("#theme");
+const projectionSelect = document.querySelector("#projection");
+const orbitScaleInput = document.querySelector("#orbit-scale");
+const bodyScaleInput = document.querySelector("#body-scale");
+const labelScaleInput = document.querySelector("#label-scale");
+const orbitScaleValue = document.querySelector("#orbit-scale-value");
+const bodyScaleValue = document.querySelector("#body-scale-value");
+const labelScaleValue = document.querySelector("#label-scale-value");
 
 let viewer = null;
 let currentDocument = null;
 let currentSelection = null;
 let currentScene = null;
+let currentRenderOptions = getRenderOptionsFromControls();
 let renderTimer = 0;
 
 sourceField.value = sampleSource;
+syncControlOutputs();
 
 function scheduleRender() {
   window.clearTimeout(renderTimer);
@@ -88,14 +129,11 @@ function render() {
     const result = parse(sourceField.value);
     currentDocument = result.document;
     currentSelection = null;
-    currentScene = renderDocumentToScene(currentDocument, {
-      width: 1080,
-      height: 720,
-    });
 
     if (!viewer) {
       viewer = createInteractiveViewer(preview, {
-        scene: currentScene,
+        document: currentDocument,
+        ...currentRenderOptions,
         theme: themeSelect.value,
         onSelectionChange(selection) {
           currentSelection = selection;
@@ -103,14 +141,16 @@ function render() {
           updateModelPanel();
         },
         onViewChange() {
+          currentScene = viewer?.getScene() ?? currentScene;
           updateDownloadState();
         },
       });
     } else {
-      viewer.setScene(currentScene);
+      viewer.setDocument(currentDocument);
       viewer.setState({ selectedObjectId: null });
     }
 
+    currentScene = viewer.getScene();
     updateSummary();
     updateModelPanel();
     updateEmbedPanel();
@@ -133,34 +173,48 @@ function render() {
   }
 }
 
-function rebuildViewerTheme() {
-  if (!viewer || !currentScene) {
+function applyRenderControls() {
+  currentRenderOptions = getRenderOptionsFromControls();
+  syncControlOutputs();
+
+  if (!viewer || !currentDocument) {
     return;
   }
 
-  const state = viewer.getState();
-  const selectedObjectId = state.selectedObjectId;
-  viewer.destroy();
-  viewer = createInteractiveViewer(preview, {
-    scene: currentScene,
+  viewer.setRenderOptions({
+    ...currentRenderOptions,
     theme: themeSelect.value,
-    onSelectionChange(selection) {
-      currentSelection = selection;
-      updateSummary();
-      updateModelPanel();
-    },
-    onViewChange() {
-      updateDownloadState();
-    },
   });
-
-  if (selectedObjectId) {
-    viewer.focusObject(selectedObjectId);
-  } else {
-    viewer.setState(state);
-  }
-
+  currentScene = viewer.getScene();
+  updateSummary();
+  updateModelPanel();
   updateEmbedPanel();
+  updateDownloadState();
+}
+
+function getRenderOptionsFromControls() {
+  const orbitScale = Number(orbitScaleInput.value);
+  const bodyScale = Number(bodyScaleInput.value);
+  const labelScale = Number(labelScaleInput.value);
+
+  return {
+    width: 1080,
+    height: 720,
+    projection: projectionSelect.value,
+    scaleModel: {
+      orbitDistanceMultiplier: orbitScale,
+      bodyRadiusMultiplier: bodyScale,
+      labelMultiplier: labelScale,
+      freePlacementMultiplier: orbitScale,
+      ringThicknessMultiplier: orbitScale,
+    },
+  };
+}
+
+function syncControlOutputs() {
+  orbitScaleValue.value = Number(orbitScaleInput.value).toFixed(2);
+  bodyScaleValue.value = Number(bodyScaleInput.value).toFixed(2);
+  labelScaleValue.value = Number(labelScaleInput.value).toFixed(2);
 }
 
 function updateSummary() {
@@ -169,26 +223,37 @@ function updateSummary() {
     return;
   }
 
-  const base = `${currentDocument.objects.length} Objekte · ${currentScene.layoutPreset} layout`;
+  const base = `${currentDocument.objects.length} Objekte - ${currentScene.projection} - ${currentScene.layoutPreset} layout`;
   summary.textContent = currentSelection
-    ? `${base} · Auswahl: ${currentSelection.objectId}`
+    ? `${base} - Auswahl: ${currentSelection.objectId}`
     : base;
 }
 
 function updateModelPanel() {
-  if (!currentDocument) {
+  if (!currentDocument || !currentScene) {
     modelOutput.textContent = "";
     return;
   }
 
   const payload = currentSelection
     ? {
-        selectedObject: currentSelection.object,
+        selectedObject: {
+          id: currentSelection.objectId,
+          type: currentSelection.object.type,
+          renderFields: pickRenderFields(currentSelection.object.properties),
+          placement: pickRenderPlacement(currentSelection.object.placement),
+          info: currentSelection.object.info,
+        },
         renderNode: {
-          objectId: currentSelection.objectId,
+          projection: currentScene.projection,
           x: currentSelection.x,
           y: currentSelection.y,
           radius: currentSelection.radius,
+          sortKey: currentSelection.sortKey,
+        },
+        scene: {
+          layoutPreset: currentScene.layoutPreset,
+          scaleModel: currentScene.scaleModel,
         },
         documentSummary: {
           system: currentDocument.system?.id ?? null,
@@ -196,9 +261,86 @@ function updateModelPanel() {
           schemaVersion: currentDocument.version,
         },
       }
-    : currentDocument;
+    : {
+        document: currentDocument,
+        sceneDefaults: {
+          projection: currentScene.projection,
+          layoutPreset: currentScene.layoutPreset,
+          scaleModel: currentScene.scaleModel,
+        },
+      };
 
   modelOutput.textContent = JSON.stringify(payload, null, 2);
+}
+
+function pickRenderFields(properties) {
+  const keys = [
+    "radius",
+    "mass",
+    "density",
+    "gravity",
+    "temperature",
+    "albedo",
+    "atmosphere",
+    "period",
+    "distance",
+    "semiMajor",
+    "eccentricity",
+    "angle",
+    "inclination",
+    "phase",
+    "inner",
+    "outer",
+    "image",
+    "color",
+  ];
+
+  return Object.fromEntries(
+    keys
+      .filter((key) => properties[key] !== undefined)
+      .map((key) => [key, properties[key]]),
+  );
+}
+
+function pickRenderPlacement(placement) {
+  if (!placement) {
+    return null;
+  }
+
+  if (placement.mode === "orbit") {
+    return {
+      mode: placement.mode,
+      target: placement.target,
+      distance: placement.distance,
+      semiMajor: placement.semiMajor,
+      eccentricity: placement.eccentricity,
+      period: placement.period,
+      angle: placement.angle,
+      inclination: placement.inclination,
+      phase: placement.phase,
+    };
+  }
+
+  if (placement.mode === "at") {
+    return {
+      mode: placement.mode,
+      target: placement.target,
+      reference: placement.reference,
+    };
+  }
+
+  if (placement.mode === "surface") {
+    return {
+      mode: placement.mode,
+      target: placement.target,
+    };
+  }
+
+  return {
+    mode: placement.mode,
+    distance: placement.distance,
+    descriptor: placement.descriptor,
+  };
 }
 
 function updateEmbedPanel() {
@@ -248,7 +390,7 @@ function downloadSvg() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "worldorbit-v1-scene.svg";
+  link.download = "worldorbit-v1-5-scene.svg";
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -265,6 +407,10 @@ rotateLeftButton.addEventListener("click", () => viewer?.rotateBy(-15));
 rotateRightButton.addEventListener("click", () => viewer?.rotateBy(15));
 fitButton.addEventListener("click", () => viewer?.fitToSystem());
 resetViewButton.addEventListener("click", () => viewer?.resetView());
-themeSelect.addEventListener("change", rebuildViewerTheme);
+themeSelect.addEventListener("change", applyRenderControls);
+projectionSelect.addEventListener("change", applyRenderControls);
+orbitScaleInput.addEventListener("input", applyRenderControls);
+bodyScaleInput.addEventListener("input", applyRenderControls);
+labelScaleInput.addEventListener("input", applyRenderControls);
 
 render();

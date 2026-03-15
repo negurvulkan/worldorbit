@@ -28,25 +28,34 @@ test("renderWorldOrbitBlock emits inline svg for static mode", () => {
   const html = renderWorldOrbitBlock(
     `
 system Iyath
+  view isometric
 star Iyath
-planet Naar orbit Iyath distance 1.18au image /demo/assets/naar-map.png
+planet Naar orbit Iyath semiMajor 1.18au eccentricity 0.08 angle 28deg inclination 24deg phase 42deg image /demo/assets/naar-map.png atmosphere nitrogen-oxygen
 `.trim(),
-    { mode: "static" },
+    { mode: "static", projection: "isometric" },
   );
 
   assert.match(html, /<svg/);
   assert.match(html, /Iyath/);
   assert.match(html, /\/demo\/assets\/naar-map\.png/);
+  assert.match(html, /wo-orbit-back/);
 });
 
 test("renderWorldOrbitBlock emits a hydration payload for interactive mode", () => {
   const html = renderWorldOrbitBlock(
     `
 system Iyath
+  view isometric
 star Iyath
-planet Naar orbit Iyath distance 1.18au image /demo/assets/naar-map.png
+planet Naar orbit Iyath semiMajor 1.18au eccentricity 0.08 angle 28deg inclination 24deg phase 42deg image /demo/assets/naar-map.png atmosphere nitrogen-oxygen
 `.trim(),
-    { mode: "interactive" },
+    {
+      mode: "interactive",
+      projection: "isometric",
+      scaleModel: {
+        bodyRadiusMultiplier: 1.25,
+      },
+    },
   );
 
   assert.match(html, /data-worldorbit-embed="true"/);
@@ -59,6 +68,8 @@ planet Naar orbit Iyath distance 1.18au image /demo/assets/naar-map.png
   const planet = payload.scene.objects.find((object) => object.objectId === "Naar");
 
   assert.equal(planet?.imageHref, "/demo/assets/naar-map.png");
+  assert.equal(payload.scene.projection, "isometric");
+  assert.equal(payload.scene.scaleModel.bodyRadiusMultiplier, 1.25);
 });
 
 test("remark plugin transforms fenced blocks into static markup", async () => {

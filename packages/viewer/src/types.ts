@@ -1,8 +1,10 @@
 import type {
   CoordinatePoint,
+  RenderScaleModel,
   RenderScene,
   RenderSceneObject,
   SceneRenderOptions,
+  ViewProjection,
   WorldOrbitDocument,
 } from "@worldorbit/core";
 
@@ -48,6 +50,12 @@ export interface SvgRenderOptions extends SceneRenderOptions {
   subtitle?: string;
 }
 
+export interface ViewerRenderOptions
+  extends Omit<SvgRenderOptions, "selectedObjectId"> {
+  projection?: "document" | ViewProjection;
+  scaleModel?: Partial<RenderScaleModel>;
+}
+
 export interface ViewerState {
   scale: number;
   rotationDeg: number;
@@ -56,7 +64,7 @@ export interface ViewerState {
   selectedObjectId: string | null;
 }
 
-export interface InteractiveViewerOptions extends SvgRenderOptions {
+export interface InteractiveViewerOptions extends ViewerRenderOptions {
   source?: string;
   document?: WorldOrbitDocument;
   scene?: RenderScene;
@@ -80,6 +88,8 @@ export interface WorldOrbitViewer {
   setDocument(document: WorldOrbitDocument): void;
   setScene(scene: RenderScene): void;
   getScene(): RenderScene;
+  getRenderOptions(): ViewerRenderOptions;
+  setRenderOptions(options: Partial<ViewerRenderOptions>): void;
   getState(): ViewerState;
   setState(state: Partial<ViewerState>): void;
   zoomBy(factor: number, anchor?: CoordinatePoint): void;

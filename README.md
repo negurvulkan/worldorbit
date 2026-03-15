@@ -2,7 +2,7 @@
 
 WorldOrbit is a text-first DSL and rendering pipeline for fictional orbital systems.
 
-`v1.1.1` builds on the package split with object textures across core scenes, SVG rendering, the interactive viewer, and Markdown embeds.
+`v1.5.0` adds projection-aware scene generation, numeric scale control, object textures, and richer 2D rendering across SVG, the interactive viewer, and Markdown embeds.
 
 - `@worldorbit/core`: parser, schema, normalization, validation, formatting, and scene generation
 - `@worldorbit/viewer`: SVG rendering, interactive browser viewer, themes, and embed helpers
@@ -46,7 +46,13 @@ planet Naar orbit Iyath distance 1.18au
 `.trim();
 
 const result = parse(source);
-const scene = renderDocumentToScene(result.document);
+const scene = renderDocumentToScene(result.document, {
+  projection: "isometric",
+  scaleModel: {
+    orbitDistanceMultiplier: 1.1,
+    bodyRadiusMultiplier: 1.15,
+  },
+});
 const canonical = formatDocument(result.document);
 ```
 
@@ -72,27 +78,55 @@ import {
 } from "@worldorbit/viewer";
 
 const result = parse(source);
-const scene = renderDocumentToScene(result.document);
+const scene = renderDocumentToScene(result.document, {
+  projection: "isometric",
+});
 const svg = renderSceneToSvg(scene, {
   theme: "atlas",
 });
 
 const viewer = createInteractiveViewer(document.getElementById("preview"), {
-  scene,
+  document: result.document,
+  projection: "isometric",
   theme: "atlas",
 });
 ```
 
-Viewer features in `v1.0`:
+Viewer features in the current `v1.x` line:
 
 - scene-based SVG rendering
 - theme presets: `atlas`, `nightglass`, `ember`
 - layer controls for guides, orbits, labels, structures, and metadata
 - interactive camera controls: zoom, pan, rotate, fit, reset, focus
 - selection and hover callbacks
+- projection-aware topdown and isometric scenes
+- live render overrides for `projection` and `scaleModel`
+- ellipse and split-arc orbit rendering with projected ring and belt bands
 - hydration helpers:
   - `createWorldOrbitEmbedMarkup(...)`
   - `mountWorldOrbitEmbeds(...)`
+
+#### Projection and scale
+
+WorldOrbit renderers now accept document defaults plus runtime overrides for projection and numeric scale:
+
+```ts
+const scene = renderDocumentToScene(document, {
+  projection: "isometric",
+  scaleModel: {
+    orbitDistanceMultiplier: 1.15,
+    bodyRadiusMultiplier: 1.1,
+    labelMultiplier: 1.05,
+  },
+});
+```
+
+Supported projections:
+
+- `topdown`
+- `isometric`
+
+Document `system view` and `system scale` remain the defaults, while SVG, viewer, and Markdown calls can override them per render.
 
 #### Object textures
 
@@ -153,6 +187,8 @@ Markdown output modes:
 
 - `static`: inline SVG
 - `interactive`: serialized scene payload plus hydration target
+
+Markdown embeds automatically honor document `view` / `scale` defaults, and can override them with the same render options used by `@worldorbit/viewer`.
 
 In the browser, hydrate generated interactive embeds with:
 

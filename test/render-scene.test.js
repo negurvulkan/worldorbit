@@ -36,6 +36,44 @@ structure HiddenGate
   free 8.4au
 `.trim();
 
+const isoSource = `
+system Iyath
+  title "Iyath System"
+  view isometric
+  scale presentation
+
+star Iyath
+  radius 1.08sol
+  temperature 5840
+
+planet Naar
+  image assets/naar-map.png
+  orbit Iyath
+  semiMajor 1.18au
+  eccentricity 0.08
+  angle 28deg
+  inclination 24deg
+  phase 42deg
+  atmosphere nitrogen-oxygen
+  albedo 0.34
+
+ring Dawn-Ring
+  orbit Naar
+  distance 185000km
+  angle 22deg
+  inclination 18deg
+  inner 120000km
+  outer 190000km
+
+structure Skyhook
+  kind elevator
+  surface Naar
+
+structure Relay
+  kind relay
+  at Naar:L4
+`.trim();
+
 test("scene creation exposes objects, visuals, visible-content bounds, and metadata", () => {
   const result = parse(source);
   const scene = renderDocumentToScene(result.document, {
@@ -50,9 +88,11 @@ test("scene creation exposes objects, visuals, visible-content bounds, and metad
 
   assert.equal(scene.title, "Iyath System");
   assert.equal(scene.subtitle, "Topdown view - Presentation layout");
+  assert.equal(scene.projection, "topdown");
   assert.equal(scene.viewMode, "topdown");
   assert.equal(scene.layoutPreset, "presentation");
   assert.equal(scene.width, 960);
+  assert.equal(scene.scaleModel.orbitDistanceMultiplier, 1.2);
   assert.ok(scene.contentBounds.width > 0);
   assert.ok(scene.contentBounds.height > 0);
   assert.ok(planet);
@@ -75,6 +115,43 @@ test("scene creation exposes objects, visuals, visible-content bounds, and metad
     scene.contentBounds.maxX > outerGate.x + 40,
     "visible labels should expand content bounds enough for fit-to-system",
   );
+});
+
+test("isometric scenes expose ellipse geometry, scale model overrides, and projected placements", () => {
+  const scene = renderDocumentToScene(parse(isoSource).document, {
+    width: 960,
+    height: 640,
+    scaleModel: {
+      bodyRadiusMultiplier: 1.25,
+      labelMultiplier: 1.1,
+    },
+  });
+
+  const planetOrbit = scene.orbitVisuals.find((visual) => visual.objectId === "Naar");
+  const ringOrbit = scene.orbitVisuals.find((visual) => visual.objectId === "Dawn-Ring");
+  const relay = scene.objects.find((object) => object.objectId === "Relay");
+  const skyhook = scene.objects.find((object) => object.objectId === "Skyhook");
+
+  assert.equal(scene.projection, "isometric");
+  assert.equal(scene.viewMode, "isometric");
+  assert.equal(scene.scaleModel.bodyRadiusMultiplier, 1.25);
+  assert.equal(scene.scaleModel.labelMultiplier, 1.1);
+  assert.equal(planetOrbit?.kind, "ellipse");
+  assert.ok((planetOrbit?.rx ?? 0) > (planetOrbit?.ry ?? 0));
+  assert.ok(planetOrbit?.frontArcPath);
+  assert.ok(planetOrbit?.backArcPath);
+  assert.ok((ringOrbit?.bandThickness ?? 0) >= 8);
+  assert.ok(relay);
+  assert.ok(skyhook);
+
+  if (!relay || !skyhook) {
+    assert.fail("Projected anchor placements should exist in the isometric scene");
+  }
+
+  assert.notEqual(relay.x, skyhook.x);
+  assert.notEqual(relay.y, skyhook.y);
+  assert.ok(skyhook.anchorX !== undefined);
+  assert.ok(skyhook.anchorY !== undefined);
 });
 
 test("hidden objects are excluded from visible content bounds", () => {
@@ -124,6 +201,17 @@ test("scene svg keeps a dedicated transformable world layer, image clips, and co
   assert.match(svg, /clipPath id="wo-naar-clip"/);
   assert.doesNotMatch(svg, /data-object-id="HiddenGate"/);
   assert.match(svg, /Topdown view/);
+});
+
+test("isometric svg renders split orbit paths, atmosphere styling, and projected ring bands", () => {
+  const scene = renderDocumentToScene(parse(isoSource).document);
+  const svg = renderSceneToSvg(scene);
+
+  assert.match(svg, /wo-orbit-back/);
+  assert.match(svg, /wo-orbit-front/);
+  assert.match(svg, /<path class="wo-orbit wo-orbit-front"/);
+  assert.match(svg, /rgba\(122, 194, 255, 0\.75\)/);
+  assert.match(svg, /data-object-id="Naar"/);
 });
 
 test("scene svg clips textured comet, structure, and phenomenon objects", () => {
