@@ -41,7 +41,7 @@
     "dsl",
     "parser"
   ],
-  "author": "Hanjo Winter"
+  "author": "Hanjo Winter",
   "license": "MIT",
   "scripts": {
     "build": "node ./scripts/build.mjs",
