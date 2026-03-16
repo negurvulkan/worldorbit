@@ -58,6 +58,40 @@ Capabilities include:
 
 ---
 
+## Quick Setup (Browser/CDN)
+
+You don't need a Node.js project to use WorldOrbit. You can drop it directly into any HTML file using our pre-built bundles! Let WorldOrbit parse your data and initialize an interactive atlas directly from a single script block.
+
+```html
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      #view { width: 100vw; height: 100vh; }
+    </style>
+    <!-- Include WorldOrbit pre-bundled library -->
+    <script src="https://unpkg.com/worldorbit@2.5.2/dist/unpkg/worldorbit.min.js"></script>
+  </head>
+  <body>
+    <div id="view"></div>
+    <script>
+      const source = `
+        system Iyath
+        star Iyath
+        planet Naar orbit Iyath distance 1.18au period 412d
+      `;
+      
+      const parsed = WorldOrbit.loadWorldOrbitSource(source);
+      WorldOrbit.createInteractiveViewer(document.getElementById('view'), { 
+        document: parsed.document 
+      });
+    </script>
+  </body>
+</html>
+```
+
+---
+
 ## For Developers: The Ecosystem
 
 Under the hood, WorldOrbit is a monorepo offering several packages to integrate orbital worldbuilding into your own tools, games, or sites.
