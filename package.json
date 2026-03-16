@@ -1,8 +1,48 @@
 {
-  "name": "worldorbit-workspace",
-  "private": true,
+  "name": "worldorbit",
   "version": "2.5.2",
+  "description": "A text-based DSL and parser pipeline for orbital worldbuilding",
   "type": "module",
+  "main": "./dist/unpkg/worldorbit.js",
+  "unpkg": "./dist/unpkg/worldorbit.min.js",
+  "jsdelivr": "./dist/unpkg/worldorbit.min.js",
+  "types": "./dist/unpkg/worldorbit.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/unpkg/worldorbit.d.ts",
+      "import": "./dist/unpkg/worldorbit.js"
+    },
+    "./min": "./dist/unpkg/worldorbit.min.js",
+    "./core": {
+      "types": "./packages/core/dist/index.d.ts",
+      "import": "./packages/core/dist/index.js"
+    },
+    "./viewer": {
+      "types": "./packages/viewer/dist/index.d.ts",
+      "import": "./packages/viewer/dist/index.js"
+    },
+    "./markdown": {
+      "types": "./packages/markdown/dist/index.d.ts",
+      "import": "./packages/markdown/dist/index.js"
+    },
+    "./editor": {
+      "types": "./packages/editor/dist/index.d.ts",
+      "import": "./packages/editor/dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "packages/*/dist",
+    "README.md"
+  ],
+  "keywords": [
+    "worldbuilding",
+    "orbit",
+    "dsl",
+    "parser"
+  ],
+  "author": "Hanjo Winter
+  "license": "MIT",
   "scripts": {
     "build": "node ./scripts/build.mjs",
     "test": "npm run build && node --test test/*.test.js",

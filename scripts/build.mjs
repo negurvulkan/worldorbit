@@ -143,6 +143,7 @@ try {
 
   const allInOneSource = `export * from "../../packages/core/dist/index.js";\nexport * from "../../packages/viewer/dist/index.js";\n`;
   writeFileSync("dist/unpkg/worldorbit.js", allInOneSource);
+  writeFileSync("dist/unpkg/worldorbit.d.ts", allInOneSource);
   await buildBundle("dist/unpkg/worldorbit.js", "dist/unpkg/worldorbit.min.js", "WorldOrbit");
 
   console.log("Browser bundles built!");
