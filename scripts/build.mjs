@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import * as esbuild from "esbuild-wasm";
 
 const projects = [
   {
@@ -119,4 +120,33 @@ function createLocalPackageShim(shim) {
   for (const extra of shim.extra ?? []) {
     writeFileSync(`${baseDir}/${extra.file}`, extra.contents);
   }
+}
+
+console.log("Generating browser bundles...");
+mkdirSync("dist/unpkg", { recursive: true });
+
+async function buildBundle(entry, outfile, globalName) {
+  await esbuild.build({
+    entryPoints: [entry],
+    outfile: outfile,
+    bundle: true,
+    minify: true,
+    format: "iife",
+    globalName: globalName,
+  });
+}
+
+try {
+  await buildBundle("packages/core/dist/index.js", "dist/unpkg/worldorbit-core.min.js", "WorldOrbitCore");
+  await buildBundle("packages/viewer/dist/index.js", "dist/unpkg/worldorbit-viewer.min.js", "WorldOrbitViewer");
+  await buildBundle("packages/markdown/dist/index.js", "dist/unpkg/worldorbit-markdown.min.js", "WorldOrbitMarkdown");
+
+  const allInOneSource = `export * from "../../packages/core/dist/index.js";\nexport * from "../../packages/viewer/dist/index.js";\n`;
+  writeFileSync("dist/unpkg/worldorbit.js", allInOneSource);
+  await buildBundle("dist/unpkg/worldorbit.js", "dist/unpkg/worldorbit.min.js", "WorldOrbit");
+
+  console.log("Browser bundles built!");
+} catch (e) {
+  console.error("Failed to build browser bundles", e);
+  process.exit(1);
 }
