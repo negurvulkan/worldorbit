@@ -32,8 +32,12 @@
   },
   "files": [
     "dist",
-    "packages/*/dist",
-    "README.md"
+    "packages/core/dist",
+    "packages/viewer/dist",
+    "packages/markdown/dist",
+    "packages/editor/dist",
+    "README.md",
+    "LICENSE"
   ],
   "keywords": [
     "worldbuilding",
