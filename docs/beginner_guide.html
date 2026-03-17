@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WorldOrbit Beginner Guide</title>
+  <style>
+    :root {
+      --bg: #08101f;
+      --bg-2: #0c1630;
+      --panel: rgba(15, 25, 52, 0.9);
+      --panel-2: rgba(11, 18, 38, 0.92);
+      --text: #eef4ff;
+      --muted: #aab7d5;
+      --line: rgba(142,184,255,0.18);
+      --accent: #8eb8ff;
+      --accent-2: #8af7d0;
+      --danger: #ffb4b4;
+      --ok: #b8ffd7;
+      --max: 1160px;
+      --radius: 20px;
+      --shadow: 0 18px 50px rgba(0,0,0,0.35);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 20% 20%, rgba(142,184,255,0.12), transparent 0 30%),
+        radial-gradient(circle at 80% 15%, rgba(138,247,208,0.08), transparent 0 24%),
+        linear-gradient(180deg, #07101f 0%, #08101f 30%, #09111d 100%);
+      min-height: 100vh;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        radial-gradient(2px 2px at 20px 30px, rgba(255,255,255,0.42), transparent),
+        radial-gradient(1px 1px at 80px 60px, rgba(255,255,255,0.26), transparent),
+        radial-gradient(1px 1px at 140px 20px, rgba(255,255,255,0.28), transparent),
+        radial-gradient(2px 2px at 180px 110px, rgba(255,255,255,0.18), transparent);
+      background-size: 220px 160px;
+      opacity: 0.14;
+    }
+    a { color: inherit; }
+    .container { width: min(var(--max), calc(100% - 32px)); margin: 0 auto; }
+    .topbar {
+      position: sticky; top: 0; z-index: 10;
+      background: rgba(7, 12, 24, 0.72);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .topbar-inner {
+      min-height: 72px;
+      display: flex; align-items: center; justify-content: space-between; gap: 20px;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; text-decoration: none; }
+    .brand-mark {
+      width: 38px; height: 38px; border-radius: 50%; position: relative;
+      background: radial-gradient(circle at 35% 35%, #dce8ff, #83afff 42%, #425aa4 72%, #192548 100%);
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 0 28px rgba(142,184,255,0.28);
+    }
+    .brand-mark::after {
+      content: ""; position: absolute; inset: -8px; border-radius: 50%;
+      border: 1px solid rgba(142,184,255,0.26); transform: rotate(20deg) scaleX(1.16);
+    }
+    nav { display: flex; gap: 16px; flex-wrap: wrap; }
+    nav a { text-decoration: none; color: var(--muted); font-size: 0.95rem; }
+    nav a:hover { color: var(--text); }
+    header.hero { padding: 44px 0 30px; }
+    .hero-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 24px; align-items: center; }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 8px 13px; border-radius: 999px;
+      background: rgba(142,184,255,0.08); border: 1px solid rgba(142,184,255,0.15);
+      color: #d6e4ff; font-size: 0.9rem; margin-bottom: 18px;
+    }
+    h1 { margin: 0 0 16px; line-height: 0.98; font-size: clamp(2.2rem, 5vw, 4.5rem); letter-spacing: -0.04em; }
+    .hero p { color: var(--muted); line-height: 1.75; margin: 0; font-size: 1.04rem; }
+    .hero-actions { margin-top: 24px; display: flex; gap: 12px; flex-wrap: wrap; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; min-height: 46px;
+      padding: 0 18px; border-radius: 999px; text-decoration: none; font-weight: 600;
+      transition: transform .16s ease;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary { background: linear-gradient(135deg, rgba(142,184,255,0.95), rgba(138,247,208,0.95)); color: #08101f; }
+    .btn-secondary { border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.02); }
+    .hero-card, .card, .tip, .faq-item {
+      background: linear-gradient(180deg, rgba(16, 24, 52, 0.92), rgba(11, 17, 36, 0.92));
+      border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+    }
+    .hero-card { padding: 20px; }
+    .viewer-shell {
+      min-height: 300px; padding: 14px; border-radius: 16px;
+      background: radial-gradient(circle at 50% 45%, rgba(47,73,160,0.34), rgba(8,11,26,0.98) 62%);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .viewer-shell > div:last-child { width: 100%; height: 270px; border-radius: 12px; overflow: hidden; }
+    section { padding: 20px 0 28px; }
+    .section-heading { margin-bottom: 18px; max-width: 800px; }
+    .section-heading h2 { margin: 0 0 10px; font-size: clamp(1.6rem, 3vw, 2.7rem); letter-spacing: -0.03em; }
+    .section-heading p { margin: 0; color: var(--muted); line-height: 1.75; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .card { padding: 20px; }
+    .card h3 { margin: 0 0 10px; font-size: 1.12rem; }
+    .card p, .card li, .tip p, .faq-item p { color: var(--muted); line-height: 1.75; }
+    .pill {
+      display: inline-block; padding: 6px 10px; border-radius: 999px;
+      font-size: 0.76rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.07);
+      margin-bottom: 12px;
+    }
+    .example-grid { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 18px; align-items: stretch; }
+    .code-box {
+      background: rgba(4, 8, 19, 0.92);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+    .code-box-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.06);
+      color: var(--muted); font-size: 0.88rem;
+    }
+    textarea.code, pre.code {
+      margin: 0; width: 100%; min-height: 280px; resize: vertical; border: 0; outline: none;
+      background: transparent; color: #dbe5ff; padding: 16px;
+      font: 14px/1.7 "JetBrains Mono", Consolas, monospace;
+      white-space: pre; overflow: auto;
+    }
+    pre.code { min-height: auto; }
+    .render-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    .render-actions .btn { min-height: 40px; padding: 0 14px; font-size: 0.92rem; }
+    .preview-box {
+      border: 1px solid rgba(255,255,255,0.06); border-radius: 16px; overflow: hidden;
+      background: rgba(5, 8, 22, 0.72);
+      min-height: 360px;
+    }
+    .preview-box > div { width: 100%; min-height: 360px; height: 100%; }
+    .status { margin-top: 10px; color: var(--muted); font-size: 0.92rem; }
+    .tip { padding: 18px 20px; }
+    .tip strong { display: block; margin-bottom: 10px; }
+    ul.checks { margin: 0; padding-left: 18px; }
+    ul.checks li { margin: 8px 0; }
+    .faq-list { display: grid; gap: 12px; }
+    .faq-item { padding: 18px 20px; }
+    .faq-item h3 { margin: 0 0 8px; font-size: 1rem; }
+    footer { padding: 26px 0 50px; }
+    .footer-wrap { border-top: 1px solid rgba(255,255,255,0.06); padding-top: 16px; color: var(--muted); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    @media (max-width: 1000px) {
+      .hero-grid, .example-grid, .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 760px) {
+      nav { display: none; }
+      .container { width: min(var(--max), calc(100% - 24px)); }
+      header.hero { padding-top: 28px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="container topbar-inner">
+      <a class="brand" href="#top">
+        <span class="brand-mark"></span>
+        <span>WorldOrbit Beginner Guide</span>
+      </a>
+      <nav>
+        <a href="#first-steps">First Steps</a>
+        <a href="#examples">Examples</a>
+        <a href="#playground">Playground</a>
+        <a href="#tips">Tips</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+    </div>
+  </div>
+
+  <header class="hero" id="top">
+    <div class="container hero-grid">
+      <div>
+        <div class="eyebrow">A beginner-friendly guide to the WorldOrbit DSL</div>
+        <h1>Learn WorldOrbit step by step, from one star to a richer orbital atlas.</h1>
+        <p>
+          This guide is written for beginners. It starts with the smallest possible WorldOrbit document,
+          then gradually adds planets, metadata, viewpoints, annotations, and a small live playground.
+          You do not need to know the full reference before you can create useful diagrams.
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#first-steps">Start Learning</a>
+          <a class="btn btn-secondary" href="#playground">Try it Live</a>
+          <a class="btn btn-secondary" href="https://github.com/negurvulkan/worldorbit" target="_blank" rel="noreferrer">GitHub</a>
+        </div>
+      </div>
+      <div class="hero-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;color:var(--muted);font-size:0.88rem;">
+          <span>Live example</span>
+          <span>Rendered with WorldOrbit</span>
+        </div>
+        <div class="viewer-shell">
+          <div id="hero-preview"></div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <section id="first-steps">
+    <div class="container">
+      <div class="section-heading">
+        <h2>First steps: how WorldOrbit documents are structured</h2>
+        <p>
+          A WorldOrbit document is plain text. You usually start with a schema line, then define a system,
+          and then add objects like stars, planets, moons, belts, or structures.
+        </p>
+      </div>
+      <div class="grid-3">
+        <article class="card">
+          <span class="pill">Step 1</span>
+          <h3>Start with the schema</h3>
+          <p>For modern documents, begin with <code>schema 2.0</code>. This tells WorldOrbit which syntax style to expect.</p>
+        </article>
+        <article class="card">
+          <span class="pill">Step 2</span>
+          <h3>Define one system</h3>
+          <p>A file normally contains one <code>system</code>. Think of it as the root container for your star system.</p>
+        </article>
+        <article class="card">
+          <span class="pill">Step 3</span>
+          <h3>Add objects</h3>
+          <p>Then define stars, planets, moons, structures, and other elements. Objects can be simple at first and grow later.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="examples">
+    <div class="container">
+      <div class="section-heading">
+        <h2>Examples from simple to more complete</h2>
+        <p>
+          The easiest way to learn WorldOrbit is by building up complexity gradually.
+          These examples are ordered from minimal to richer, atlas-style usage.
+        </p>
+      </div>
+
+      <div class="grid-2">
+        <article class="card">
+          <span class="pill">Example 1 — Minimal</span>
+          <h3>A single star</h3>
+          <p>This is the smallest useful idea: one system and one star.</p>
+          <div class="code-box" style="margin-top:12px;">
+            <div class="code-box-header"><span>WorldOrbit source</span><span>minimal</span></div>
+            <pre class="code">schema 2.0
+
+system Iyath
+object star Iyath</pre>
+          </div>
+        </article>
+
+        <article class="card">
+          <span class="pill">Example 2 — Basic orbit</span>
+          <h3>A planet orbiting a star</h3>
+          <p>Now we add a planet and place it with <code>orbit</code> and <code>semiMajor</code>.</p>
+          <div class="code-box" style="margin-top:12px;">
+            <div class="code-box-header"><span>WorldOrbit source</span><span>basic</span></div>
+            <pre class="code">schema 2.0
+
+system Iyath
+object star Iyath
+object planet Naar
+  orbit Iyath
+  semiMajor 1.18au</pre>
+          </div>
+        </article>
+      </div>
+
+      <div class="grid-2" style="margin-top:18px;">
+        <article class="card">
+          <span class="pill">Example 3 — More orbital detail</span>
+          <h3>Add orbital shape and orientation</h3>
+          <p>Now the orbit becomes more descriptive with eccentricity, angle, inclination, and phase.</p>
+          <div class="code-box" style="margin-top:12px;">
+            <div class="code-box-header"><span>WorldOrbit source</span><span>intermediate</span></div>
+            <pre class="code">schema 2.0
+
+system Iyath
+object star Iyath
+object planet Naar
+  orbit Iyath
+  semiMajor 1.18au
+  eccentricity 0.08
+  angle 28deg
+  inclination 24deg
+  phase 42deg</pre>
+          </div>
+        </article>
+
+        <article class="card">
+          <span class="pill">Example 4 — Richer metadata</span>
+          <h3>Use title, atmosphere, tags, and info</h3>
+          <p>At this stage the object becomes more descriptive and useful for tooltips or atlas views.</p>
+          <div class="code-box" style="margin-top:12px;">
+            <div class="code-box-header"><span>WorldOrbit source</span><span>metadata</span></div>
+            <pre class="code">schema 2.0
+
+system Iyath
+object star Iyath
+
+object planet Naar
+  title "Naar"
+  orbit Iyath
+  semiMajor 1.18au
+  atmosphere nitrogen-oxygen
+  tags habitable homeworld
+  info
+    description "Homeworld of the Enari."
+    climate "Temperate to dry"</pre>
+          </div>
+        </article>
+      </div>
+
+      <div class="grid-2" style="margin-top:18px;">
+        <article class="card">
+          <span class="pill">Example 5 — Moon and structure</span>
+          <h3>Add a moon and a special position</h3>
+          <p>You can add more bodies and artificial objects such as stations or relays.</p>
+          <div class="code-box" style="margin-top:12px;">
+            <div class="code-box-header"><span>WorldOrbit source</span><span>multi-object</span></div>
+            <pre class="code">schema 2.0
+
+system Iyath
+object star Iyath
+
+object planet Naar
+  orbit Iyath
+  semiMajor 1.18au
+
+object moon Leth
+  orbit Naar
+  distance 220000km
+
+object structure Relay-1
+  at Naar:L4
+  kind relay</pre>
+          </div>
+        </article>
+
+        <article class="card">
+          <span class="pill">Example 6 — Atlas-style document</span>
+          <h3>Add defaults, viewpoints, and annotations</h3>
+          <p>This is where WorldOrbit starts to feel like a richer viewer or atlas document, not just a raw object list.</p>
+          <div class="code-box" style="margin-top:12px;">
+            <div class="code-box-header"><span>WorldOrbit source</span><span>atlas style</span></div>
+            <pre class="code">schema 2.0
+
+system Iyath
+  title "Iyath System"
+
+defaults
+  view isometric
+  scale presentation
+  preset atlas-card
+  theme atlas
+
+viewpoint overview
+  label "Overview"
+  summary "Fit the whole system."
+  projection isometric
+
+annotation naar-notes
+  label "Naar Notes"
+  target Naar
+  body "Homeworld of the Enari."
+
+object star Iyath
+object planet Naar
+  orbit Iyath
+  semiMajor 1.18au</pre>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="playground">
+    <div class="container">
+      <div class="section-heading">
+        <h2>Live playground</h2>
+        <p>
+          Edit the example source on the left and render it on the right. This is a lightweight learning tool,
+          not a replacement for the full Studio editor.
+        </p>
+      </div>
+      <div class="example-grid">
+        <div>
+          <div class="code-box">
+            <div class="code-box-header"><span>Editable source</span><span>beginner playground</span></div>
+            <textarea id="playground-source" class="code" spellcheck="false">schema 2.0
+
+system Iyath
+  title "Iyath System"
+
+defaults
+  view isometric
+  scale presentation
+  preset atlas-card
+  theme atlas
+
+annotation naar-notes
+  label "Naar Notes"
+  target Naar
+  body "Homeworld of the Enari."
+
+object star Iyath
+
+object planet Naar
+  orbit Iyath
+  semiMajor 1.18au
+  eccentricity 0.08
+  angle 28deg
+  inclination 24deg
+  phase 42deg
+  atmosphere nitrogen-oxygen</textarea>
+          </div>
+          <div class="render-actions">
+            <button class="btn btn-primary" id="render-playground" type="button">Render Preview</button>
+            <button class="btn btn-secondary" id="reset-playground" type="button">Reset Example</button>
+          </div>
+          <div class="status" id="playground-status">Edit the source and click “Render Preview”.</div>
+        </div>
+        <div>
+          <div class="preview-box">
+            <div id="playground-preview"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tips">
+    <div class="container">
+      <div class="section-heading">
+        <h2>Beginner tips</h2>
+        <p>These are the things that make learning WorldOrbit easier and prevent the most common mistakes.</p>
+      </div>
+      <div class="grid-2">
+        <div class="tip">
+          <strong>Start small</strong>
+          <p>Do not try to model your entire setting in the first file. Start with one system, one star, and one or two planets. Add more only after the basic structure works.</p>
+        </div>
+        <div class="tip">
+          <strong>Use indentation consistently</strong>
+          <p>Most WorldOrbit examples use two spaces for indented fields. Staying consistent keeps documents readable and easier to debug.</p>
+        </div>
+        <div class="tip">
+          <strong>Think in layers</strong>
+          <p>First define objects. Then add orbit details. Then add metadata. Finally add atlas-style features like defaults, viewpoints, and annotations.</p>
+        </div>
+        <div class="tip">
+          <strong>Use the info block for free text</strong>
+          <p>If something feels like lore text, description, notes, or long-form metadata, it usually belongs in <code>info</code>.</p>
+        </div>
+      </div>
+      <div class="card" style="margin-top:18px;">
+        <h3>Quick checklist</h3>
+        <ul class="checks">
+          <li>Start with <code>schema 2.0</code>.</li>
+          <li>Define exactly one <code>system</code> per file.</li>
+          <li>Add objects like <code>star</code>, <code>planet</code>, and <code>moon</code>.</li>
+          <li>Use one placement mode per object: <code>orbit</code>, <code>at</code>, <code>surface</code>, or <code>free</code>.</li>
+          <li>Use units like <code>au</code>, <code>km</code>, <code>d</code>, <code>y</code>, and <code>deg</code>.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq">
+    <div class="container">
+      <div class="section-heading">
+        <h2>FAQ for beginners</h2>
+        <p>A few short answers to the questions people often have when they first see the DSL.</p>
+      </div>
+      <div class="faq-list">
+        <article class="faq-item">
+          <h3>Do I always need to write <code>object</code>?</h3>
+          <p>No. Many examples can also work in shorter forms, but <code>object type name</code> is the clearer and more extensible style, especially in schema 2.0.</p>
+        </article>
+        <article class="faq-item">
+          <h3>Do I need to know every parameter from the beginning?</h3>
+          <p>No. You can start with only a star and a planet. WorldOrbit is designed to grow with your document.</p>
+        </article>
+        <article class="faq-item">
+          <h3>What is the difference between <code>orbit</code> and <code>at</code>?</h3>
+          <p><code>orbit</code> describes a normal orbital relationship. <code>at</code> places something exactly at another object or a special point like a Lagrange point.</p>
+        </article>
+        <article class="faq-item">
+          <h3>When should I use viewpoints and annotations?</h3>
+          <p>Use them when the document should not only describe the system but also present it as a richer atlas or viewer experience.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container footer-wrap">
+      <div>WorldOrbit Beginner Guide — learn the DSL step by step.</div>
+      <div>
+        <a href="https://github.com/negurvulkan/worldorbit" target="_blank" rel="noreferrer">GitHub</a>
+        &nbsp;·&nbsp;
+        <a href="https://www.npmjs.com/package/worldorbit" target="_blank" rel="noreferrer">npm</a>
+        &nbsp;·&nbsp;
+        <a href="https://negurvulkan.github.io/worldorbit/studio/" target="_blank" rel="noreferrer">Studio</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="https://unpkg.com/worldorbit@2.5.7/dist/unpkg/worldorbit.min.js"></script>
+  <script>
+    const heroSource = `schema 2.0
+
+system Iyath
+  title "Iyath System"
+
+defaults
+  view isometric
+  scale presentation
+  preset atlas-card
+  theme atlas
+
+object star Iyath
+
+object planet Naar
+  orbit Iyath
+  semiMajor 1.18au
+  eccentricity 0.08
+  angle 28deg
+  inclination 24deg
+  phase 42deg
+  atmosphere nitrogen-oxygen`;
+
+    const playgroundDefaultSource = `schema 2.0
+
+system Iyath
+  title "Iyath System"
+
+defaults
+  view isometric
+  scale presentation
+  preset atlas-card
+  theme atlas
+
+annotation naar-notes
+  label "Naar Notes"
+  target Naar
+  body "Homeworld of the Enari."
+
+object star Iyath
+
+object planet Naar
+  orbit Iyath
+  semiMajor 1.18au
+  eccentricity 0.08
+  angle 28deg
+  inclination 24deg
+  phase 42deg
+  atmosphere nitrogen-oxygen`;
+
+    function mountPreview(targetId, source, options = {}) {
+      const target = document.getElementById(targetId);
+      if (!target || !window.WorldOrbit) return;
+
+      try {
+        const loaded = WorldOrbit.loadWorldOrbitSource(source);
+        WorldOrbit.createInteractiveViewer(target, {
+          document: loaded.document,
+          projection: options.projection || "isometric",
+          theme: options.theme || "atlas"
+        });
+      } catch (error) {
+        target.innerHTML = `<div style="padding:16px;color:#ffb4b4;font:14px/1.5 sans-serif;">Preview failed to render.<br>${String(error)}</div>`;
+      }
+    }
+
+    function renderPlayground() {
+      const sourceField = document.getElementById("playground-source");
+      const preview = document.getElementById("playground-preview");
+      const status = document.getElementById("playground-status");
+      if (!sourceField || !preview || !status || !window.WorldOrbit) return;
+
+      try {
+        preview.innerHTML = "";
+        const loaded = WorldOrbit.loadWorldOrbitSource(sourceField.value);
+        WorldOrbit.createInteractiveViewer(preview, {
+          document: loaded.document,
+          projection: "isometric",
+          theme: "atlas"
+        });
+        status.textContent = "Preview rendered successfully.";
+        status.style.color = "#aab7d5";
+      } catch (error) {
+        preview.innerHTML = "";
+        status.textContent = `Render failed: ${String(error)}`;
+        status.style.color = "#ffb4b4";
+      }
+    }
+
+    mountPreview("hero-preview", heroSource, { projection: "isometric", theme: "atlas" });
+
+    document.getElementById("render-playground")?.addEventListener("click", renderPlayground);
+    document.getElementById("reset-playground")?.addEventListener("click", () => {
+      const sourceField = document.getElementById("playground-source");
+      if (sourceField) sourceField.value = playgroundDefaultSource;
+      renderPlayground();
+    });
+
+    renderPlayground();
+  </script>
+</body>
+</html>
