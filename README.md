@@ -1,21 +1,32 @@
 # WorldOrbit
 
-**WorldOrbit is a text-first DSL, atlas viewer, and editor platform for fictional orbital systems.**
+WorldOrbit is a text-first DSL, viewer, and optional editor platform for fictional orbital systems.
 
-Built for worldbuilders, sci-fi authors, game designers, and hobbyists, WorldOrbit makes it easy to design, visualize, and share complex stellar systems without getting tangled in node-spaghetti or hard math.
+It is designed as a specialized Mermaid-like alternative for worldbuilding: you can describe stellar systems in plain text, embed them in Markdown, render them as static diagrams, or explore them interactively with pan, rotate, zoom, and object tooltips.
 
-With `v2.5`, WorldOrbit provides a production-ready authoring baseline that turns simple text into interactive, beautiful system atlases.
+WorldOrbit is built for:
+
+- worldbuilding projects
+- Markdown-based lore repositories and CMS setups
+- fictional atlases and codices
+- interactive setting documentation
+- browser-based orbital diagram tooling
 
 ## Why WorldOrbit?
 
-- **Text-First & Git-Friendly**: Write your systems in a simple, human-readable Domain Specific Language (DSL). Perfect for version control and Markdown integration.
-- **Relational by Position**: No complex edge types or manual graph drawing. You define where an object is (`orbit`, `at`, `surface`, `free`), and the relationships emerge naturally.
-- **Lore Meets Data**: An intuitive `info` block allows you to attach narrative metadata (factions, population, climate) directly to the physical bodies.
-- **Beautiful Results**: The built-in viewer renders your text into interactive SVG atlases with themes, viewpoints, and rich tooltips.
+Generic diagram tools can show relationships, but they are not built for fictional orbital systems.
 
-## ⚡ Quick Example
+WorldOrbit is designed specifically for:
 
-Here is how simple it is to build a star system:
+- stars, planets, moons, belts, structures, and phenomena
+- orbit-aware layouts instead of generic node graphs
+- Markdown-native embedding
+- optional interactivity
+- optional visual authoring through Studio
+
+WorldOrbit is not intended to be a real-world astronomy simulator or a high-precision astrophysics engine. Its goal is clear, expressive orbital worldbuilding that works well in content workflows.
+
+## Quick Example
 
 ```worldorbit
 schema 2.0
@@ -29,80 +40,275 @@ defaults
   preset atlas-card
   theme atlas
 
-star Iyath
+object star Iyath
 
-planet Naar
+object planet Naar
   orbit Iyath
   semiMajor 1.18au
-  period 412d
-  
-  info
-    faction "Veyrathische Republik"
-    population "8.4 billion"
-    description "Heimatwelt der Enari."
+  eccentricity 0.08
+  angle 28deg
+  inclination 24deg
+  phase 42deg
+  atmosphere nitrogen-oxygen
+````
+
+## Installation
+
+### npm
+
+```bash
+npm install worldorbit
 ```
 
-## The Studio Editor
+### What the `worldorbit` package contains
 
-The easiest way to get started is the **WorldOrbit Studio**, our browser-based authoring environment. 
+The published `worldorbit` package is the public entry point.
 
-Capabilities include:
-- Interactive 2D stage with themes (`atlas`, `nightglass`, `ember`).
-- Live inspector editing for system defaults, viewpoints, annotations, and object properties.
-- Direct manipulation handles for `orbit`, `at`, `surface`, and `free` placements.
-- Split-pane view with live source synchronization.
-- Export to static SVG or interactive Embeds.
+It includes:
 
-**[Try the browser demo](/demo/index.html)**
-**[Open Studio Editor](/studio/index.html)**
+* the browser bundles
+* subpath exports for core modules
+* the packages used by the viewer, Markdown integration, and editor tooling
 
----
+So for most users, this is enough:
 
-## Quick Setup (Browser/CDN)
+```bash
+npm install worldorbit
+```
 
-You don't need a Node.js project to use WorldOrbit. You can drop it directly into any HTML file using our pre-built bundles! Let WorldOrbit parse your data and initialize an interactive atlas directly from a single script block.
+And then:
+
+```ts
+import { parse, loadWorldOrbitSource } from "worldorbit";
+import * as Viewer from "worldorbit/viewer";
+```
+
+## Browser / CDN Quick Setup
+
+For direct browser usage, use the browser bundle:
 
 ```html
 <!DOCTYPE html>
 <html>
   <head>
+    <meta charset="utf-8" />
+    <script src="https://unpkg.com/worldorbit@2.5.4/dist/unpkg/worldorbit.min.js"></script>
     <style>
-      #view { width: 100vw; height: 100vh; }
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      #view {
+        width: 100vw;
+        height: 100vh;
+      }
     </style>
-    <!-- Include WorldOrbit pre-bundled library -->
-    <script src="https://unpkg.com/worldorbit@2.5.2/dist/unpkg/worldorbit.min.js"></script>
   </head>
   <body>
     <div id="view"></div>
+
     <script>
       const source = `
-        system Iyath
-        star Iyath
-        planet Naar orbit Iyath distance 1.18au period 412d
-      `;
-      
-      const parsed = WorldOrbit.loadWorldOrbitSource(source);
-      WorldOrbit.createInteractiveViewer(document.getElementById('view'), { 
-        document: parsed.document 
+schema 2.0
+
+system Iyath
+
+object star Iyath
+object planet Naar
+  orbit Iyath
+  semiMajor 1.18au
+`.trim();
+
+      const loaded = WorldOrbit.loadWorldOrbitSource(source);
+
+      WorldOrbit.createInteractiveViewer(document.getElementById("view"), {
+        document: loaded.document
       });
     </script>
   </body>
 </html>
 ```
 
----
+For browser usage, `worldorbit.min.js` is the recommended public entry point.
 
-## For Developers: The Ecosystem
+## Static and Interactive Rendering
 
-Under the hood, WorldOrbit is a monorepo offering several packages to integrate orbital worldbuilding into your own tools, games, or sites.
+WorldOrbit can be used in different ways from the same source:
 
-### `@worldorbit/core`
-The engine room. Use `core` when you need language tooling, schema conversion, diagnostics, or scene generation.
-- Parsing, normalization, validation, and AST generation.
-- Turn WorldOrbit source into a structured document and stable render scene.
+* as a static diagram
+* as an interactive SVG viewer
+* inside Markdown pipelines
+* inside the optional Studio editor
 
-<details>
-<summary><b>Show Example Usage</b></summary>
+This means the same WorldOrbit document can be:
+
+* written in plain text
+* embedded in Markdown
+* rendered in a documentation page
+* explored interactively
+* edited visually if needed
+
+## Studio Editor
+
+WorldOrbit includes an optional Studio editor for easier authoring and exploration.
+
+Studio is useful when you want:
+
+* visual placement editing
+* source and preview side by side
+* inspector-based editing
+* faster onboarding for non-technical users
+
+The editor is optional. The core format remains text-first.
+
+## Canonical Schema
+
+The stable schema starts with:
+
+```worldorbit
+schema 2.0
+```
+
+Example:
+
+```worldorbit
+schema 2.0
+
+system Iyath
+  title "Iyath System"
+
+defaults
+  view isometric
+  scale presentation
+  preset atlas-card
+  theme atlas
+
+viewpoint overview
+  label "Atlas Overview"
+  summary "Fit the whole system."
+  projection isometric
+
+annotation naar-notes
+  label "Naar Notes"
+  target Naar
+  body "Heimatwelt der Enari."
+
+object star Iyath
+
+object planet Naar
+  orbit Iyath
+  semiMajor 1.18au
+  eccentricity 0.08
+  angle 28deg
+  inclination 24deg
+  phase 42deg
+  image /demo/assets/naar-map.png
+  atmosphere nitrogen-oxygen
+```
+
+Stable `1.0` source is still accepted, and legacy `schema 2.0-draft` files remain readable as a compatibility path with a deprecation diagnostic.
+
+## Basic Usage
+
+### Parse and load source
+
+```ts
+import {
+  loadWorldOrbitSource,
+  parse,
+} from "worldorbit";
+
+const parsed = parse(`
+system Iyath
+star Iyath
+planet Naar orbit Iyath distance 1.18au
+`.trim());
+
+const loaded = loadWorldOrbitSource(`
+schema 2.0
+
+system Iyath
+object star Iyath
+object planet Naar
+  orbit Iyath
+  semiMajor 1.18au
+`.trim());
+```
+
+### Render a scene
+
+```ts
+import {
+  loadWorldOrbitSource,
+  renderDocumentToScene,
+} from "worldorbit";
+
+const loaded = loadWorldOrbitSource(source);
+
+const scene = renderDocumentToScene(loaded.document, {
+  projection: "isometric",
+  scaleModel: {
+    orbitDistanceMultiplier: 1.1,
+    bodyRadiusMultiplier: 1.15,
+  },
+});
+```
+
+### Create an interactive viewer
+
+```ts
+import { loadWorldOrbitSource } from "worldorbit";
+import { createInteractiveViewer } from "worldorbit/viewer";
+
+const loaded = loadWorldOrbitSource(source);
+
+createInteractiveViewer(document.getElementById("preview"), {
+  document: loaded.document,
+  projection: "isometric",
+  theme: "atlas",
+});
+```
+
+## Package Overview
+
+WorldOrbit is organized internally as a small ecosystem.
+
+### `worldorbit`
+
+Public package entry point with browser bundles and main exports.
+
+### `worldorbit/core`
+
+Use this when you need:
+
+* parsing
+* normalization
+* validation
+* diagnostics
+* schema loading
+* canonical formatting
+* scene generation
+
+### `worldorbit/viewer`
+
+Use this when you need:
+
+* static SVG rendering
+* interactive viewing
+* atlas-style exploration
+* themes and embeds
+
+### `worldorbit/markdown`
+
+Use this when you want to transform fenced `worldorbit` blocks inside Markdown pipelines.
+
+### `worldorbit/editor`
+
+Use this when you want browser-based visual authoring on top of the text format.
+
+## Core Example
 
 ```ts
 import {
@@ -112,7 +318,7 @@ import {
   parseWorldOrbitAtlas,
   renderDocumentToScene,
   upgradeDocumentToV2,
-} from "@worldorbit/core";
+} from "worldorbit/core";
 
 const stable = parse(`
 system Iyath
@@ -120,12 +326,13 @@ star Iyath
 planet Naar orbit Iyath distance 1.18au
 `.trim());
 
-// Upgrade and format
-const atlasDocument = upgradeDocumentToV2(stable.document, { preset: "atlas-card" });
-const atlasSource = formatDocument(atlasDocument, { schema: "2.0" });
+const atlasDocument = upgradeDocumentToV2(stable.document, {
+  preset: "atlas-card",
+});
 
-// Load and render
+const atlasSource = formatDocument(atlasDocument, { schema: "2.0" });
 const loaded = loadWorldOrbitSource(atlasSource);
+const parsedAtlas = parseWorldOrbitAtlas(atlasSource);
 const scene = renderDocumentToScene(loaded.document, {
   projection: "isometric",
   scaleModel: {
@@ -134,56 +341,32 @@ const scene = renderDocumentToScene(loaded.document, {
   },
 });
 ```
-</details>
 
-### `@worldorbit/viewer`
-The presentation layer. Use `viewer` for SVG output, atlas navigation, embeds, and browser interactivity.
-- Scene-based SVG rendering with theme presets (`atlas`, `nightglass`, `ember`).
-- Rich tooltip cards, layers, projections, and serialized state for embeds.
+## Viewer Capabilities
 
-<details>
-<summary><b>Show Example Usage</b></summary>
+Viewer features in `v2.5` include:
 
-```ts
-import { loadWorldOrbitSource } from "@worldorbit/core";
-import {
-  createAtlasViewer,
-  createInteractiveViewer,
-  renderSceneToSvg,
-} from "@worldorbit/viewer";
+* scene-based SVG rendering
+* projections: `topdown` and `isometric`
+* theme presets: `atlas`, `nightglass`, `ember`
+* layer controls for background, guides, orbits, objects, labels, and metadata
+* selection, hover, focus, fit, pan, zoom, and rotate
+* tooltip cards and object detail payloads
+* viewpoints, filters, search, and bookmark capture
+* deep-linkable atlas state
+* embeddable viewer custom elements
 
-const loaded = loadWorldOrbitSource(source);
-const scene = renderDocumentToScene(loaded.document, {
-  projection: "isometric",
-});
+## Markdown Integration
 
-const svg = renderSceneToSvg(scene, {
-  theme: "atlas",
-  preset: "atlas-card",
-});
-
-// High-level atlas with search, filters, and viewpoints
-const atlasViewer = createAtlasViewer(document.getElementById("atlas"), {
-  source,
-  theme: "atlas",
-});
-```
-</details>
-
-### `@worldorbit/markdown`
-The publishing bridge. Use `markdown` to transform fenced `worldorbit` blocks into static or hydrated atlas output.
-- Remark/Rehype plugins to parse and render `.md` files.
-- Modes for inline static SVGs or fully interactive serialised embeds.
-
-<details>
-<summary><b>Show Example Usage</b></summary>
+Use `worldorbit/markdown` to transform fenced `worldorbit` blocks into static or interactive output.
 
 ```ts
 import rehypeStringify from "rehype-stringify";
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import { unified } from "unified";
-import { remarkWorldOrbit } from "@worldorbit/markdown";
+
+import { remarkWorldOrbit } from "worldorbit/markdown";
 
 const html = String(
   await unified()
@@ -194,57 +377,66 @@ const html = String(
     .process(markdownSource),
 );
 ```
-</details>
 
-### `@worldorbit/editor`
-The authoring component. Use `editor` when you want a browser-based authoring surface that roundtrips to canonical `schema 2.0`.
-- The foundation of the Studio app, exposing `createWorldOrbitEditor(...)`.
-
-<details>
-<summary><b>Show Example Usage</b></summary>
+In the browser:
 
 ```ts
-import { createWorldOrbitEditor } from "@worldorbit/editor";
+import { mountWorldOrbitEmbeds } from "worldorbit/viewer";
 
-const editor = createWorldOrbitEditor(document.getElementById("studio"), {
-  source,
-  showInspector: true,
-  showTextPane: true,
-  showPreview: true,
+mountWorldOrbitEmbeds(document, {
+  mode: "interactive",
 });
 ```
-</details>
 
----
+## Examples
 
-## Installation & Build
+Examples live in:
 
-Want to build WorldOrbit locally or contribute to the packages?
+* [examples/minimal.worldorbit](./examples/minimal.worldorbit)
+* [examples/iyath.worldorbit](./examples/iyath.worldorbit)
+* [examples/iyath.schema2.worldorbit](./examples/iyath.schema2.worldorbit)
+* [examples/iyath.schema2-draft.worldorbit](./examples/iyath.schema2-draft.worldorbit)
+* [examples/markdown/static.md](./examples/markdown/static.md)
+* [examples/markdown/interactive.md](./examples/markdown/interactive.md)
+* [examples/markdown/build.mjs](./examples/markdown/build.mjs)
+
+Browser-facing examples and demos live in the repository under `demo/`, `studio/`, and `examples/`.
+
+## Documentation
+
+* [migration guide: v0.8 to v1.0](./docs/migration-v0.8-to-v1.0.md)
+* [migration guide: v1 to v2](./docs/migration-v1-to-v2.md)
+* [API inventory](./docs/api-inventory.md)
+* [changelog](./docs/changelog.md)
+
+## Development
 
 ```bash
-# Install dependencies
 npm install
-
-# Build all packages locally
 npm run build
-
-# Run tests
 npm test
 ```
 
-The workspace builds package outputs into `packages/*/dist` and refreshes local package shims in `node_modules/@worldorbit/...` for seamless package-style development.
+The workspace builds outputs into package-specific distribution folders and browser bundles.
 
-### Development Notes
-- `npm run build` compiles all packages and refreshes local package shims.
-- `npm test` rebuilds first, then runs the Node and jsdom-based regression suite.
-- **Parser-first**: The repository guarantees that rendering and atlas interaction always stay downstream of parse, normalize, and validate.
+Useful notes:
 
----
+* `npm run build` compiles all packages and refreshes local package shims
+* `npm test` rebuilds first, then runs the regression suite
+* the repository remains parser-first: rendering and atlas interaction stay downstream of parse, normalize, and validate
 
-## Documentation & Resources
+## Project Direction
 
-- API inventory: [docs/api-inventory.md](docs/api-inventory.md)
-- Changelog: [docs/changelog.md](docs/changelog.md)
+WorldOrbit is intended as a specialized Mermaid-like solution for fictional orbital systems.
 
-### Examples
-You can find various example atlases and markdown files in the [`examples/`](examples/) directory, showcasing minimal setups, complex systems, and markdown integrations.
+The long-term focus is:
+
+* strong text-first authoring
+* clean Markdown embedding
+* rich static and interactive rendering
+* optional visual editing
+* stable schema evolution over time
+
+## License
+
+MIT
