@@ -293,6 +293,15 @@ export function renderSceneToSvg(scene: RenderScene): string {
     .wo-ring { fill: #e59f7d; stroke: #fff0d3; stroke-width: 1.2; }
     .wo-structure { fill: #ff7c6e; stroke: #fff2ea; stroke-width: 1.2; }
     .wo-phenomenon { fill: #78ffd7; stroke: #e9fff7; stroke-width: 1.2; }
+    .wo-kind-galaxy-halo { fill: rgba(160, 120, 255, 0.10); stroke: none; }
+    .wo-kind-galaxy-disk { fill: rgba(165, 125, 255, 0.55); stroke: rgba(210, 185, 255, 0.75); stroke-width: 1.2; }
+    .wo-kind-galaxy-core { fill: #ede0ff; stroke: none; }
+    .wo-kind-dwarf-galaxy { fill: rgba(190, 165, 255, 0.45); stroke: rgba(220, 205, 255, 0.75); stroke-width: 1; }
+    .wo-kind-dwarf-galaxy-core { fill: #ddd0ff; stroke: none; }
+    .wo-kind-black-hole { fill: #040408; stroke: #ff6a00; stroke-width: 2; }
+    .wo-kind-black-hole-ring { fill: none; stroke: rgba(255, 140, 20, 0.65); stroke-width: 3.5; }
+    .wo-kind-nebula-halo { fill: rgba(100, 200, 255, 0.08); stroke: rgba(160, 220, 255, 0.22); stroke-width: 1.5; }
+    .wo-kind-nebula { fill: rgba(105, 205, 255, 0.45); stroke: rgba(180, 235, 255, 0.72); stroke-width: 1; }
     .wo-title { fill: rgba(255,255,255,0.92); font: 700 24px "Bahnschrift", "Segoe UI Variable", sans-serif; letter-spacing: 0.06em; text-transform: uppercase; }
     .wo-subtitle { fill: rgba(232,240,255,0.58); font: 500 12px "Segoe UI Variable", "Bahnschrift", sans-serif; letter-spacing: 0.14em; text-transform: uppercase; }
     .wo-object { cursor: pointer; }
@@ -751,6 +760,15 @@ function visualRadiusFor(object: WorldOrbitObject, depth = 0): number {
     return explicitRadius;
   }
 
+  const kind = String(object.properties.kind ?? "").toLowerCase().replace(/_/g, "-");
+
+  if (kind === "galaxy") return 42;
+  if (kind === "dwarf-galaxy") return 22;
+  if (kind === "black-hole") return 12;
+  if (kind === "nebula") return 18;
+  if (kind === "cluster" || kind === "star-cluster") return 20;
+  if (kind === "void") return 28;
+
   switch (object.type) {
     case "star":
       return depth === 0 ? 28 : 20;
@@ -803,8 +821,11 @@ function renderBackdrop(width: number, height: number): string {
 function renderSceneObject(sceneObject: RenderSceneObject): string {
   const { object, x, y, radius, label, secondaryLabel, visualRadius, fillColor } = sceneObject;
   const labelY = y + radius + 18;
+  const kindClass = object.properties.kind
+    ? ` wo-kind-${String(object.properties.kind).toLowerCase().replace(/[^a-z0-9-]/g, "-")}`
+    : "";
 
-  return `<g class="wo-object wo-object-${object.type}" data-object-id="${escapeXml(sceneObject.objectId)}" data-render-id="${escapeXml(sceneObject.renderId)}">
+  return `<g class="wo-object wo-object-${object.type}${kindClass}" data-object-id="${escapeXml(sceneObject.objectId)}" data-render-id="${escapeXml(sceneObject.renderId)}">
     <circle class="wo-selection-ring" cx="${x}" cy="${y}" r="${visualRadius + 8}" />
     ${renderObjectBody(object, x, y, radius, fillColor)}
     <text class="wo-label" x="${x}" y="${labelY}" text-anchor="middle">${escapeXml(label)}</text>
@@ -837,8 +858,27 @@ function renderObjectBody(
       return `<circle class="wo-ring" cx="${x}" cy="${y}" r="${radius}"${fillColor ? ` fill="${fillColor}"` : ""} />`;
     case "structure":
       return `<polygon class="wo-structure" points="${x},${y - radius} ${x + radius},${y} ${x},${y + radius} ${x - radius},${y}"${fillColor ? ` fill="${fillColor}"` : ""} />`;
-    case "phenomenon":
+    case "phenomenon": {
+      const kind = String(object.properties.kind ?? "").toLowerCase().replace(/_/g, "-");
+
+      if (kind === "black-hole") {
+        return `<ellipse class="wo-kind-black-hole-ring" cx="${x}" cy="${y}" rx="${radius * 2.4}" ry="${radius * 0.55}" /><circle class="wo-kind-black-hole" cx="${x}" cy="${y}" r="${radius}"${fillColor ? ` fill="${fillColor}"` : ""} />`;
+      }
+
+      if (kind === "galaxy") {
+        return `<ellipse class="wo-kind-galaxy-halo" cx="${x}" cy="${y}" rx="${radius * 2.6}" ry="${radius}" /><ellipse class="wo-kind-galaxy-disk" cx="${x}" cy="${y}" rx="${radius * 1.5}" ry="${radius * 0.42}"${fillColor ? ` fill="${fillColor}"` : ""} /><circle class="wo-kind-galaxy-core" cx="${x}" cy="${y}" r="${radius * 0.28}" />`;
+      }
+
+      if (kind === "dwarf-galaxy") {
+        return `<ellipse class="wo-kind-dwarf-galaxy" cx="${x}" cy="${y}" rx="${radius * 1.6}" ry="${radius * 0.55}"${fillColor ? ` fill="${fillColor}"` : ""} /><circle class="wo-kind-dwarf-galaxy-core" cx="${x}" cy="${y}" r="${radius * 0.25}" />`;
+      }
+
+      if (kind === "nebula") {
+        return `<circle class="wo-kind-nebula-halo" cx="${x}" cy="${y}" r="${radius * 2.2}" /><circle class="wo-kind-nebula" cx="${x}" cy="${y}" r="${radius}"${fillColor ? ` fill="${fillColor}"` : ""} />`;
+      }
+
       return `<polygon class="wo-phenomenon" points="${x},${y - radius * 1.2} ${x + radius * 0.9},${y - radius * 0.3} ${x + radius * 1.2},${y + radius * 0.8} ${x},${y + radius * 1.2} ${x - radius * 1.1},${y + radius * 0.3} ${x - radius * 0.8},${y - radius * 0.8}"${fillColor ? ` fill="${fillColor}"` : ""} />`;
+    }
   }
 }
 

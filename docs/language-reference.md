@@ -218,14 +218,26 @@ Unit values consist of a numeric literal (integer or decimal) followed immediate
 
 | Suffix | Meaning | Unit family |
 |---|---|---|
-| `au` | astronomical units | distance |
+| `m` | metres | distance |
 | `km` | kilometres | distance |
+| `au` | astronomical units | distance |
+| `ly` | light-years | distance |
+| `pc` | parsecs | distance |
+| `kpc` | kiloparsecs | distance |
 | `re` | Earth radii | distance / radius |
+| `rj` | Jupiter radii | radius |
 | `sol` | solar radii | distance / radius / mass |
 | `me` | Earth masses | mass |
+| `mj` | Jupiter masses | mass |
+| `s` | seconds | duration |
+| `min` | minutes | duration |
+| `h` | hours | duration |
 | `d` | days | duration |
 | `y` | years | duration |
-| `h` | hours | duration |
+| `ky` | kiloyears (1,000y) | duration |
+| `my` | megayears (1M y) | duration |
+| `gy` | gigayears (1G y) | duration |
+| `K` | Kelvin | generic (e.g. temperature) |
 | `deg` | degrees | angle |
 
 Unit values without a suffix are accepted (unit is stored as `null`).

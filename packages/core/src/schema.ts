@@ -313,13 +313,13 @@ export function unitFamilyAllowsUnit(
 ): boolean {
   switch (family) {
     case "distance":
-      return unit === null || ["au", "km", "re", "sol"].includes(unit);
+      return unit === null || ["au", "km", "m", "ly", "pc", "kpc", "re", "sol"].includes(unit);
     case "radius":
-      return unit === null || ["km", "re", "sol"].includes(unit);
+      return unit === null || ["km", "m", "re", "rj", "sol"].includes(unit);
     case "mass":
-      return unit === null || ["me", "sol"].includes(unit);
+      return unit === null || ["me", "mj", "sol"].includes(unit);
     case "duration":
-      return unit === null || ["h", "d", "y"].includes(unit);
+      return unit === null || ["s", "min", "h", "d", "y", "ky", "my", "gy"].includes(unit);
     case "angle":
       return unit === null || unit === "deg";
     case "generic":

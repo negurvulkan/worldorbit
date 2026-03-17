@@ -4732,10 +4732,11 @@ var WorldOrbit = (() => {
   function renderSceneObject(sceneObject, selectedObjectId, theme) {
     const { object, x, y, radius, visualRadius } = sceneObject;
     const selectionClass = selectedObjectId === sceneObject.objectId ? " wo-object-selected" : "";
+    const kindClass = object.properties.kind ? ` wo-kind-${String(object.properties.kind).toLowerCase().replace(/[^a-z0-9-]/g, "-")}` : "";
     const palette = resolveObjectPalette(sceneObject, theme);
     const imageMarkup = renderObjectImage(sceneObject);
     const outlineMarkup = imageMarkup ? renderObjectBody(object, x, y, radius, palette, { outlineOnly: true }) : "";
-    return `<g class="wo-object wo-object-${object.type}${selectionClass}" data-object-id="${escapeXml(sceneObject.objectId)}" data-parent-id="${escapeAttribute(sceneObject.parentId ?? "")}" data-group-id="${escapeAttribute(sceneObject.groupId ?? "")}" data-render-id="${escapeXml(sceneObject.renderId)}" tabindex="0" role="button" aria-label="${escapeXml(`${object.type} ${sceneObject.objectId}`)}">
+    return `<g class="wo-object wo-object-${object.type}${kindClass}${selectionClass}" data-object-id="${escapeXml(sceneObject.objectId)}" data-parent-id="${escapeAttribute(sceneObject.parentId ?? "")}" data-group-id="${escapeAttribute(sceneObject.groupId ?? "")}" data-render-id="${escapeXml(sceneObject.renderId)}" tabindex="0" role="button" aria-label="${escapeXml(`${object.type} ${sceneObject.objectId}`)}">
     <circle class="wo-selection-ring" cx="${x}" cy="${y}" r="${visualRadius + 8}" />
     ${renderAtmosphere(sceneObject, palette)}
     ${renderObjectBody(object, x, y, radius, palette)}
@@ -4839,7 +4840,8 @@ var WorldOrbit = (() => {
     }
   }
   function resolveObjectPalette(sceneObject, theme) {
-    const base = basePaletteForType(sceneObject.object.type, theme);
+    const kind = String(sceneObject.object.properties.kind ?? "").toLowerCase().replace(/_/g, "-");
+    const base = basePaletteForType(sceneObject.object.type, kind, theme);
     const customFill = sceneObject.fillColor && isColorLike(sceneObject.fillColor) ? sceneObject.fillColor : base.fill;
     const albedo = numericValue(sceneObject.object.properties.albedo);
     const temperature = numericValue(sceneObject.object.properties.temperature);
@@ -4855,7 +4857,7 @@ var WorldOrbit = (() => {
       tail: sceneObject.object.type === "comet" ? rgbaString(mixColors(fill, "#ffffff", 0.5) ?? fill, 0.72) : void 0
     };
   }
-  function basePaletteForType(type, theme) {
+  function basePaletteForType(type, kind, theme) {
     switch (type) {
       case "star":
         return {
@@ -4877,8 +4879,26 @@ var WorldOrbit = (() => {
       case "structure":
         return { fill: theme.accentStrong, stroke: "#fff2ea" };
       case "phenomenon":
-        return { fill: "#78ffd7", stroke: "#e9fff7" };
+        return kindPhenomenonPalette(kind);
     }
+  }
+  function kindPhenomenonPalette(kind) {
+    if (kind === "galaxy") {
+      return { fill: "rgba(165,125,255,0.55)", stroke: "rgba(210,185,255,0.75)", halo: "rgba(160,120,255,0.10)", core: "#ede0ff" };
+    }
+    if (kind === "dwarf-galaxy") {
+      return { fill: "rgba(190,165,255,0.45)", stroke: "rgba(220,205,255,0.75)", core: "#ddd0ff" };
+    }
+    if (kind === "black-hole") {
+      return { fill: "#040408", stroke: "#ff6a00", accentRing: "rgba(255,140,20,0.72)" };
+    }
+    if (kind === "nebula") {
+      return { fill: "rgba(105,205,255,0.45)", stroke: "rgba(180,235,255,0.72)", halo: "rgba(100,200,255,0.08)" };
+    }
+    if (kind === "void") {
+      return { fill: "#05080f", stroke: "rgba(130,160,255,0.4)" };
+    }
+    return { fill: "#78ffd7", stroke: "#e9fff7" };
   }
   function applyTemperatureAndAlbedo(baseColor, temperature, albedo, type) {
     let nextColor = baseColor;

@@ -218,14 +218,26 @@ Einheitswerte bestehen aus einem numerischen Literal (Ganzzahl oder Dezimalzahl 
 
 | Suffix | Bedeutung | Einheitsfamilie |
 |---|---|---|
-| `au` | Astronomische Einheiten | Distanz |
+| `m` | Meter | Distanz |
 | `km` | Kilometer | Distanz |
+| `au` | Astronomische Einheiten | Distanz |
+| `ly` | Lichtjahre | Distanz |
+| `pc` | Parsec | Distanz |
+| `kpc` | Kiloparsec | Distanz |
 | `re` | Erdradien | Distanz / Radius |
+| `rj` | Jupiterradien | Radius |
 | `sol` | Sonnenradien | Distanz / Radius / Masse |
 | `me` | Erdmassen | Masse |
+| `mj` | Jupitermassen | Masse |
+| `s` | Sekunden | Dauer |
+| `min` | Minuten | Dauer |
+| `h` | Stunden | Dauer |
 | `d` | Tage | Dauer |
 | `y` | Jahre | Dauer |
-| `h` | Stunden | Dauer |
+| `ky` | Jahrtausende (1.000 J) | Dauer |
+| `my` | Jahrmillionen (1 Mio. J) | Dauer |
+| `gy` | Jahrmilliarden (1 Mrd. J) | Dauer |
+| `K` | Kelvin | generisch (z.B. Temperatur) |
 | `deg` | Grad | Winkel |
 
 Einheitswerte ohne Suffix werden akzeptiert (Einheit wird als `null` gespeichert).

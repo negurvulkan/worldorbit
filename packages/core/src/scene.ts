@@ -108,7 +108,11 @@ interface ViewpointConfigDraft {
 
 const AU_IN_KM = 149_597_870.7;
 const EARTH_RADIUS_IN_KM = 6_371;
+const JUPITER_RADIUS_IN_KM = 71_492;
 const SOLAR_RADIUS_IN_KM = 695_700;
+const LY_IN_AU = 63_241.077;
+const PC_IN_AU = 206_264.806;
+const KPC_IN_AU = 206_264_806;
 const ISO_FLATTENING = 0.68;
 const MIN_ISO_MINOR_SCALE = 0.2;
 const ARC_SAMPLE_COUNT = 28;
@@ -1978,11 +1982,23 @@ function toDistanceMetric(value: UnitValue | null): number | null {
       return value.value;
     case "km":
       return value.value / AU_IN_KM;
+    case "m":
+      return (value.value / 1_000) / AU_IN_KM;
+    case "ly":
+      return value.value * LY_IN_AU;
+    case "pc":
+      return value.value * PC_IN_AU;
+    case "kpc":
+      return value.value * KPC_IN_AU;
     case "re":
       return (value.value * EARTH_RADIUS_IN_KM) / AU_IN_KM;
+    case "rj":
+      return (value.value * JUPITER_RADIUS_IN_KM) / AU_IN_KM;
     case "sol":
       return (value.value * SOLAR_RADIUS_IN_KM) / AU_IN_KM;
     default:
+      // Unitless or non-distance units (me, mj, s, min, h, d, y, ky, my, gy, K, deg):
+      // return raw value — renderer treats it as an abstract metric
       return value.value;
   }
 }

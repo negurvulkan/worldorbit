@@ -13,15 +13,33 @@ export type WorldOrbitObjectType =
 export type PlacementMode = "orbit" | "at" | "surface" | "free";
 
 export type Unit =
-  | "au"
-  | "km"
-  | "re"
-  | "sol"
-  | "me"
-  | "d"
-  | "y"
-  | "h"
-  | "deg";
+  // Distance
+  | "au"   // astronomical units
+  | "km"   // kilometres
+  | "m"    // metres (structures, fine detail)
+  | "ly"   // light-years (galactic scale)
+  | "pc"   // parsecs
+  | "kpc"  // kiloparsecs
+  // Radius
+  | "re"   // Earth radii
+  | "rj"   // Jupiter radii
+  | "sol"  // solar radii
+  // Mass
+  | "me"   // Earth masses
+  | "mj"   // Jupiter masses
+  // Duration
+  | "s"    // seconds
+  | "min"  // minutes
+  | "h"    // hours
+  | "d"    // days
+  | "y"    // years
+  | "ky"   // kiloyears (1 000 years)
+  | "my"   // megayears (1 000 000 years)
+  | "gy"   // gigayears (1 000 000 000 years)
+  // Temperature
+  | "K"    // Kelvin
+  // Angle
+  | "deg"; // degrees
 
 export type WorldOrbitDocumentVersion = "1.0";
 export type WorldOrbitAtlasDocumentVersion = "2.0";
