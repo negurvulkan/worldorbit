@@ -190,6 +190,9 @@ export function createInteractiveViewer(
       touchPoints.set(event.pointerId, point);
       if (touchPoints.size === 2) {
         touchGesture = createTouchGestureState(scene, state, touchPoints);
+      } else if (touchPoints.size === 1) {
+        dragDistance = 0;
+        suppressClick = false;
       }
       return;
     }
@@ -211,7 +214,10 @@ export function createInteractiveViewer(
         return;
       }
 
-      touchPoints.set(event.pointerId, getViewportPointFromClient(event.clientX, event.clientY));
+      const prevPoint = touchPoints.get(event.pointerId)!;
+      const nextPoint = getViewportPointFromClient(event.clientX, event.clientY);
+      touchPoints.set(event.pointerId, nextPoint);
+
       if (touchPoints.size === 2) {
         if (!touchGesture) {
           touchGesture = createTouchGestureState(scene, state, touchPoints);
@@ -229,6 +235,16 @@ export function createInteractiveViewer(
         const deltaX = current.center.x - touchGesture.startViewportCenter.x;
         const deltaY = current.center.y - touchGesture.startViewportCenter.y;
         updateState(panViewerState(zoomedState, deltaX, deltaY));
+      } else if (touchPoints.size === 1) {
+        const deltaX = nextPoint.x - prevPoint.x;
+        const deltaY = nextPoint.y - prevPoint.y;
+        dragDistance += Math.abs(deltaX) + Math.abs(deltaY);
+
+        if (dragDistance > 2) {
+          suppressClick = true;
+        }
+
+        updateState(panViewerState(state, deltaX, deltaY));
       }
 
       return;

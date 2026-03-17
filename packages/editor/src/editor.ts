@@ -587,7 +587,9 @@ export function createWorldOrbitEditor(
 
     renderToolbar();
     renderOutline();
-    renderInspector();
+    if (!inspector?.contains(document.activeElement)) {
+      renderInspector();
+    }
     renderStageOverlay();
     renderStatusBar();
     updateLiveRegion();
@@ -617,7 +619,11 @@ export function createWorldOrbitEditor(
     renderOutline();
     renderDiagnostics();
     renderSourceDiagnostics();
-    renderInspector();
+    // Do not rebuild the inspector DOM if the user is currently typing in it, 
+    // to prevent losing focus/cursor position and making input glitchy.
+    if (!inspector?.contains(document.activeElement)) {
+      renderInspector();
+    }
     renderSourcePane();
     renderPreview(immediatePreview);
     renderStageOverlay();
