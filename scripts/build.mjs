@@ -125,12 +125,12 @@ function createLocalPackageShim(shim) {
 console.log("Generating browser bundles...");
 mkdirSync("dist/unpkg", { recursive: true });
 
-async function buildBundle(entry, outfile, globalName) {
+async function buildBundle(entry, outfile, globalName, minify = true) {
   await esbuild.build({
     entryPoints: [entry],
     outfile: outfile,
     bundle: true,
-    minify: true,
+    minify: minify,
     format: "iife",
     globalName: globalName,
   });
@@ -142,9 +142,10 @@ try {
   await buildBundle("packages/markdown/dist/index.js", "dist/unpkg/worldorbit-markdown.min.js", "WorldOrbitMarkdown");
 
   const allInOneSource = `export * from "../../packages/core/dist/index.js";\nexport * from "../../packages/viewer/dist/index.js";\n`;
-  writeFileSync("dist/unpkg/worldorbit.js", allInOneSource);
+  writeFileSync("dist/unpkg/worldorbit.esm.js", allInOneSource);
   writeFileSync("dist/unpkg/worldorbit.d.ts", allInOneSource);
-  await buildBundle("dist/unpkg/worldorbit.js", "dist/unpkg/worldorbit.min.js", "WorldOrbit");
+  await buildBundle("dist/unpkg/worldorbit.esm.js", "dist/unpkg/worldorbit.js", "WorldOrbit", false);
+  await buildBundle("dist/unpkg/worldorbit.esm.js", "dist/unpkg/worldorbit.min.js", "WorldOrbit", true);
 
   console.log("Browser bundles built!");
 } catch (e) {

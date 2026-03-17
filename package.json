@@ -1,16 +1,19 @@
 {
   "name": "worldorbit",
-  "version": "2.5.4",
+  "version": "2.5.5",
   "description": "A text-based DSL and parser pipeline for orbital worldbuilding",
   "type": "module",
-  "main": "./dist/unpkg/worldorbit.js",
+  "main": "./dist/unpkg/worldorbit.esm.js",
+  "module": "./dist/unpkg/worldorbit.esm.js",
+  "browser": "./dist/unpkg/worldorbit.js",
   "unpkg": "./dist/unpkg/worldorbit.min.js",
   "jsdelivr": "./dist/unpkg/worldorbit.min.js",
   "types": "./dist/unpkg/worldorbit.d.ts",
   "exports": {
     ".": {
       "types": "./dist/unpkg/worldorbit.d.ts",
-      "import": "./dist/unpkg/worldorbit.js"
+      "import": "./dist/unpkg/worldorbit.esm.js",
+      "default": "./dist/unpkg/worldorbit.js"
     },
     "./min": "./dist/unpkg/worldorbit.min.js",
     "./core": {
