@@ -5,3 +5,7 @@ packages/*/tsconfig.tsbuildinfo
 node_modules/*
 Thumbs.db
 Untitled
+test_ast.js
+test_galaxy.js
+test_galaxy2.js
+test_galaxy_print.js
