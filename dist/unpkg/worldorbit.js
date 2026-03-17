@@ -4784,8 +4784,33 @@ var WorldOrbit = (() => {
 <circle cx="${x}" cy="${y}" r="${radius}" fill="${fill}" stroke="${palette.stroke}" stroke-width="1.4" />`;
       case "structure":
         return `<polygon points="${diamondPoints(x, y, radius)}" fill="${fill}" stroke="${palette.stroke}" stroke-width="1.4" />`;
-      case "phenomenon":
+      case "phenomenon": {
+        const kind = String(object.properties.kind ?? "").toLowerCase().replace(/_/g, "-");
+        if (options.outlineOnly) {
+          if (kind === "black-hole" || kind === "nebula" || kind === "galaxy" || kind === "dwarf-galaxy") {
+            return `<circle cx="${x}" cy="${y}" r="${radius}" fill="transparent" stroke="${palette.stroke}" stroke-width="1.4" />`;
+          }
+          return `<polygon points="${phenomenonPoints(x, y, radius)}" fill="transparent" stroke="${palette.stroke}" stroke-width="1.4" />`;
+        }
+        if (kind === "black-hole") {
+          return `<ellipse cx="${x}" cy="${y}" rx="${radius * 2.4}" ry="${radius * 0.55}" fill="none" stroke="${palette.accentRing ?? palette.stroke}" stroke-width="3.5" />
+<circle cx="${x}" cy="${y}" r="${radius}" fill="${fill}" stroke="${palette.stroke}" stroke-width="2" />`;
+        }
+        if (kind === "galaxy") {
+          return `<ellipse cx="${x}" cy="${y}" rx="${radius * 2.6}" ry="${radius}" fill="${palette.halo ?? "none"}" stroke="none" />
+<ellipse cx="${x}" cy="${y}" rx="${radius * 1.5}" ry="${radius * 0.42}" fill="${fill}" stroke="${palette.stroke}" stroke-width="1.2" />
+<circle cx="${x}" cy="${y}" r="${radius * 0.28}" fill="${palette.core ?? "#fff"}" stroke="none" />`;
+        }
+        if (kind === "dwarf-galaxy") {
+          return `<ellipse cx="${x}" cy="${y}" rx="${radius * 1.6}" ry="${radius * 0.55}" fill="${fill}" stroke="${palette.stroke}" stroke-width="1" />
+<circle cx="${x}" cy="${y}" r="${radius * 0.25}" fill="${palette.core ?? "#fff"}" stroke="none" />`;
+        }
+        if (kind === "nebula") {
+          return `<circle cx="${x}" cy="${y}" r="${radius * 2.2}" fill="${palette.halo ?? "none"}" stroke="none" />
+<circle cx="${x}" cy="${y}" r="${radius}" fill="${fill}" stroke="${palette.stroke}" stroke-width="1" />`;
+        }
         return `<polygon points="${phenomenonPoints(x, y, radius)}" fill="${fill}" stroke="${palette.stroke}" stroke-width="1.4" />`;
+      }
     }
   }
   function renderAtmosphere(sceneObject, palette) {
