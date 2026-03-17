@@ -13,14 +13,26 @@ export type WorldOrbitObjectType =
 export type PlacementMode = "orbit" | "at" | "surface" | "free";
 
 export type Unit =
-  | "au"
+  | "m"
   | "km"
+  | "au"
+  | "ly"
+  | "pc"
+  | "kpc"
   | "re"
+  | "rj"
   | "sol"
   | "me"
+  | "mj"
+  | "s"
+  | "min"
+  | "h"
   | "d"
   | "y"
-  | "h"
+  | "ky"
+  | "my"
+  | "gy"
+  | "K"
   | "deg";
 
 export interface CoordinatePoint {

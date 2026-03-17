@@ -405,13 +405,13 @@ var WorldOrbit = (() => {
   function unitFamilyAllowsUnit(family, unit) {
     switch (family) {
       case "distance":
-        return unit === null || ["au", "km", "re", "sol"].includes(unit);
+        return unit === null || ["au", "km", "m", "ly", "pc", "kpc", "re", "sol"].includes(unit);
       case "radius":
-        return unit === null || ["km", "re", "sol"].includes(unit);
+        return unit === null || ["km", "m", "re", "rj", "sol"].includes(unit);
       case "mass":
-        return unit === null || ["me", "sol"].includes(unit);
+        return unit === null || ["me", "mj", "sol"].includes(unit);
       case "duration":
-        return unit === null || ["h", "d", "y"].includes(unit);
+        return unit === null || ["s", "min", "h", "d", "y", "ky", "my", "gy"].includes(unit);
       case "angle":
         return unit === null || unit === "deg";
       case "generic":
@@ -618,7 +618,7 @@ var WorldOrbit = (() => {
   }
 
   // packages/core/dist/normalize.js
-  var UNIT_PATTERN = /^(-?\d+(?:\.\d+)?)(au|km|re|sol|me|d|y|h|deg)?$/;
+  var UNIT_PATTERN = /^(-?\d+(?:\.\d+)?)(kpc|min|mj|rj|ky|my|gy|au|km|me|re|pc|ly|deg|sol|K|m|s|h|d|y)?$/;
   var BOOLEAN_VALUES = /* @__PURE__ */ new Map([
     ["true", true],
     ["false", false],
@@ -1079,7 +1079,11 @@ var WorldOrbit = (() => {
   // packages/core/dist/scene.js
   var AU_IN_KM = 1495978707e-1;
   var EARTH_RADIUS_IN_KM = 6371;
+  var JUPITER_RADIUS_IN_KM = 71492;
   var SOLAR_RADIUS_IN_KM = 695700;
+  var LY_IN_AU = 63241.077;
+  var PC_IN_AU = 206264.806;
+  var KPC_IN_AU = 206264806;
   var ISO_FLATTENING = 0.68;
   var MIN_ISO_MINOR_SCALE = 0.2;
   var ARC_SAMPLE_COUNT = 28;
@@ -2325,8 +2329,18 @@ var WorldOrbit = (() => {
         return value.value;
       case "km":
         return value.value / AU_IN_KM;
+      case "m":
+        return value.value / 1e3 / AU_IN_KM;
+      case "ly":
+        return value.value * LY_IN_AU;
+      case "pc":
+        return value.value * PC_IN_AU;
+      case "kpc":
+        return value.value * KPC_IN_AU;
       case "re":
         return value.value * EARTH_RADIUS_IN_KM / AU_IN_KM;
+      case "rj":
+        return value.value * JUPITER_RADIUS_IN_KM / AU_IN_KM;
       case "sol":
         return value.value * SOLAR_RADIUS_IN_KM / AU_IN_KM;
       default:

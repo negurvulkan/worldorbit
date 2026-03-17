@@ -24,7 +24,7 @@ import type {
   WorldOrbitSystem,
 } from "./types.js";
 
-const UNIT_PATTERN = /^(-?\d+(?:\.\d+)?)(au|km|re|sol|me|d|y|h|deg)?$/;
+const UNIT_PATTERN = /^(-?\d+(?:\.\d+)?)(m|km|au|ly|pc|kpc|re|rj|sol|me|mj|s|min|h|d|y|ky|my|gy|K|deg)?$/;
 const BOOLEAN_VALUES = new Map<string, boolean>([
   ["true", true],
   ["false", false],
