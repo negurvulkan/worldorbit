@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>WorldOrbit v2.4 Atlas Demo</title>
+    <title>WorldOrbit v2.7 Atlas Demo</title>
     <style>
       :root {
         --bg: #071019;
@@ -499,16 +499,7 @@
       </section>
     </main>
 
-    <script type="importmap">
-      {
-        "imports": {
-          "@worldorbit/core": "../packages/core/dist/index.js",
-          "@worldorbit/viewer": "../packages/viewer/dist/index.js",
-          "@worldorbit/viewer/viewer-state": "../packages/viewer/dist/viewer-state.js",
-          "@worldorbit/markdown": "../packages/markdown/dist/index.js"
-        }
-      }
-    </script>
+    <script src="https://unpkg.com/worldorbit@2.5.7/dist/unpkg/worldorbit.min.js"></script>
     <script type="module" src="./demo.js"></script>
   </body>
 </html>
