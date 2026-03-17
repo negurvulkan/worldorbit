@@ -5426,6 +5426,9 @@ var WorldOrbit = (() => {
         touchPoints.set(event.pointerId, point);
         if (touchPoints.size === 2) {
           touchGesture = createTouchGestureState(scene, state, touchPoints);
+        } else if (touchPoints.size === 1) {
+          dragDistance = 0;
+          suppressClick = false;
         }
         return;
       }
@@ -5443,7 +5446,9 @@ var WorldOrbit = (() => {
         if (!behavior.touch || !touchPoints.has(event.pointerId)) {
           return;
         }
-        touchPoints.set(event.pointerId, getViewportPointFromClient(event.clientX, event.clientY));
+        const prevPoint = touchPoints.get(event.pointerId);
+        const nextPoint2 = getViewportPointFromClient(event.clientX, event.clientY);
+        touchPoints.set(event.pointerId, nextPoint2);
         if (touchPoints.size === 2) {
           if (!touchGesture) {
             touchGesture = createTouchGestureState(scene, state, touchPoints);
@@ -5454,6 +5459,14 @@ var WorldOrbit = (() => {
           const deltaX2 = current.center.x - touchGesture.startViewportCenter.x;
           const deltaY2 = current.center.y - touchGesture.startViewportCenter.y;
           updateState(panViewerState(zoomedState, deltaX2, deltaY2));
+        } else if (touchPoints.size === 1) {
+          const deltaX2 = nextPoint2.x - prevPoint.x;
+          const deltaY2 = nextPoint2.y - prevPoint.y;
+          dragDistance += Math.abs(deltaX2) + Math.abs(deltaY2);
+          if (dragDistance > 2) {
+            suppressClick = true;
+          }
+          updateState(panViewerState(state, deltaX2, deltaY2));
         }
         return;
       }
