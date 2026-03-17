@@ -17,11 +17,12 @@
       --accent-2: #8af7d0;
       --danger: #ffb4b4;
       --ok: #b8ffd7;
-      --max: 1160px;
+      --max: 1200px;
       --radius: 20px;
       --shadow: 0 18px 50px rgba(0,0,0,0.35);
     }
     * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
     body {
       margin: 0;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -46,6 +47,7 @@
       opacity: 0.14;
     }
     a { color: inherit; }
+    code { font-family: "JetBrains Mono", Consolas, monospace; }
     .container { width: min(var(--max), calc(100% - 32px)); margin: 0 auto; }
     .topbar {
       position: sticky; top: 0; z-index: 10;
@@ -84,11 +86,11 @@
     .btn {
       display: inline-flex; align-items: center; justify-content: center; min-height: 46px;
       padding: 0 18px; border-radius: 999px; text-decoration: none; font-weight: 600;
-      transition: transform .16s ease;
+      transition: transform .16s ease; cursor: pointer;
     }
     .btn:hover { transform: translateY(-1px); }
-    .btn-primary { background: linear-gradient(135deg, rgba(142,184,255,0.95), rgba(138,247,208,0.95)); color: #08101f; }
-    .btn-secondary { border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.02); }
+    .btn-primary { background: linear-gradient(135deg, rgba(142,184,255,0.95), rgba(138,247,208,0.95)); color: #08101f; border: 0; }
+    .btn-secondary { border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.02); color: var(--text); }
     .hero-card, .card, .tip, .faq-item {
       background: linear-gradient(180deg, rgba(16, 24, 52, 0.92), rgba(11, 17, 36, 0.92));
       border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
@@ -101,10 +103,9 @@
     }
     .viewer-shell > div:last-child { width: 100%; height: 270px; border-radius: 12px; overflow: hidden; }
     section { padding: 20px 0 28px; }
-    .section-heading { margin-bottom: 18px; max-width: 800px; }
+    .section-heading { margin-bottom: 18px; max-width: 840px; }
     .section-heading h2 { margin: 0 0 10px; font-size: clamp(1.6rem, 3vw, 2.7rem); letter-spacing: -0.03em; }
     .section-heading p { margin: 0; color: var(--muted); line-height: 1.75; }
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
     .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
     .card { padding: 20px; }
     .card h3 { margin: 0 0 10px; font-size: 1.12rem; }
@@ -114,7 +115,9 @@
       font-size: 0.76rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.07);
       margin-bottom: 12px;
     }
-    .example-grid { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 18px; align-items: stretch; }
+    .example-block { margin-bottom: 22px; }
+    .example-block:last-child { margin-bottom: 0; }
+    .example-grid { display: grid; grid-template-columns: 0.95fr 1.05fr; gap: 18px; align-items: stretch; }
     .code-box {
       background: rgba(4, 8, 19, 0.92);
       border: 1px solid rgba(255,255,255,0.06);
@@ -126,13 +129,15 @@
       padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.06);
       color: var(--muted); font-size: 0.88rem;
     }
-    textarea.code, pre.code {
+    pre.code, textarea.code {
       margin: 0; width: 100%; min-height: 280px; resize: vertical; border: 0; outline: none;
       background: transparent; color: #dbe5ff; padding: 16px;
       font: 14px/1.7 "JetBrains Mono", Consolas, monospace;
       white-space: pre; overflow: auto;
     }
-    pre.code { min-height: auto; }
+    .example-small pre.code { min-height: 190px; }
+    .example-medium pre.code { min-height: 260px; }
+    .example-large pre.code { min-height: 620px; }
     .render-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
     .render-actions .btn { min-height: 40px; padding: 0 14px; font-size: 0.92rem; }
     .preview-box {
@@ -141,6 +146,9 @@
       min-height: 360px;
     }
     .preview-box > div { width: 100%; min-height: 360px; height: 100%; }
+    .example-small .preview-box, .example-small .preview-box > div { min-height: 220px; }
+    .example-medium .preview-box, .example-medium .preview-box > div { min-height: 300px; }
+    .example-large .preview-box, .example-large .preview-box > div { min-height: 640px; }
     .status { margin-top: 10px; color: var(--muted); font-size: 0.92rem; }
     .tip { padding: 18px 20px; }
     .tip strong { display: block; margin-bottom: 10px; }
@@ -149,10 +157,11 @@
     .faq-list { display: grid; gap: 12px; }
     .faq-item { padding: 18px 20px; }
     .faq-item h3 { margin: 0 0 8px; font-size: 1rem; }
+    .playground-grid { display:grid; grid-template-columns: 0.95fr 1.05fr; gap: 18px; }
     footer { padding: 26px 0 50px; }
     .footer-wrap { border-top: 1px solid rgba(255,255,255,0.06); padding-top: 16px; color: var(--muted); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
     @media (max-width: 1000px) {
-      .hero-grid, .example-grid, .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .hero-grid, .example-grid, .playground-grid, .grid-3 { grid-template-columns: 1fr; }
     }
     @media (max-width: 760px) {
       nav { display: none; }
@@ -182,14 +191,13 @@
     <div class="container hero-grid">
       <div>
         <div class="eyebrow">A beginner-friendly guide to the WorldOrbit DSL</div>
-        <h1>Learn WorldOrbit step by step, from one star to a richer orbital atlas.</h1>
+        <h1>Learn WorldOrbit step by step, from one star to a full solar system.</h1>
         <p>
-          This guide is written for beginners. It starts with the smallest possible WorldOrbit document,
-          then gradually adds planets, metadata, viewpoints, annotations, and a small live playground.
-          You do not need to know the full reference before you can create useful diagrams.
+          This guide starts with the smallest possible WorldOrbit document and gradually adds more structure.
+          Every example is shown side by side with a rendered result, so you can immediately see what the source does.
         </p>
         <div class="hero-actions">
-          <a class="btn btn-primary" href="#first-steps">Start Learning</a>
+          <a class="btn btn-primary" href="#examples">See Examples</a>
           <a class="btn btn-secondary" href="#playground">Try it Live</a>
           <a class="btn btn-secondary" href="https://github.com/negurvulkan/worldorbit" target="_blank" rel="noreferrer">GitHub</a>
         </div>
@@ -209,27 +217,27 @@
   <section id="first-steps">
     <div class="container">
       <div class="section-heading">
-        <h2>First steps: how WorldOrbit documents are structured</h2>
+        <h2>First steps: what a WorldOrbit document looks like</h2>
         <p>
-          A WorldOrbit document is plain text. You usually start with a schema line, then define a system,
-          and then add objects like stars, planets, moons, belts, or structures.
+          A WorldOrbit document is plain text. You usually start with a schema line, define a system, and then add objects.
+          Objects can be simple at first and become richer later with orbital data, labels, notes, and presentation defaults.
         </p>
       </div>
       <div class="grid-3">
         <article class="card">
-          <span class="pill">Step 1</span>
+          <span class="pill">1</span>
           <h3>Start with the schema</h3>
-          <p>For modern documents, begin with <code>schema 2.0</code>. This tells WorldOrbit which syntax style to expect.</p>
+          <p>Use <code>schema 2.0</code> for modern documents. It tells WorldOrbit which syntax version to parse.</p>
         </article>
         <article class="card">
-          <span class="pill">Step 2</span>
+          <span class="pill">2</span>
           <h3>Define one system</h3>
-          <p>A file normally contains one <code>system</code>. Think of it as the root container for your star system.</p>
+          <p>A file usually contains one <code>system</code>. Think of it as the root container for everything else.</p>
         </article>
         <article class="card">
-          <span class="pill">Step 3</span>
-          <h3>Add objects</h3>
-          <p>Then define stars, planets, moons, structures, and other elements. Objects can be simple at first and grow later.</p>
+          <span class="pill">3</span>
+          <h3>Add objects and placement</h3>
+          <p>Then add stars, planets, moons, structures, or belts and describe how they are positioned.</p>
         </article>
       </div>
     </div>
@@ -238,122 +246,46 @@
   <section id="examples">
     <div class="container">
       <div class="section-heading">
-        <h2>Examples from simple to more complete</h2>
+        <h2>Examples from simple to advanced</h2>
         <p>
-          The easiest way to learn WorldOrbit is by building up complexity gradually.
-          These examples are ordered from minimal to richer, atlas-style usage.
+          These examples are deliberately staged. Start with the smallest possible diagram, then move on to a richer system,
+          and finally look at a more complete representation of our solar system.
         </p>
       </div>
 
-      <div class="grid-2">
-        <article class="card">
-          <span class="pill">Example 1 — Minimal</span>
-          <h3>A single star</h3>
-          <p>This is the smallest useful idea: one system and one star.</p>
-          <div class="code-box" style="margin-top:12px;">
-            <div class="code-box-header"><span>WorldOrbit source</span><span>minimal</span></div>
-            <pre class="code">schema 2.0
+      <div class="example-block example-small">
+        <div class="section-heading">
+          <h2>Example 1 — The smallest useful document</h2>
+          <p>One system and one star. This is the simplest valid starting point.</p>
+        </div>
+        <div class="example-grid">
+          <div>
+            <div class="code-box">
+              <div class="code-box-header"><span>Source</span><span>minimal</span></div>
+              <pre class="code">schema 2.0
 
-system Iyath
-object star Iyath</pre>
+system Sol
+
+object star Sun</pre>
+            </div>
           </div>
-        </article>
-
-        <article class="card">
-          <span class="pill">Example 2 — Basic orbit</span>
-          <h3>A planet orbiting a star</h3>
-          <p>Now we add a planet and place it with <code>orbit</code> and <code>semiMajor</code>.</p>
-          <div class="code-box" style="margin-top:12px;">
-            <div class="code-box-header"><span>WorldOrbit source</span><span>basic</span></div>
-            <pre class="code">schema 2.0
-
-system Iyath
-object star Iyath
-object planet Naar
-  orbit Iyath
-  semiMajor 1.18au</pre>
+          <div>
+            <div class="preview-box"><div id="example-1-preview"></div></div>
+            <div class="status">Rendered result: a single star inside one system.</div>
           </div>
-        </article>
+        </div>
       </div>
 
-      <div class="grid-2" style="margin-top:18px;">
-        <article class="card">
-          <span class="pill">Example 3 — More orbital detail</span>
-          <h3>Add orbital shape and orientation</h3>
-          <p>Now the orbit becomes more descriptive with eccentricity, angle, inclination, and phase.</p>
-          <div class="code-box" style="margin-top:12px;">
-            <div class="code-box-header"><span>WorldOrbit source</span><span>intermediate</span></div>
-            <pre class="code">schema 2.0
-
-system Iyath
-object star Iyath
-object planet Naar
-  orbit Iyath
-  semiMajor 1.18au
-  eccentricity 0.08
-  angle 28deg
-  inclination 24deg
-  phase 42deg</pre>
-          </div>
-        </article>
-
-        <article class="card">
-          <span class="pill">Example 4 — Richer metadata</span>
-          <h3>Use title, atmosphere, tags, and info</h3>
-          <p>At this stage the object becomes more descriptive and useful for tooltips or atlas views.</p>
-          <div class="code-box" style="margin-top:12px;">
-            <div class="code-box-header"><span>WorldOrbit source</span><span>metadata</span></div>
-            <pre class="code">schema 2.0
-
-system Iyath
-object star Iyath
-
-object planet Naar
-  title "Naar"
-  orbit Iyath
-  semiMajor 1.18au
-  atmosphere nitrogen-oxygen
-  tags habitable homeworld
-  info
-    description "Homeworld of the Enari."
-    climate "Temperate to dry"</pre>
-          </div>
-        </article>
-      </div>
-
-      <div class="grid-2" style="margin-top:18px;">
-        <article class="card">
-          <span class="pill">Example 5 — Moon and structure</span>
-          <h3>Add a moon and a special position</h3>
-          <p>You can add more bodies and artificial objects such as stations or relays.</p>
-          <div class="code-box" style="margin-top:12px;">
-            <div class="code-box-header"><span>WorldOrbit source</span><span>multi-object</span></div>
-            <pre class="code">schema 2.0
-
-system Iyath
-object star Iyath
-
-object planet Naar
-  orbit Iyath
-  semiMajor 1.18au
-
-object moon Leth
-  orbit Naar
-  distance 220000km
-
-object structure Relay-1
-  at Naar:L4
-  kind relay</pre>
-          </div>
-        </article>
-
-        <article class="card">
-          <span class="pill">Example 6 — Atlas-style document</span>
-          <h3>Add defaults, viewpoints, and annotations</h3>
-          <p>This is where WorldOrbit starts to feel like a richer viewer or atlas document, not just a raw object list.</p>
-          <div class="code-box" style="margin-top:12px;">
-            <div class="code-box-header"><span>WorldOrbit source</span><span>atlas style</span></div>
-            <pre class="code">schema 2.0
+      <div class="example-block example-medium">
+        <div class="section-heading">
+          <h2>Example 2 — A small star system with planets and a moon</h2>
+          <p>This adds orbit data, a moon, and a small station at a Lagrange point.</p>
+        </div>
+        <div class="example-grid">
+          <div>
+            <div class="code-box">
+              <div class="code-box-header"><span>Source</span><span>intermediate</span></div>
+              <pre class="code">schema 2.0
 
 system Iyath
   title "Iyath System"
@@ -363,55 +295,6 @@ defaults
   scale presentation
   preset atlas-card
   theme atlas
-
-viewpoint overview
-  label "Overview"
-  summary "Fit the whole system."
-  projection isometric
-
-annotation naar-notes
-  label "Naar Notes"
-  target Naar
-  body "Homeworld of the Enari."
-
-object star Iyath
-object planet Naar
-  orbit Iyath
-  semiMajor 1.18au</pre>
-          </div>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  <section id="playground">
-    <div class="container">
-      <div class="section-heading">
-        <h2>Live playground</h2>
-        <p>
-          Edit the example source on the left and render it on the right. This is a lightweight learning tool,
-          not a replacement for the full Studio editor.
-        </p>
-      </div>
-      <div class="example-grid">
-        <div>
-          <div class="code-box">
-            <div class="code-box-header"><span>Editable source</span><span>beginner playground</span></div>
-            <textarea id="playground-source" class="code" spellcheck="false">schema 2.0
-
-system Iyath
-  title "Iyath System"
-
-defaults
-  view isometric
-  scale presentation
-  preset atlas-card
-  theme atlas
-
-annotation naar-notes
-  label "Naar Notes"
-  target Naar
-  body "Homeworld of the Enari."
 
 object star Iyath
 
@@ -422,18 +305,211 @@ object planet Naar
   angle 28deg
   inclination 24deg
   phase 42deg
-  atmosphere nitrogen-oxygen</textarea>
+  atmosphere nitrogen-oxygen
+
+object moon Leth
+  orbit Naar
+  distance 384000km
+  phase 140deg
+
+object structure Relay-One
+  at Naar:L4
+  kind relay</pre>
+            </div>
+          </div>
+          <div>
+            <div class="preview-box"><div id="example-2-preview"></div></div>
+            <div class="status">Rendered result: a system with a star, one planet, a moon, and a relay at a special orbital position.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="example-block example-large">
+        <div class="section-heading">
+          <h2>Example 3 — A more complete solar system</h2>
+          <p>
+            This example tries to capture the structure of our solar system with the Sun, inner planets, gas giants,
+            a moon, the asteroid belt, the rings of Saturn, and a few structures. It is intentionally richer so you can see
+            how WorldOrbit scales from tiny diagrams to dense orbital maps.
+          </p>
+        </div>
+        <div class="example-grid">
+          <div>
+            <div class="code-box">
+              <div class="code-box-header"><span>Source</span><span>advanced</span></div>
+              <pre class="code">schema 2.0
+
+system Sol
+  title "Solar System"
+
+defaults
+  view topdown
+  scale presentation
+  preset atlas-card
+  theme atlas
+
+viewpoint overview
+  label "Solar System Overview"
+  summary "All major planets and selected structures."
+  projection topdown
+
+annotation inner-worlds
+  label "Inner Worlds"
+  target Earth
+  body "Mercury, Venus, Earth, and Mars form the rocky inner system."
+
+annotation outer-worlds
+  label "Outer Giants"
+  target Jupiter
+  body "The outer system is dominated by gas and ice giants."
+
+object star Sun
+  radius 1sol
+  mass 333000me
+
+object planet Mercury
+  orbit Sun
+  semiMajor 0.39au
+  phase 25deg
+  class rocky
+
+object planet Venus
+  orbit Sun
+  semiMajor 0.72au
+  phase 75deg
+  class rocky
+  atmosphere carbon-dioxide
+
+object planet Earth
+  orbit Sun
+  semiMajor 1au
+  phase 135deg
+  class rocky
+  atmosphere nitrogen-oxygen
+
+object moon Moon
+  orbit Earth
+  distance 384400km
+  phase 220deg
+
+object structure ISS
+  orbit Earth
+  distance 6771km
+  kind station
+
+object structure JWST
+  at Earth:L2
+  kind telescope
+
+object planet Mars
+  orbit Sun
+  semiMajor 1.52au
+  phase 210deg
+  class rocky
+
+object belt Main-Belt
+  orbit Sun
+  inner 2.1au
+  outer 3.3au
+
+object planet Jupiter
+  orbit Sun
+  semiMajor 5.20au
+  phase 300deg
+  class gas-giant
+
+object moon Europa
+  orbit Jupiter
+  distance 671000km
+  phase 40deg
+
+object planet Saturn
+  orbit Sun
+  semiMajor 9.58au
+  phase 20deg
+  class gas-giant
+
+object ring Saturn-Rings
+  orbit Saturn
+  inner 67000km
+  outer 140000km
+
+object planet Uranus
+  orbit Sun
+  semiMajor 19.2au
+  phase 95deg
+  class ice-giant
+
+object planet Neptune
+  orbit Sun
+  semiMajor 30.05au
+  phase 175deg
+  class ice-giant
+
+object structure Voyager-1
+  free 160au
+  kind probe
+
+object phenomenon Heliosphere
+  kind boundary
+  source Sun</pre>
+            </div>
+          </div>
+          <div>
+            <div class="preview-box"><div id="example-3-preview"></div></div>
+            <div class="status">Rendered result: a dense, atlas-style view of the solar system with annotations, rings, belts, structures, and selected moons.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="playground">
+    <div class="container">
+      <div class="section-heading">
+        <h2>Playground</h2>
+        <p>Edit the source on the left and render it on the right. This is a lightweight test area, not the full Studio editor.</p>
+      </div>
+      <div class="playground-grid">
+        <div>
+          <div class="code-box">
+            <div class="code-box-header"><span>Editable source</span><span>live preview</span></div>
+            <textarea id="playground-source" class="code" spellcheck="false">schema 2.0
+
+system Demo
+  title "Demo System"
+
+defaults
+  view isometric
+  scale presentation
+  preset atlas-card
+  theme atlas
+
+object star Helion
+
+object planet Astera
+  orbit Helion
+  semiMajor 0.8au
+  phase 45deg
+
+object planet Belis
+  orbit Helion
+  semiMajor 1.6au
+  phase 180deg
+
+object moon B1
+  orbit Belis
+  distance 250000km
+  phase 80deg</textarea>
           </div>
           <div class="render-actions">
-            <button class="btn btn-primary" id="render-playground" type="button">Render Preview</button>
-            <button class="btn btn-secondary" id="reset-playground" type="button">Reset Example</button>
+            <button class="btn btn-primary" id="playground-render">Render Preview</button>
+            <button class="btn btn-secondary" id="playground-reset">Reset Example</button>
           </div>
           <div class="status" id="playground-status">Edit the source and click “Render Preview”.</div>
         </div>
         <div>
-          <div class="preview-box">
-            <div id="playground-preview"></div>
-          </div>
+          <div class="preview-box"><div id="playground-preview"></div></div>
         </div>
       </div>
     </div>
@@ -443,34 +519,30 @@ object planet Naar
     <div class="container">
       <div class="section-heading">
         <h2>Beginner tips</h2>
-        <p>These are the things that make learning WorldOrbit easier and prevent the most common mistakes.</p>
+        <p>These habits make WorldOrbit easier to learn and easier to maintain.</p>
       </div>
-      <div class="grid-2">
+      <div class="grid-3">
         <div class="tip">
           <strong>Start small</strong>
-          <p>Do not try to model your entire setting in the first file. Start with one system, one star, and one or two planets. Add more only after the basic structure works.</p>
+          <p>Define the system and one star first. Then add one planet at a time. It is easier to debug small steps than one huge document.</p>
         </div>
         <div class="tip">
-          <strong>Use indentation consistently</strong>
-          <p>Most WorldOrbit examples use two spaces for indented fields. Staying consistent keeps documents readable and easier to debug.</p>
+          <strong>Use defaults later</strong>
+          <p>Presentation settings like <code>defaults</code>, <code>viewpoint</code>, and <code>annotation</code> are useful, but you do not need them for your first diagram.</p>
         </div>
         <div class="tip">
           <strong>Think in layers</strong>
-          <p>First define objects. Then add orbit details. Then add metadata. Finally add atlas-style features like defaults, viewpoints, and annotations.</p>
-        </div>
-        <div class="tip">
-          <strong>Use the info block for free text</strong>
-          <p>If something feels like lore text, description, notes, or long-form metadata, it usually belongs in <code>info</code>.</p>
+          <p>There is the system itself, the objects inside it, and optional presentation details. Keeping these layers in mind makes the syntax easier to understand.</p>
         </div>
       </div>
-      <div class="card" style="margin-top:18px;">
-        <h3>Quick checklist</h3>
+      <div class="tip" style="margin-top:18px;">
+        <strong>What beginners usually need first</strong>
         <ul class="checks">
-          <li>Start with <code>schema 2.0</code>.</li>
-          <li>Define exactly one <code>system</code> per file.</li>
-          <li>Add objects like <code>star</code>, <code>planet</code>, and <code>moon</code>.</li>
-          <li>Use one placement mode per object: <code>orbit</code>, <code>at</code>, <code>surface</code>, or <code>free</code>.</li>
-          <li>Use units like <code>au</code>, <code>km</code>, <code>d</code>, <code>y</code>, and <code>deg</code>.</li>
+          <li><code>schema 2.0</code></li>
+          <li><code>system Name</code></li>
+          <li><code>object star Name</code></li>
+          <li><code>object planet Name</code> with <code>orbit</code> and <code>semiMajor</code></li>
+          <li>Optional: a moon, a belt, or a structure</li>
         </ul>
       </div>
     </div>
@@ -479,40 +551,34 @@ object planet Naar
   <section id="faq">
     <div class="container">
       <div class="section-heading">
-        <h2>FAQ for beginners</h2>
-        <p>A few short answers to the questions people often have when they first see the DSL.</p>
+        <h2>FAQ</h2>
+        <p>Short answers to the most common beginner questions.</p>
       </div>
       <div class="faq-list">
-        <article class="faq-item">
-          <h3>Do I always need to write <code>object</code>?</h3>
-          <p>No. Many examples can also work in shorter forms, but <code>object type name</code> is the clearer and more extensible style, especially in schema 2.0.</p>
-        </article>
-        <article class="faq-item">
-          <h3>Do I need to know every parameter from the beginning?</h3>
-          <p>No. You can start with only a star and a planet. WorldOrbit is designed to grow with your document.</p>
-        </article>
-        <article class="faq-item">
+        <div class="faq-item">
+          <h3>Do I always need <code>schema 2.0</code>?</h3>
+          <p>For modern documents, yes. It makes the source explicit and predictable.</p>
+        </div>
+        <div class="faq-item">
+          <h3>Do I have to use every parameter?</h3>
+          <p>No. WorldOrbit is flexible. Many diagrams start with just a system, a star, and one or two planets.</p>
+        </div>
+        <div class="faq-item">
           <h3>What is the difference between <code>orbit</code> and <code>at</code>?</h3>
-          <p><code>orbit</code> describes a normal orbital relationship. <code>at</code> places something exactly at another object or a special point like a Lagrange point.</p>
-        </article>
-        <article class="faq-item">
-          <h3>When should I use viewpoints and annotations?</h3>
-          <p>Use them when the document should not only describe the system but also present it as a richer atlas or viewer experience.</p>
-        </article>
+          <p><code>orbit</code> places an object on a normal orbit. <code>at</code> places it at a fixed reference position, such as a Lagrange point.</p>
+        </div>
+        <div class="faq-item">
+          <h3>Can I use WorldOrbit in Markdown?</h3>
+          <p>Yes. That is one of its core strengths. It is designed for Markdown-native worldbuilding and documentation workflows.</p>
+        </div>
       </div>
     </div>
   </section>
 
   <footer>
     <div class="container footer-wrap">
-      <div>WorldOrbit Beginner Guide — learn the DSL step by step.</div>
-      <div>
-        <a href="https://github.com/negurvulkan/worldorbit" target="_blank" rel="noreferrer">GitHub</a>
-        &nbsp;·&nbsp;
-        <a href="https://www.npmjs.com/package/worldorbit" target="_blank" rel="noreferrer">npm</a>
-        &nbsp;·&nbsp;
-        <a href="https://negurvulkan.github.io/worldorbit/studio/" target="_blank" rel="noreferrer">Studio</a>
-      </div>
+      <span>WorldOrbit Beginner Guide</span>
+      <span>Rendered examples powered by UNPKG + WorldOrbit</span>
     </div>
   </footer>
 
@@ -521,7 +587,6 @@ object planet Naar
     const heroSource = `schema 2.0
 
 system Iyath
-  title "Iyath System"
 
 defaults
   view isometric
@@ -537,10 +602,15 @@ object planet Naar
   eccentricity 0.08
   angle 28deg
   inclination 24deg
-  phase 42deg
-  atmosphere nitrogen-oxygen`;
+  phase 42deg`;
 
-    const playgroundDefaultSource = `schema 2.0
+    const example1Source = `schema 2.0
+
+system Sol
+
+object star Sun`;
+
+    const example2Source = `schema 2.0
 
 system Iyath
   title "Iyath System"
@@ -551,11 +621,6 @@ defaults
   preset atlas-card
   theme atlas
 
-annotation naar-notes
-  label "Naar Notes"
-  target Naar
-  body "Homeworld of the Enari."
-
 object star Iyath
 
 object planet Naar
@@ -565,51 +630,199 @@ object planet Naar
   angle 28deg
   inclination 24deg
   phase 42deg
-  atmosphere nitrogen-oxygen`;
+  atmosphere nitrogen-oxygen
 
-    function mountPreview(targetId, source, options = {}) {
+object moon Leth
+  orbit Naar
+  distance 384000km
+  phase 140deg
+
+object structure Relay-One
+  at Naar:L4
+  kind relay`;
+
+    const example3Source = `schema 2.0
+
+system Sol
+  title "Solar System"
+
+defaults
+  view topdown
+  scale presentation
+  preset atlas-card
+  theme atlas
+
+viewpoint overview
+  label "Solar System Overview"
+  summary "All major planets and selected structures."
+  projection topdown
+
+annotation inner-worlds
+  label "Inner Worlds"
+  target Earth
+  body "Mercury, Venus, Earth, and Mars form the rocky inner system."
+
+annotation outer-worlds
+  label "Outer Giants"
+  target Jupiter
+  body "The outer system is dominated by gas and ice giants."
+
+object star Sun
+  radius 1sol
+  mass 333000me
+
+object planet Mercury
+  orbit Sun
+  semiMajor 0.39au
+  phase 25deg
+  class rocky
+
+object planet Venus
+  orbit Sun
+  semiMajor 0.72au
+  phase 75deg
+  class rocky
+  atmosphere carbon-dioxide
+
+object planet Earth
+  orbit Sun
+  semiMajor 1au
+  phase 135deg
+  class rocky
+  atmosphere nitrogen-oxygen
+
+object moon Moon
+  orbit Earth
+  distance 384400km
+  phase 220deg
+
+object structure ISS
+  orbit Earth
+  distance 6771km
+  kind station
+
+object structure JWST
+  at Earth:L2
+  kind telescope
+
+object planet Mars
+  orbit Sun
+  semiMajor 1.52au
+  phase 210deg
+  class rocky
+
+object belt Main-Belt
+  orbit Sun
+  inner 2.1au
+  outer 3.3au
+
+object planet Jupiter
+  orbit Sun
+  semiMajor 5.20au
+  phase 300deg
+  class gas-giant
+
+object moon Europa
+  orbit Jupiter
+  distance 671000km
+  phase 40deg
+
+object planet Saturn
+  orbit Sun
+  semiMajor 9.58au
+  phase 20deg
+  class gas-giant
+
+object ring Saturn-Rings
+  orbit Saturn
+  inner 67000km
+  outer 140000km
+
+object planet Uranus
+  orbit Sun
+  semiMajor 19.2au
+  phase 95deg
+  class ice-giant
+
+object planet Neptune
+  orbit Sun
+  semiMajor 30.05au
+  phase 175deg
+  class ice-giant
+
+object structure Voyager-1
+  free 160au
+  kind probe
+
+object phenomenon Heliosphere
+  kind boundary
+  source Sun`;
+
+    const playgroundDefaultSource = `schema 2.0
+
+system Demo
+  title "Demo System"
+
+defaults
+  view isometric
+  scale presentation
+  preset atlas-card
+  theme atlas
+
+object star Helion
+
+object planet Astera
+  orbit Helion
+  semiMajor 0.8au
+  phase 45deg
+
+object planet Belis
+  orbit Helion
+  semiMajor 1.6au
+  phase 180deg
+
+object moon B1
+  orbit Belis
+  distance 250000km
+  phase 80deg`;
+
+    function mountPreview(targetId, source, projection = "isometric") {
       const target = document.getElementById(targetId);
       if (!target || !window.WorldOrbit) return;
-
       try {
+        target.innerHTML = "";
         const loaded = WorldOrbit.loadWorldOrbitSource(source);
         WorldOrbit.createInteractiveViewer(target, {
           document: loaded.document,
-          projection: options.projection || "isometric",
-          theme: options.theme || "atlas"
+          projection,
+          theme: "atlas"
         });
       } catch (error) {
-        target.innerHTML = `<div style="padding:16px;color:#ffb4b4;font:14px/1.5 sans-serif;">Preview failed to render.<br>${String(error)}</div>`;
+        target.innerHTML = `<div style="padding:16px;color:#ffb4b4;font:14px/1.5 sans-serif;">Preview failed.<br>${String(error)}</div>`;
       }
     }
 
+    mountPreview("hero-preview", heroSource, "isometric");
+    mountPreview("example-1-preview", example1Source, "isometric");
+    mountPreview("example-2-preview", example2Source, "isometric");
+    mountPreview("example-3-preview", example3Source, "topdown");
+
     function renderPlayground() {
       const sourceField = document.getElementById("playground-source");
-      const preview = document.getElementById("playground-preview");
       const status = document.getElementById("playground-status");
-      if (!sourceField || !preview || !status || !window.WorldOrbit) return;
-
+      if (!sourceField || !status) return;
       try {
-        preview.innerHTML = "";
-        const loaded = WorldOrbit.loadWorldOrbitSource(sourceField.value);
-        WorldOrbit.createInteractiveViewer(preview, {
-          document: loaded.document,
-          projection: "isometric",
-          theme: "atlas"
-        });
+        mountPreview("playground-preview", sourceField.value, "isometric");
         status.textContent = "Preview rendered successfully.";
         status.style.color = "#aab7d5";
       } catch (error) {
-        preview.innerHTML = "";
         status.textContent = `Render failed: ${String(error)}`;
         status.style.color = "#ffb4b4";
       }
     }
 
-    mountPreview("hero-preview", heroSource, { projection: "isometric", theme: "atlas" });
-
-    document.getElementById("render-playground")?.addEventListener("click", renderPlayground);
-    document.getElementById("reset-playground")?.addEventListener("click", () => {
+    document.getElementById("playground-render")?.addEventListener("click", renderPlayground);
+    document.getElementById("playground-reset")?.addEventListener("click", () => {
       const sourceField = document.getElementById("playground-source");
       if (sourceField) sourceField.value = playgroundDefaultSource;
       renderPlayground();
