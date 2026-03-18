@@ -5,6 +5,8 @@ import type {
   RenderBounds,
   RenderLeaderLine,
   RenderPresetName,
+  RenderSceneRelation,
+  RenderSceneSemanticGroup,
   RenderSceneGroup,
   RenderSceneLabel,
   RenderSceneLayer,
@@ -56,6 +58,17 @@ interface LeaderLineDraft {
   x2: number;
   y2: number;
   mode: "surface" | "at" | "free";
+}
+
+interface RelationVisualDraft {
+  relationId: string;
+  relation: WorldOrbitDocument["relations"][number];
+  fromObjectId: string;
+  toObjectId: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
 }
 
 interface PlacementContext {
@@ -298,8 +311,10 @@ export function renderDocumentToScene(
   );
   const leaders = leaderDrafts.map((draft) => createLeaderLine(draft));
   const labels = createSceneLabels(objects, height, scaleModel.labelMultiplier);
-  const layers = createSceneLayers(orbitVisuals, leaders, objects, labels);
+  const relations = createSceneRelations(document, objects);
+  const layers = createSceneLayers(orbitVisuals, relations, leaders, objects, labels);
   const groups = createSceneGroups(objects, orbitVisuals, leaders, labels, relationships);
+  const semanticGroups = createSceneSemanticGroups(document, objects);
   const viewpoints = createSceneViewpoints(
     document,
     projection,
@@ -324,7 +339,7 @@ export function renderDocumentToScene(
     projection,
     scaleModel,
     title:
-      String(document.system?.properties.title ?? document.system?.id ?? "WorldOrbit") ||
+      String(document.system?.title ?? document.system?.properties.title ?? document.system?.id ?? "WorldOrbit") ||
       "WorldOrbit",
     subtitle: `${capitalizeLabel(projection)} view - ${capitalizeLabel(layoutPreset)} layout`,
     systemId,
@@ -341,9 +356,11 @@ export function renderDocumentToScene(
     contentBounds,
     layers,
     groups,
+    semanticGroups,
     viewpoints,
     objects,
     orbitVisuals,
+    relations,
     leaders,
     labels,
   };
@@ -483,6 +500,7 @@ function createSceneObject(
   relationships: SceneRelationshipContext,
 ): RenderSceneObject {
   const { object, x, y, radius, sortKey, anchorX, anchorY } = position;
+  const renderPriority = object.renderHints?.renderPriority ?? 0;
   return {
     renderId: createRenderId(object.id),
     objectId: object.id,
@@ -491,11 +509,12 @@ function createSceneObject(
     ancestorIds: relationships.ancestorIds.get(object.id) ?? [],
     childIds: relationships.childIds.get(object.id) ?? [],
     groupId: relationships.groupIds.get(object.id) ?? null,
+    semanticGroupIds: [...(object.groups ?? [])],
     x,
     y,
     radius,
     visualRadius: visualExtentForObject(object, radius, scaleModel),
-    sortKey,
+    sortKey: sortKey + renderPriority * 0.001,
     anchorX,
     anchorY,
     label: object.id,
@@ -520,6 +539,7 @@ function createOrbitVisual(
     object: draft.object,
     parentId: draft.parentId,
     groupId,
+    semanticGroupIds: [...(draft.object.groups ?? [])],
     kind: draft.kind,
     cx: draft.cx,
     cy: draft.cy,
@@ -531,7 +551,7 @@ function createOrbitVisual(
     bandThickness: draft.bandThickness,
     frontArcPath: draft.frontArcPath,
     backArcPath: draft.backArcPath,
-    hidden: draft.object.properties.hidden === true,
+    hidden: draft.object.properties.hidden === true || draft.object.renderHints?.renderOrbit === false,
   };
 }
 
@@ -541,6 +561,7 @@ function createLeaderLine(draft: LeaderLineDraft): RenderLeaderLine {
     objectId: draft.object.id,
     object: draft.object,
     groupId: draft.groupId,
+    semanticGroupIds: [...(draft.object.groups ?? [])],
     x1: draft.x1,
     y1: draft.y1,
     x2: draft.x2,
@@ -558,7 +579,7 @@ function createSceneLabels(
   const labels: RenderSceneLabel[] = [];
   const occupied: Array<{ left: number; right: number; top: number; bottom: number }> = [];
   const visibleObjects = [...objects]
-    .filter((object) => !object.hidden)
+    .filter((object) => !object.hidden && object.object.renderHints?.renderLabel !== false)
     .sort((left, right) => left.sortKey - right.sortKey);
 
   for (const object of visibleObjects) {
@@ -582,6 +603,7 @@ function createSceneLabels(
       objectId: object.objectId,
       object: object.object,
       groupId: object.groupId,
+      semanticGroupIds: [...object.semanticGroupIds],
       label: object.label,
       secondaryLabel: object.secondaryLabel,
       x: object.x,
@@ -598,6 +620,7 @@ function createSceneLabels(
 
 function createSceneLayers(
   orbitVisuals: RenderOrbitVisual[],
+  relations: RenderSceneRelation[],
   leaders: RenderLeaderLine[],
   objects: RenderSceneObject[],
   labels: RenderSceneLabel[],
@@ -617,6 +640,10 @@ function createSceneLayers(
     },
     { id: "orbits-back", renderIds: backOrbitIds },
     { id: "orbits-front", renderIds: frontOrbitIds },
+    {
+      id: "relations",
+      renderIds: relations.filter((relation) => !relation.hidden).map((relation) => relation.renderId),
+    },
     {
       id: "objects",
       renderIds: objects.filter((object) => !object.hidden).map((object) => object.renderId),
@@ -698,6 +725,51 @@ function createSceneGroups(
   return [...groups.values()].sort((left, right) => left.label.localeCompare(right.label));
 }
 
+function createSceneSemanticGroups(
+  document: WorldOrbitDocument,
+  objects: RenderSceneObject[],
+): RenderSceneSemanticGroup[] {
+  return [...document.groups]
+    .map((group) => ({
+      id: group.id,
+      label: group.label,
+      summary: group.summary,
+      color: group.color,
+      tags: [...group.tags],
+      hidden: group.hidden,
+      objectIds: objects
+        .filter((object) => !object.hidden && object.semanticGroupIds.includes(group.id))
+        .map((object) => object.objectId),
+    }))
+    .sort((left, right) => left.label.localeCompare(right.label));
+}
+
+function createSceneRelations(
+  document: WorldOrbitDocument,
+  objects: RenderSceneObject[],
+): RenderSceneRelation[] {
+  const objectMap = new Map(objects.map((object) => [object.objectId, object]));
+
+  return document.relations
+    .map((relation) => {
+      const from = objectMap.get(relation.from);
+      const to = objectMap.get(relation.to);
+      return {
+        renderId: `${createRenderId(relation.id)}-relation`,
+        relationId: relation.id,
+        relation,
+        fromObjectId: relation.from,
+        toObjectId: relation.to,
+        x1: from?.x ?? 0,
+        y1: from?.y ?? 0,
+        x2: to?.x ?? 0,
+        y2: to?.y ?? 0,
+        hidden: relation.hidden || !from || !to || from.hidden || to.hidden,
+      };
+    })
+    .sort((left, right) => left.relation.id.localeCompare(right.relation.id));
+}
+
 function createSceneViewpoints(
   document: WorldOrbitDocument,
   projection: ViewProjection,
@@ -729,6 +801,7 @@ function createSceneViewpoints(
       draft,
       field,
       value,
+      document,
       projection,
       preset,
       relationships,
@@ -769,9 +842,8 @@ function createGeneratedOverviewViewpoint(
   projection: ViewProjection,
   preset: RenderPresetName | null,
 ): RenderSceneViewpoint {
-  const label = document.system?.properties.title
-    ? `${String(document.system.properties.title)} Overview`
-    : "Overview";
+  const title = document.system?.title ?? document.system?.properties.title;
+  const label = title ? `${String(title)} Overview` : "Overview";
   return {
     id: "overview",
     label,
@@ -792,6 +864,7 @@ function applyViewpointField(
   draft: ViewpointConfigDraft,
   field: string,
   value: string,
+  document: WorldOrbitDocument,
   projection: ViewProjection,
   preset: RenderPresetName | null,
   relationships: SceneRelationshipContext,
@@ -864,7 +937,7 @@ function applyViewpointField(
     case "groups":
       draft.filter = {
         ...(draft.filter ?? createEmptyViewpointFilter()),
-        groupIds: parseViewpointGroups(normalizedValue, relationships, objectMap),
+        groupIds: parseViewpointGroups(normalizedValue, document, relationships, objectMap),
       };
       return;
   }
@@ -983,6 +1056,7 @@ function parseViewpointLayers(
       rawLayer === "guides" ||
       rawLayer === "orbits-back" ||
       rawLayer === "orbits-front" ||
+      rawLayer === "relations" ||
       rawLayer === "objects" ||
       rawLayer === "labels" ||
       rawLayer === "metadata"
@@ -1012,10 +1086,18 @@ function parseViewpointObjectTypes(
 
 function parseViewpointGroups(
   value: string,
+  document: WorldOrbitDocument,
   relationships: SceneRelationshipContext,
   objectMap: Map<string, WorldOrbitObject>,
 ): string[] {
   return splitListValue(value).map((entry) => {
+    if (
+      document.schemaVersion === "2.1" ||
+      document.groups.some((group) => group.id === entry)
+    ) {
+      return entry;
+    }
+
     if (entry.startsWith("wo-") && entry.endsWith("-group")) {
       return entry;
     }

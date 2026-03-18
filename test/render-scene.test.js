@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parse, renderDocumentToScene } from "@worldorbit/core";
+import { loadWorldOrbitSource, parse, renderDocumentToScene } from "@worldorbit/core";
 import { renderSceneToSvg } from "@worldorbit/viewer";
 
 const source = `
@@ -91,6 +91,73 @@ structure Skyhook
 structure Relay
   kind relay
   at Naar:L4
+`.trim();
+
+const schema21Source = `
+schema 2.1
+
+system Iyath
+  title "Iyath System"
+  epoch "JY-0001.0"
+  referencePlane ecliptic
+
+defaults
+  view isometric
+  scale presentation
+  preset atlas-card
+
+group inner-system
+  label "Inner System"
+  summary "Naar and nearby infrastructure"
+  color "#d9b37a"
+
+viewpoint inner
+  label "Inner System"
+  projection isometric
+  filter
+    groups inner-system
+
+relation supply-route
+  from Colony
+  to Relay
+  kind logistics
+  label "Supply Route"
+
+object star Iyath
+  mass 1sol
+
+object planet Naar
+  orbit Iyath
+  semiMajor 0.92au
+  period 349.6d
+  groups inner-system
+
+object moon Seyra
+  orbit Naar
+  distance 384400km
+  groups inner-system
+
+object moon Orun
+  orbit Naar
+  distance 192200km
+  resonance Seyra 2:1
+  renderLabel false
+  renderOrbit false
+  groups inner-system
+
+object structure Relay
+  at Naar:L4
+  kind relay
+  groups inner-system
+
+object structure Colony
+  surface Naar
+  kind colony
+  groups inner-system
+
+object belt Outer-Belt
+  orbit Iyath
+  distance 5au
 `.trim();
 
 test("scene creation exposes objects, visuals, visible-content bounds, and metadata", () => {
@@ -317,4 +384,27 @@ phenomenon Scar orbit Iyath distance 5.2au image assets/scar.png
   assert.match(svg, /clipPath id="wo-cinder-clip"/);
   assert.match(svg, /clipPath id="wo-relay-clip"/);
   assert.match(svg, /clipPath id="wo-scar-clip"/);
+});
+
+test("schema 2.1 scenes expose semantic groups, relations, and render hints without breaking rendering", () => {
+  const loaded = loadWorldOrbitSource(schema21Source);
+  const scene = renderDocumentToScene(loaded.document, {
+    width: 960,
+    height: 640,
+  });
+  const svg = renderSceneToSvg(scene);
+  const innerViewpoint = scene.viewpoints.find((viewpoint) => viewpoint.id === "inner");
+  const orun = scene.objects.find((object) => object.objectId === "Orun");
+  const relay = scene.objects.find((object) => object.objectId === "Relay");
+
+  assert.equal(loaded.schemaVersion, "2.1");
+  assert.ok(scene.semanticGroups.some((group) => group.id === "inner-system"));
+  assert.ok(scene.relations.some((relation) => relation.relationId === "supply-route"));
+  assert.deepEqual(innerViewpoint?.filter?.groupIds, ["inner-system"]);
+  assert.deepEqual(orun?.semanticGroupIds, ["inner-system"]);
+  assert.deepEqual(relay?.semanticGroupIds, ["inner-system"]);
+  assert.equal(scene.labels.some((label) => label.objectId === "Orun"), false);
+  assert.equal(scene.orbitVisuals.some((orbit) => orbit.objectId === "Orun" && !orbit.hidden), false);
+  assert.match(svg, /data-layer-id="relations"/);
+  assert.match(svg, /data-relation-id="supply-route"/);
 });

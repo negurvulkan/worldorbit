@@ -1,8 +1,10 @@
 # API Inventory
 
-## @worldorbit/core
+This inventory highlights the public WorldOrbit APIs that matter most for authoring, loading, validating, rendering, and editing Schema 2.1 documents. Schema 1.0, canonical Schema 2.0, and legacy `schema 2.0-draft` remain supported compatibility paths.
 
-Stable `v2.5` APIs:
+## `@worldorbit/core`
+
+Stable v2.5 APIs:
 
 - `parse(source)`
 - `parseSafe(source)`
@@ -10,6 +12,7 @@ Stable `v2.5` APIs:
 - `render(source)`
 - `parseWorldOrbit(source)`
 - `parseWorldOrbitAtlas(source)`
+- `parseWorldOrbitDraft(source)`
 - `normalizeDocument(ast)`
 - `normalizeWithDiagnostics(ast)`
 - `validateDocument(document)`
@@ -17,9 +20,12 @@ Stable `v2.5` APIs:
 - `renderDocumentToScene(document, options?)`
 - `formatDocument(document, options?)`
 - `formatAtlasDocument(document)`
+- `formatDraftDocument(document)`
 - `upgradeDocumentToV2(document, options?)`
+- `upgradeDocumentToDraftV2(document, options?)`
 - `materializeAtlasDocument(document)`
-- `createEmptyAtlasDocument(systemId?)`
+- `materializeDraftDocument(document)`
+- `createEmptyAtlasDocument(systemId?, version?)`
 - `cloneAtlasDocument(document)`
 - `listAtlasDocumentPaths(document)`
 - `getAtlasDocumentNode(document, path)`
@@ -35,20 +41,22 @@ Stable `v2.5` APIs:
 - `load(source)`
 - `extractWorldOrbitBlocks(markdown)`
 
-Legacy compatibility APIs retained in `v2.4`:
-
-- `parseWorldOrbitDraft(source)`
-- `formatDraftDocument(document)`
-- `upgradeDocumentToDraftV2(document, options?)`
-- `materializeDraftDocument(document)`
-
 Core public types include:
 
 - `WorldOrbitDocument`
 - `WorldOrbitAtlasDocument`
 - `WorldOrbitDraftDocument`
 - `LoadedWorldOrbitSource`
+- `WorldOrbitSystem`
+- `WorldOrbitAtlasSystem`
 - `WorldOrbitObject`
+- `WorldOrbitGroup`
+- `WorldOrbitRelation`
+- `WorldOrbitResonance`
+- `WorldOrbitRenderHints`
+- `WorldOrbitDeriveRule`
+- `WorldOrbitValidationRule`
+- `WorldOrbitToleranceRule`
 - `Placement`
 - `AtReference`
 - `WorldOrbitDiagnostic`
@@ -56,6 +64,8 @@ Core public types include:
 - `RenderScene`
 - `RenderSceneLayer`
 - `RenderSceneGroup`
+- `RenderSceneSemanticGroup`
+- `RenderSceneRelation`
 - `RenderSceneLabel`
 - `RenderSceneViewpoint`
 - `RenderPresetName`
@@ -65,9 +75,9 @@ Core public types include:
 - `WorldOrbitFieldSchema`
 - `MarkdownFenceBlock`
 
-## @worldorbit/viewer
+## `@worldorbit/viewer`
 
-Stable `v2.4` APIs:
+Stable v2.5 APIs:
 
 - `renderSceneToSvg(scene, options?)`
 - `renderDocumentToSvg(document, options?)`
@@ -100,9 +110,11 @@ Viewer public types include:
 - `WorldOrbitAtlasViewer`
 - `WorldOrbitEmbedPayload`
 
-## @worldorbit/editor
+Viewer behavior now includes Schema 2.1-specific semantic groups, relation overlays, relation layers, render hints, and detail payloads for `epoch`, `referencePlane`, `tidalLock`, `resonance`, and typed lore blocks.
 
-Stable `v2.4` APIs:
+## `@worldorbit/editor`
+
+Stable v2.5 APIs:
 
 - `createWorldOrbitEditor(container, options)`
 
@@ -113,21 +125,25 @@ Editor public types include:
 - `WorldOrbitEditorSelection`
 - `WorldOrbitEditorSnapshot`
 
-`WorldOrbitEditor` now includes:
+`WorldOrbitEditor` includes:
 
 - `isDirty()`
 - `markSaved()`
 
-`WorldOrbitEditorOptions` now includes:
+`WorldOrbitEditorOptions` includes:
 
 - `onDirtyChange?(dirty)`
 - `shortcuts?`
 
-## @worldorbit/markdown
+The editor and Studio now load, preserve, and roundtrip Schema 2.1 documents instead of assuming Schema 2.0 as the only canonical atlas form.
 
-Stable `v2.4` APIs:
+## `@worldorbit/markdown`
+
+Stable v2.5 APIs:
 
 - `renderWorldOrbitBlock(source, options?)`
 - `renderWorldOrbitError(message)`
 - `remarkWorldOrbit(options?)`
 - `rehypeWorldOrbit(options?)`
+
+Markdown rendering accepts Schema 2.1 source directly through the same high-level loading path as the viewer and editor.

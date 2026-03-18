@@ -1,636 +1,483 @@
 # WorldOrbit Language Reference
 
-**WorldOrbit DSL** (Domain Specific Language) — Schema 2.0
+WorldOrbit is a text-first DSL for fictional orbital systems. This reference covers the currently recommended atlas format, Schema 2.1, while also calling out the older compatibility paths that remain supported.
 
-The WorldOrbit DSL is designed specifically for text-based worldbuilding of orbital star systems. It describes objects, their properties, and how they are positioned relative to one another, so they can later be rendered statically or interactively in 2D/3D.
+## Version overview
 
----
+- `schema 2.1` is the recommended header for new atlas documents.
+- `schema 2.0` remains fully supported.
+- `schema 2.0-draft` remains readable as a legacy compatibility path and emits a deprecation diagnostic.
+- Schema 1.0 source without a header is still supported through the older parser/normalization pipeline.
 
-## Table of Contents
-
-1. [Document Structure](#1-document-structure)
-2. [Object Types](#2-object-types)
-3. [Placement Modes](#3-placement-modes)
-4. [Field Parameters and Data Types](#4-field-parameters-and-data-types)
-5. [The `info` Construct](#5-the-info-construct)
-6. [Schema 2.0 Top-Level Sections](#6-schema-20-top-level-sections)
-   - [system](#61-system)
-   - [defaults](#62-defaults)
-   - [atlas](#63-atlas)
-   - [viewpoint](#64-viewpoint)
-   - [annotation](#65-annotation)
-   - [object](#66-object)
-7. [Complete Example](#7-complete-example)
-
----
-
-## 1. Document Structure
-
-### Schema Header
-
-Every **Schema 2.0** document must begin with a schema declaration on the very first non-blank line:
+## Document skeleton
 
 ```worldorbit
-schema 2.0
-```
+schema 2.1
 
-The legacy header `schema 2.0-draft` is still accepted but produces a deprecation diagnostic. Schema 1.0 documents (without a header) are supported via a separate compatibility path.
-
-### Syntax Styles
-
-Objects and their data can be declared in two complementary ways that can be freely mixed:
-
-**Inline short form** — all fields on the same line as the object declaration:
-
-```worldorbit
-object planet Naar orbit Iyath semiMajor 1.18au eccentricity 0.08
-```
-
-**Indented block form** — each field on its own indented line:
-
-```worldorbit
-object planet Naar
-  orbit Iyath
-  semiMajor 1.18au
-  eccentricity 0.08
-```
-
-In a Schema 2.0 document every object declaration must begin with the keyword `object`. In the legacy Schema 1.0 format the keyword is optional.
-
-### Quoted Strings
-
-Values that contain spaces must be wrapped in double quotes:
-
-```worldorbit
-object system Solaris
-  title "The Solaris Expanse"
-```
-
-Quoted strings are also accepted anywhere a plain token is valid.
-
-### Comments
-
-Lines starting with `#` are not currently parsed as comments. There is no comment syntax in the current version.
-
----
-
-## 2. Object Types
-
-The DSL consistently separates the **class** of an object from its **placement**. Special relationships such as a binary system are expressed purely through placement, not through special object types.
-
-| Type | Description |
-|---|---|
-| `system` | Root element of the document. Only one is allowed per file. |
-| `star` | A star or stellar body. |
-| `planet` | A planetary body. |
-| `moon` | A natural satellite orbiting a planet or other body. |
-| `belt` | A distributed field of debris, asteroids, or particles (asteroid belt, ring system zone). |
-| `asteroid` | An individual minor body. |
-| `comet` | A comet, including long-period or non-periodic comets. |
-| `ring` | A ring or torus around a body. |
-| `structure` | An artificial or constructed object: station, relay, habitat, etc. |
-| `phenomenon` | An unusual or non-standard feature: anomaly, void, black hole, nebula, etc. |
-
-Example:
-
-```worldorbit
-schema 2.0
-
-system Iyath
-
-object star Iyath
-object planet Naar
-object structure "Waypoint Alpha"
-object phenomenon "The Wound"
-```
-
----
-
-## 3. Placement Modes
-
-Every non-`system` object can declare at most one placement mode. Placement modes are mutually exclusive. An object without a placement mode is considered positionally unbound (rendered at an unspecified position by the renderer).
-
-### `orbit`
-
-The object orbits another named object. The required value is the ID of the target object.
-
-```worldorbit
-object planet Naar
-  orbit Iyath
-```
-
-Additional optional orbital parameters (all accept unit values unless noted):
-
-| Field | Type | Description |
-|---|---|---|
-| `distance` | unit (distance) | Mean orbital distance from the target. Alternative to `semiMajor`. |
-| `semiMajor` | unit (distance) | Semi-major axis of the orbit ellipse. |
-| `eccentricity` | number (0–1) | Orbital eccentricity. 0 = circular. No unit suffix. |
-| `period` | unit (duration) | Orbital period. |
-| `angle` | unit (angle) | Argument of periapsis or longitude of ascending node in degrees. |
-| `inclination` | unit (angle) | Orbital inclination relative to the reference plane. |
-| `phase` | unit (angle) | Initial phase angle along the orbit at the reference epoch. |
-
-`distance` and `semiMajor` refer to the same physical concept and should not both be specified for the same object.
-
-### `at`
-
-The object is co-located with another object or at a named special position. Three reference notations are supported:
-
-**Named reference** — placed exactly at the position of another object:
-
-```worldorbit
-object structure Relay
-  at NavBeacon
-```
-
-**Anchor reference** — placed at a named anchor point on a specific object:
-
-```worldorbit
-object structure Outpost
-  at Station:dock-north
-```
-
-The notation is `ObjectId:anchorName` where the anchor name is an alphanumeric identifier. The target object ID must exist in the document. The anchor name itself is not validated beyond syntax.
-
-**Lagrange point — single primary:**
-
-```worldorbit
-object structure Trojans
-  at Naar:L4
-```
-
-The notation is `PrimaryId:Lx` where x is 1–5.
-
-**Lagrange point — primary and secondary body:**
-
-```worldorbit
-object structure Relay
-  at Naar-Luna:L2
-```
-
-The notation is `PrimaryId-SecondaryId:Lx`. Both IDs must exist in the document.
-
-Available Lagrange points: `L1`, `L2`, `L3`, `L4`, `L5`.
-
-> Only `structure` and `phenomenon` objects support `at` placement. Other object types must use `orbit`, `surface`, or `free`.
-
-### `surface`
-
-The object is placed on the surface of another object. The value is the target object ID.
-
-```worldorbit
-object structure Outpost
-  surface Naar
-```
-
-Valid surface targets: `star`, `planet`, `moon`, `asteroid`, `comet`.
-
-### `free`
-
-The object is placed freely, without a rigid orbital relationship. The value is either a distance or a descriptive string.
-
-Distance-based:
-
-```worldorbit
-object comet "C-2001 R1"
-  free 200au
-```
-
-Descriptor-based:
-
-```worldorbit
-object phenomenon "Oort Cloud"
-  free "outer system"
-```
-
----
-
-## 4. Field Parameters and Data Types
-
-### Unit Values
-
-Unit values consist of a numeric literal (integer or decimal) followed immediately by a unit suffix, with no space:
-
-```
-1.18au   384400km   0.08   1y   28deg
-```
-
-| Suffix | Meaning | Unit family |
-|---|---|---|
-| `m` | metres | distance |
-| `km` | kilometres | distance |
-| `au` | astronomical units | distance |
-| `ly` | light-years | distance |
-| `pc` | parsecs | distance |
-| `kpc` | kiloparsecs | distance |
-| `re` | Earth radii | distance / radius |
-| `rj` | Jupiter radii | radius |
-| `sol` | solar radii | distance / radius / mass |
-| `me` | Earth masses | mass |
-| `mj` | Jupiter masses | mass |
-| `s` | seconds | duration |
-| `min` | minutes | duration |
-| `h` | hours | duration |
-| `d` | days | duration |
-| `y` | years | duration |
-| `ky` | kiloyears (1,000y) | duration |
-| `my` | megayears (1M y) | duration |
-| `gy` | gigayears (1G y) | duration |
-| `K` | Kelvin | generic (e.g. temperature) |
-| `deg` | degrees | angle |
-
-Unit values without a suffix are accepted (unit is stored as `null`).
-
-### Field Reference
-
-The tables below list all fields accepted in `object` and inherited `system` body declarations.
-
-#### Placement fields
-
-| Field | Value type | Mode | Applicable to |
-|---|---|---|---|
-| `orbit` | string (object ID) | Sets orbit mode and target | all except `system` |
-| `at` | string (reference) | Sets at-mode and reference | `structure`, `phenomenon` |
-| `surface` | string (object ID) | Sets surface mode | `structure`, `phenomenon` |
-| `free` | string or unit | Sets free placement | all except `system` |
-| `distance` | unit (distance) | Orbit distance | all except `system` |
-| `semiMajor` | unit (distance) | Orbit semi-major axis | all except `system` |
-| `eccentricity` | number | Orbit eccentricity | all except `system` |
-| `period` | unit (duration) | Orbital period | all except `system` |
-| `angle` | unit (angle) | Orbit angle | all except `system` |
-| `inclination` | unit (angle) | Orbit inclination | all except `system` |
-| `phase` | unit (angle) | Initial phase | all except `system` |
-
-#### Physical properties
-
-| Field | Value type | Applicable to |
-|---|---|---|
-| `radius` | unit (radius) | all except `system` |
-| `mass` | unit (mass) | all except `system` |
-| `density` | unit (generic) | all except `system` |
-| `gravity` | unit (generic) | all except `system` |
-| `temperature` | unit (generic) | all except `system` |
-| `albedo` | number | all except `system` |
-| `atmosphere` | string | `planet`, `moon`, `asteroid`, `comet`, `phenomenon` |
-| `inner` | unit (distance) | `belt`, `ring`, `phenomenon` |
-| `outer` | unit (distance) | `belt`, `ring`, `phenomenon` |
-| `cycle` | unit (duration) | all except `system` |
-
-#### Classification and appearance
-
-| Field | Value type | Description | Applicable to |
-|---|---|---|---|
-| `kind` | string | Semantic sub-type (e.g. `relay`, `telescope`, `black-hole`) | all except `system` |
-| `class` | string | Stellar or planetary class (e.g. `G2V`, `gas-giant`) | all except `system` |
-| `culture` | string | Cultural or factional affiliation | all except `system` |
-| `tags` | list (space-separated) | Arbitrary tag set for filtering and grouping | all |
-| `color` | string | Display color: hex code (`#3fa8d0`) or CSS keyword | all |
-| `image` | string | Image URL or root-relative path for the object icon | `star`, `planet`, `moon`, `asteroid`, `comet`, `structure`, `phenomenon` |
-| `hidden` | boolean | When `true`, hides the object from renders | all |
-
-Boolean values: `true`, `false`, `yes`, `no`.
-
-The `image` field accepts:
-- Relative paths: `assets/naar.png`
-- Root-relative paths: `/images/planet.webp`
-- HTTP/HTTPS URLs: `https://example.com/img.png`
-
-Protocol-schemed URLs other than `http` and `https` are rejected. Protocol-relative URLs (`//…`) are also rejected.
-
-#### System-level metadata fields
-
-The following fields are valid only on a `system` object in Schema 1.0. In Schema 2.0 they are expressed via the dedicated `defaults` and `system` sections instead.
-
-| Field | Description |
-|---|---|
-| `title` | Human-readable display name for the system |
-| `view` | Default projection (legacy; use `defaults` in Schema 2.0) |
-| `scale` | Scale preset (legacy) |
-| `units` | Preferred display unit set (legacy) |
-
-#### Narrative fields
-
-| Field | Value type | Description | Applicable to |
-|---|---|---|---|
-| `on` | string | A "located in" or "belongs to" reference (conceptual parent) | all except `system` |
-| `source` | string | Attribution or source reference | all except `system` |
-
----
-
-## 5. The `info` Construct
-
-The `info` block stores arbitrary narrative key-value pairs without schema enforcement. It is intended for lore, faction data, descriptive text, and any metadata that does not belong in a typed field.
-
-The `info` keyword appears as an indented line inside an object block. All lines indented beyond it are parsed as `key value` pairs until the indentation level drops back.
-
-```worldorbit
-object structure "Goliath Station"
-  orbit Naar
-  kind station
-  info
-    faction "United Earth Directorate"
-    population "approx 42,000"
-    status "Operational"
-    established "Year 218 Post-Collapse"
-```
-
-Rules:
-- Every `info` line must have at least two tokens: a key and a value.
-- Values may span multiple tokens and are joined with spaces.
-- Quoted strings are supported in values.
-- Duplicate keys within one `info` block are rejected.
-- There is no schema validation on info keys.
-
----
-
-## 6. Schema 2.0 Top-Level Sections
-
-Schema 2.0 documents are structured as a sequence of named top-level sections. Each section begins at indentation level zero and contains indented fields.
-
-The recognized top-level section keywords are:
-
-| Keyword | Required | Multiple allowed |
-|---|---|---|
-| `system` | Yes | No |
-| `defaults` | No | No |
-| `atlas` | No | No |
-| `viewpoint` | No | Yes |
-| `annotation` | No | Yes |
-| `object` | No | Yes |
-
-`system` must appear before `defaults`, `atlas`, `viewpoint`, and `annotation`.
-
----
-
-### 6.1 `system`
-
-Declares the root system and its display title.
-
-```worldorbit
 system Iyath
   title "The Iyath System"
-```
+  description "Compact circumprimary planetary system in a wide binary"
+  epoch "JY-0001.0"
+  referencePlane ecliptic
 
-| Field | Type | Description |
-|---|---|---|
-| `title` | string | Human-readable system name shown in the viewer and atlas header. |
-
-Only `title` is currently accepted as a system field. All other document-wide settings go into `defaults` or `atlas`.
-
----
-
-### 6.2 `defaults`
-
-Sets document-wide rendering defaults applied whenever a more specific `viewpoint` does not override them.
-
-```worldorbit
 defaults
   view isometric
   scale presentation
   preset atlas-card
   theme atlas
-```
 
-| Field | Allowed values | Default | Description |
-|---|---|---|---|
-| `view` | `topdown`, `isometric` | `topdown` | Default projection used when rendering the scene. |
-| `scale` | `compact`, `balanced`, `presentation` | — | Layout scale preset: controls how orbit distances and body radii relate visually. |
-| `units` | any string | — | Preferred display unit set (informational; renderers may use this). |
-| `preset` | `diagram`, `presentation`, `atlas-card`, `markdown` | — | Default render preset that controls overall visual layout and detail level. |
-| `theme` | any string (`atlas`, `nightglass`, `ember`, …) | — | Visual theme applied by the viewer. |
-
-All fields are optional. Unset fields fall back to viewer defaults.
-
----
-
-### 6.3 `atlas`
-
-Provides system-wide metadata key-value pairs that are not tied to individual objects. These are displayed in atlas header cards and can be read by tooling.
-
-```worldorbit
-atlas
-  metadata
-    author "Hanjo Teichert"
-    version "1.4"
-    language "de"
-    license "CC BY 4.0"
-```
-
-The `atlas` section supports a single sub-block `metadata` whose indented lines are free-form key-value pairs (similar to `info`). Duplicate keys are rejected.
-
----
-
-### 6.4 `viewpoint`
-
-Defines a named saved view of the system: a specific projection, zoom level, rotation, preset, and optional filter that the viewer can load on demand.
-
-Each `viewpoint` requires a unique identifier:
-
-```worldorbit
-viewpoint overview
-  label "Full System Overview"
-  summary "Shows all objects from above."
-  projection isometric
-  preset atlas-card
-  zoom 1.0
-  rotation 0
-
-viewpoint inner-system
+group inner-system
   label "Inner System"
-  summary "Focus on the inner planets."
-  projection topdown
-  focus Naar
-  layers -background guides objects labels
-  filter
-    objecttypes star planet moon structure
-    tags inner-system
-```
+  color #d9b37a
 
-#### Viewpoint fields
+relation supply-route
+  from Skyhook
+  to Relay
+  kind logistics
 
-| Field | Type | Description |
-|---|---|---|
-| `label` | string | Human-readable display name for this viewpoint. |
-| `summary` | string | Short description shown in the viewpoint picker. |
-| `projection` | `topdown`, `isometric` | Render projection for this viewpoint. Inherits from `defaults.view` if not set. |
-| `preset` | `diagram`, `presentation`, `atlas-card`, `markdown` | Render preset for this viewpoint. Inherits from `defaults.preset` if not set. |
-| `focus` | string (object ID) | Centers the view on this object. |
-| `select` | string (object ID) | Pre-selects this object (highlights it and opens its detail panel). |
-| `zoom` | positive number | Initial zoom level. 1.0 = fit-to-system. |
-| `rotation` | number | Initial rotation in degrees. |
-| `layers` | token list | Sets which scene layers are visible. See layer tokens below. |
-| `filter` | sub-block | Restricts which objects are visible in this viewpoint. |
+object star Iyath
 
-#### Layer tokens
-
-The `layers` field accepts a space-separated list of layer names, with optional `!` or `-` prefix to hide a layer:
-
-| Token | Effect |
-|---|---|
-| `background` | Background fill layer |
-| `guides` | Grid / guide lines |
-| `orbits` | All orbit rings (shorthand for `orbits-back` + `orbits-front`) |
-| `orbits-back` | Orbit arcs behind objects (isometric back half) |
-| `orbits-front` | Orbit arcs in front of objects (isometric front half) |
-| `objects` | Object icons and body shapes |
-| `labels` | Object labels |
-| `metadata` | Overlay metadata panel |
-
-Examples:
-- `layers objects labels` — show only objects and labels
-- `layers -background guides objects labels` — hide background, show rest
-
-#### `filter` sub-block fields
-
-The `filter` sub-block narrows which objects are shown:
-
-| Field | Type | Description |
-|---|---|---|
-| `query` | string | Free-text search filter applied to object IDs and labels. |
-| `objecttypes` | space-separated list | Restricts to specific object types (e.g. `star planet moon`). |
-| `tags` | space-separated list | Only shows objects that carry all of these tags. |
-| `groups` | space-separated list | Only shows objects that belong to specified groups (by group ID). |
-
----
-
-### 6.5 `annotation`
-
-Attaches a free-text note or lore entry to the document or to a specific object. Annotations are displayed in the atlas panel and can be filtered by tag.
-
-```worldorbit
-annotation naar-notes
-  label "Notes on Naar"
-  target Naar
-  body "Naar is the primary inhabited world of the Iyath system."
-  tags lore inhabited
-```
-
-| Field | Type | Description |
-|---|---|---|
-| `label` | string | Display name of the annotation. Auto-generated from the ID if not set. |
-| `target` | string (object ID) | The object this annotation is attached to. Optional; omit for system-level notes. |
-| `body` | string | The main text content of the annotation. |
-| `tags` | space-separated list | Tags for filtering annotations in the atlas panel. |
-
-Annotation IDs are normalized to lowercase alphanumeric + hyphens. Duplicate IDs are rejected.
-
----
-
-### 6.6 `object`
-
-Declares an orbital object. In Schema 2.0 the `object` keyword is required as the section prefix, followed by the object type and ID.
-
-```worldorbit
 object planet Naar
   orbit Iyath
   semiMajor 1.18au
-  eccentricity 0.08
-  angle 28deg
-  inclination 24deg
-  phase 42deg
-  color #4a9fbf
-  image /assets/naar-map.png
-  tags habitable rocky
-  atmosphere "nitrogen-oxygen"
-  info
-    population "2.1 billion"
-    government "Federal Senate"
+  groups inner-system
 ```
 
-See sections 3, 4, and 5 for the full field reference.
+## Comments
 
----
+Schema 2.1 adds real comments.
 
-## 7. Complete Example
+- `# ...` starts a line comment and continues to the end of the line.
+- `/* ... */` starts a block comment and may span multiple lines.
+- Comments are ignored everywhere whitespace is allowed.
+- Comments inside strings are not treated as comments.
+- Comments are not preserved in the canonical AST/document model.
+
+Example:
 
 ```worldorbit
-schema 2.0
+schema 2.1
 
+# Main atlas
 system Iyath
   title "The Iyath System"
 
-defaults
-  view isometric
-  preset atlas-card
-  theme atlas
+object planet Naar
+  orbit Iyath
+  semiMajor 0.92au # canonical orbit
+```
 
-atlas
-  metadata
-    author "WorldOrbit Project"
-    version "1.0"
+## Syntax styles
 
-viewpoint overview
-  label "Full System"
-  summary "Fit the whole system."
-  projection isometric
-  preset atlas-card
+WorldOrbit supports both authoring styles:
 
-viewpoint inner-focus
-  label "Inner System"
-  projection topdown
-  focus Naar
-  filter
-    objecttypes star planet moon structure
-    tags inner
+- inline short form
+- indented block form
 
-annotation naar-notes
-  label "Naar Overview"
-  target Naar
-  body "Inhabited homeworld of the Enari people."
-  tags lore inhabited
+Examples:
 
-object star Iyath
-  radius 1.1sol
-  color #ffe08c
-  tags inner
+```worldorbit
+object planet Naar orbit Iyath semiMajor 1.18au eccentricity 0.08
+```
 
+```worldorbit
 object planet Naar
   orbit Iyath
   semiMajor 1.18au
   eccentricity 0.08
-  angle 28deg
-  inclination 24deg
-  phase 42deg
-  radius 1re
-  mass 1.1me
-  albedo 0.32
-  atmosphere "nitrogen-oxygen"
-  image /assets/naar-map.png
-  color #4a9fbf
-  tags inner habitable rocky
-  info
-    population "2.1 billion"
-    government "Federal Senate"
-
-object moon "Naar IV"
-  orbit Naar
-  distance 340000km
-  radius 0.3re
-  tags inner
-
-object structure "Epsilon Station"
-  at Naar:L4
-  kind station
-  tags inner
-  info
-    faction "IDF Fleet Command"
-    status "Active"
-
-object structure "Mirror Array"
-  surface Naar
-  kind installation
-  info
-    purpose "Atmospheric reflector network"
-
-object belt "Outer Debris Field"
-  orbit Iyath
-  inner 4.2au
-  outer 6.8au
-  tags outer
-
-object comet "HC-7"
-  free 220au
-  info
-    discovery "Cycle 218"
 ```
+
+## Top-level sections
+
+Schema 2.x atlas documents are a sequence of named top-level sections.
+
+### `system`
+
+Declares the single system container for the document.
+
+Supported fields:
+
+- `title` string
+- `description` string, Schema 2.1+
+- `epoch` string, Schema 2.1+
+- `referencePlane` string, Schema 2.1+
+
+### `defaults`
+
+Document-level presentation defaults.
+
+Supported fields:
+
+- `view`
+- `scale`
+- `units`
+- `preset`
+- `theme`
+
+### `atlas`
+
+Optional metadata section.
+
+Supported sub-block:
+
+- `metadata`
+
+Duplicate metadata keys are invalid.
+
+### `viewpoint`
+
+Named saved view or filter.
+
+Supported fields:
+
+- `label`
+- `focus`
+- `select`
+- `summary`
+- `projection`
+- `preset`
+- `zoom`
+- `rotation`
+- `layers`
+- `filter`
+
+`filter` supports:
+
+- `query`
+- `objectTypes`
+- `tags`
+- `groups`
+
+In Schema 2.1, `filter.groups` refers to semantic `group` ids. For older atlases it still falls back to the legacy render-group behavior.
+
+### `annotation`
+
+Semantic note attached to an object or atlas entry.
+
+Supported fields:
+
+- `label`
+- `target`
+- `body`
+- `tags`
+
+### `group`
+
+Schema 2.1+ semantic grouping section.
+
+Supported fields:
+
+- `label` string
+- `summary` string
+- `color` string
+- `tags` list
+- `hidden` boolean
+
+Groups have no physical position. They exist for filtering, navigation, organization, and atlas tooling.
+
+### `relation`
+
+Schema 2.1+ semantic relationship section.
+
+Supported fields:
+
+- `from` object id
+- `to` object id
+- `kind` string
+- `label` string
+- `summary` string
+- `tags` list
+- `color` string
+- `hidden` boolean
+
+Relations are not orbital placement. They model logistics, politics, infrastructure, and other non-spatial links.
+
+### `object`
+
+Declares any non-system object.
+
+Header format:
+
+```worldorbit
+object <type> <id>
+```
+
+Supported object types:
+
+- `star`
+- `planet`
+- `moon`
+- `belt`
+- `asteroid`
+- `comet`
+- `ring`
+- `structure`
+- `phenomenon`
+
+## Placement modes
+
+Each non-system object may use at most one placement mode.
+
+### `orbit`
+
+The object orbits another object.
+
+Required:
+
+- `orbit <targetObjectId>`
+
+Optional orbit fields:
+
+- `distance`
+- `semiMajor`
+- `eccentricity`
+- `period`
+- `angle`
+- `inclination`
+- `phase`
+
+Notes:
+
+- `distance` and `semiMajor` are mutually exclusive.
+- `phase` is most meaningful when an object-level or system-level `epoch` is present.
+- `inclination` is most meaningful when an object-level or system-level `referencePlane` is present.
+
+### `at`
+
+Fixed placement relative to another object.
+
+Supported forms:
+
+- named reference: `at Beacon`
+- anchor reference: `at Station:dock-north`
+- single-primary Lagrange point: `at Naar:L4`
+- primary-secondary Lagrange point: `at Naar-Leth:L2`
+
+Only `structure` and `phenomenon` may use `at`.
+
+### `surface`
+
+Surface placement on another body.
+
+```worldorbit
+object structure Skyhook
+  surface Naar
+```
+
+Only surface-capable targets are valid.
+
+### `free`
+
+Free placement.
+
+```worldorbit
+object structure OuterGate
+  free 8.4au
+```
+
+or
+
+```worldorbit
+object phenomenon Oort
+  free "outer system"
+```
+
+## Common object fields
+
+### Physical and descriptive fields
+
+Common scalar and list fields include:
+
+- `radius`
+- `mass`
+- `density`
+- `gravity`
+- `temperature`
+- `albedo`
+- `atmosphere`
+- `inner`
+- `outer`
+- `cycle`
+- `kind`
+- `class`
+- `culture`
+- `tags`
+- `color`
+- `image`
+- `hidden`
+- `on`
+- `source`
+
+Field compatibility still depends on object type.
+
+### Schema 2.1 object metadata
+
+Schema 2.1 adds these optional object-level fields:
+
+- `groups <groupId...>`
+- `epoch <string>`
+- `referencePlane <string>`
+- `tidalLock <boolean>`
+- `renderLabel <boolean>`
+- `renderOrbit <boolean>`
+- `renderPriority <number>`
+
+These are declarative metadata fields. They do not turn WorldOrbit into a simulation language.
+
+### `resonance`
+
+Schema 2.1 adds declarative orbital resonance metadata:
+
+```worldorbit
+object moon Orun
+  orbit Naar
+  resonance Seyra 2:1
+```
+
+Format:
+
+- `<targetObjectId> <ratio>`
+- ratio must look like `N:M`
+
+### `derive`, `validate`, `locked`, `tolerance`
+
+Schema 2.1 adds lightweight consistency helpers.
+
+Examples:
+
+```worldorbit
+object planet Naar
+  orbit Iyath
+  semiMajor 0.92au
+  derive period kepler
+  validate kepler
+  locked period
+  tolerance period 0.5d
+```
+
+Supported forms:
+
+- `derive <field> <strategy>`
+- `validate <rule>`
+- `locked <field...>`
+- `tolerance <field> <value>`
+
+Current validator support focuses on:
+
+- `distance` vs. `semiMajor`
+- existence of referenced ids
+- `at`/`surface` constraints
+- group references
+- simple Kepler-style period checks when enough mass and orbital data are present
+
+## `info` and typed lore blocks
+
+`info` remains valid and is not replaced.
+
+```worldorbit
+object planet Naar
+  info
+    description "Homeworld of the Enari."
+    faction "Veyrath Republic"
+```
+
+Schema 2.1 also adds optional typed blocks:
+
+- `climate`
+- `habitability`
+- `settlement`
+
+Example:
+
+```worldorbit
+object planet Naar
+  climate
+    meanSurfaceTemperature 291K
+    pressure 1.18bar
+
+  habitability
+    biosphere complex
+    inhabited true
+
+  settlement
+    population "8.2 billion"
+    status core-world
+```
+
+Rules:
+
+- typed block entries are key/value lines
+- duplicate keys inside the same block are invalid
+- there is not yet a hard domain schema for the block keys
+
+## Data types
+
+### Strings
+
+Use double quotes when a value contains spaces.
+
+```worldorbit
+title "The Iyath System"
+```
+
+### Lists
+
+Some fields use space-separated token lists.
+
+```worldorbit
+tags trade infrastructure
+groups inner-system enari-core
+```
+
+### Booleans
+
+Accepted boolean values:
+
+- `true`
+- `false`
+- `yes`
+- `no`
+
+### Unit values
+
+Unit values use a number immediately followed by a suffix.
+
+Examples:
+
+- `1au`
+- `384400km`
+- `18d`
+- `42deg`
+- `289K`
+
+Common unit families include:
+
+- distance: `m`, `km`, `au`, `ly`, `pc`, `kpc`
+- radius/distance: `re`, `rj`, `sol`
+- mass: `me`, `mj`, `sol`
+- duration: `s`, `min`, `h`, `d`, `y`, `ky`, `my`, `gy`
+- angle: `deg`
+- generic: `K`
+
+## Validation and compatibility notes
+
+Important validator rules include:
+
+- exactly one `system`
+- unique ids across groups, viewpoints, annotations, relations, and objects
+- valid references in `orbit`, `surface`, `at`, `target`, `from`, `to`, `groups`, and `resonance`
+- `distance` and `semiMajor` may not coexist on the same orbit
+- `at` is limited to `structure` and `phenomenon`
+- duplicate keys are invalid in `info`, `atlas.metadata`, `climate`, `habitability`, and `settlement`
+
+Common warnings include:
+
+- `phase` without `epoch`
+- `inclination` without `referencePlane`
+- unknown groups
+- derive rules without enough input data
+- period values when central mass is not derivable
+
+Compatibility rule:
+
+- Schema 2.1 features inside a `schema 2.0` document produce explicit compatibility diagnostics instead of being silently treated as native Schema 2.0 fields.

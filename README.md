@@ -29,16 +29,22 @@ WorldOrbit is not intended to be a real-world astronomy simulator or a high-prec
 ## Quick Example
 
 ```worldorbit
-schema 2.0
+schema 2.1
 
 system Iyath
   title "Iyath System"
+  epoch "JY-0001.0"
+  referencePlane ecliptic
 
 defaults
   view isometric
   scale presentation
   preset atlas-card
   theme atlas
+
+group inner-system
+  label "Inner System"
+  color #d9b37a
 
 object star Iyath
 
@@ -50,6 +56,7 @@ object planet Naar
   inclination 24deg
   phase 42deg
   atmosphere nitrogen-oxygen
+  groups inner-system
 ````
 
 ## Installation
@@ -92,7 +99,7 @@ For direct browser usage, use the browser bundle:
 <html>
   <head>
     <meta charset="utf-8" />
-    <script src="https://unpkg.com/worldorbit@2.5.4/dist/unpkg/worldorbit.min.js"></script>
+    <script src="https://unpkg.com/worldorbit@latest/dist/unpkg/worldorbit.min.js"></script>
     <style>
       html, body {
         margin: 0;
@@ -111,9 +118,10 @@ For direct browser usage, use the browser bundle:
 
     <script>
       const source = `
-schema 2.0
+schema 2.1
 
 system Iyath
+  epoch "JY-0001.0"
 
 object star Iyath
 object planet Naar
@@ -165,19 +173,21 @@ The editor is optional. The core format remains text-first.
 
 ## Canonical Schema
 
-The stable schema starts with:
+New atlas authoring should start with:
 
 ```worldorbit
-schema 2.0
+schema 2.1
 ```
 
 Example:
 
 ```worldorbit
-schema 2.0
+schema 2.1
 
 system Iyath
   title "Iyath System"
+  epoch "JY-0001.0"
+  referencePlane ecliptic
 
 defaults
   view isometric
@@ -185,10 +195,17 @@ defaults
   preset atlas-card
   theme atlas
 
+group inner-system
+  label "Inner System"
+  summary "Naar and its inhabited infrastructure"
+  color #d9b37a
+
 viewpoint overview
   label "Atlas Overview"
   summary "Fit the whole system."
   projection isometric
+  filter
+    groups inner-system
 
 annotation naar-notes
   label "Naar Notes"
@@ -196,6 +213,7 @@ annotation naar-notes
   body "Heimatwelt der Enari."
 
 object star Iyath
+  mass 1.02sol
 
 object planet Naar
   orbit Iyath
@@ -204,11 +222,14 @@ object planet Naar
   angle 28deg
   inclination 24deg
   phase 42deg
+  groups inner-system
   image /demo/assets/naar-map.png
   atmosphere nitrogen-oxygen
 ```
 
-Stable `1.0` source is still accepted, and legacy `schema 2.0-draft` files remain readable as a compatibility path with a deprecation diagnostic.
+Schema `2.1` adds comments, semantic `group` and `relation` sections, object-level `epoch` and `referencePlane`, declarative resonance and validation hints, and optional structured lore blocks such as `climate`, `habitability`, and `settlement`.
+
+Stable `1.0` source is still accepted. Canonical `schema 2.0` source remains fully supported, and legacy `schema 2.0-draft` files stay readable as a compatibility path with a deprecation diagnostic.
 
 ## Basic Usage
 
@@ -227,7 +248,7 @@ planet Naar orbit Iyath distance 1.18au
 `.trim());
 
 const loaded = loadWorldOrbitSource(`
-schema 2.0
+schema 2.1
 
 system Iyath
 object star Iyath
@@ -330,7 +351,7 @@ const atlasDocument = upgradeDocumentToV2(stable.document, {
   preset: "atlas-card",
 });
 
-const atlasSource = formatDocument(atlasDocument, { schema: "2.0" });
+const atlasSource = formatDocument(atlasDocument, { schema: "2.1" });
 const loaded = loadWorldOrbitSource(atlasSource);
 const parsedAtlas = parseWorldOrbitAtlas(atlasSource);
 const scene = renderDocumentToScene(loaded.document, {
@@ -349,12 +370,13 @@ Viewer features in `v2.5` include:
 * scene-based SVG rendering
 * projections: `topdown` and `isometric`
 * theme presets: `atlas`, `nightglass`, `ember`
-* layer controls for background, guides, orbits, objects, labels, and metadata
+* layer controls for background, guides, orbits, objects, labels, metadata, and relations
 * selection, hover, focus, fit, pan, zoom, and rotate
 * tooltip cards and object detail payloads
 * viewpoints, filters, search, and bookmark capture
 * deep-linkable atlas state
 * embeddable viewer custom elements
+* semantic group filters, relation overlays, and schema 2.1 detail metadata
 
 ## Markdown Integration
 
@@ -395,6 +417,7 @@ Examples live in:
 * [examples/minimal.worldorbit](./examples/minimal.worldorbit)
 * [examples/iyath.worldorbit](./examples/iyath.worldorbit)
 * [examples/iyath.schema2.worldorbit](./examples/iyath.schema2.worldorbit)
+* [examples/iyath.schema21.worldorbit](./examples/iyath.schema21.worldorbit)
 * [examples/iyath.schema2-draft.worldorbit](./examples/iyath.schema2-draft.worldorbit)
 * [examples/markdown/static.md](./examples/markdown/static.md)
 * [examples/markdown/interactive.md](./examples/markdown/interactive.md)
@@ -406,6 +429,9 @@ Browser-facing examples and demos live in the repository under `demo/`, `studio/
 
 * [migration guide: v0.8 to v1.0](./docs/migration-v0.8-to-v1.0.md)
 * [migration guide: v1 to v2](./docs/migration-v1-to-v2.md)
+* [migration guide: v2.0 to v2.1](./docs/migration-v2-to-v2.1.md)
+* [language reference](./docs/language-reference.md)
+* [language reference (DE)](./docs/language-reference.de.md)
 * [API inventory](./docs/api-inventory.md)
 * [changelog](./docs/changelog.md)
 

@@ -55,8 +55,11 @@ export function upgradeDocumentToV2(
   return {
     format: "worldorbit",
     version: "2.0",
+    schemaVersion: "2.0",
     sourceVersion: document.version,
     system,
+    groups: structuredClone(document.groups ?? []),
+    relations: structuredClone(document.relations ?? []),
     objects: document.objects.map(cloneWorldOrbitObject),
     diagnostics,
   };
@@ -76,6 +79,10 @@ export function materializeAtlasDocument(
     ? {
         type: "system" as const,
         id: document.system.id,
+        title: document.system.title,
+        description: document.system.description,
+        epoch: document.system.epoch,
+        referencePlane: document.system.referencePlane,
         properties: materializeDraftSystemProperties(document.system),
         info: materializeDraftSystemInfo(document.system),
       }
@@ -84,7 +91,10 @@ export function materializeAtlasDocument(
   return {
     format: "worldorbit",
     version: "1.0",
+    schemaVersion: document.version,
     system,
+    groups: structuredClone(document.groups ?? []),
+    relations: structuredClone(document.relations ?? []),
     objects: document.objects.map(cloneWorldOrbitObject),
   };
 }
@@ -109,10 +119,12 @@ function createDraftSystem(
   return {
     type: "system",
     id: document.system?.id ?? "WorldOrbit",
-    title:
-      typeof document.system?.properties.title === "string"
-        ? document.system.properties.title
-        : null,
+    title: document.system?.title ?? (typeof document.system?.properties.title === "string"
+      ? document.system.properties.title
+      : null),
+    description: document.system?.description ?? null,
+    epoch: document.system?.epoch ?? null,
+    referencePlane: document.system?.referencePlane ?? null,
     defaults,
     atlasMetadata,
     viewpoints: scene.viewpoints.map(mapSceneViewpointToDraftViewpoint),
@@ -291,6 +303,30 @@ function mapSceneViewpointToDraftViewpoint(
 function cloneWorldOrbitObject(object: WorldOrbitObject): WorldOrbitObject {
   return {
     ...object,
+    groups: object.groups ? [...object.groups] : undefined,
+    resonance: object.resonance ? { ...object.resonance } : object.resonance,
+    renderHints: object.renderHints ? { ...object.renderHints } : object.renderHints,
+    deriveRules: object.deriveRules ? object.deriveRules.map((rule) => ({ ...rule })) : undefined,
+    validationRules: object.validationRules
+      ? object.validationRules.map((rule) => ({ ...rule }))
+      : undefined,
+    lockedFields: object.lockedFields ? [...object.lockedFields] : undefined,
+    tolerances: object.tolerances
+      ? object.tolerances.map((entry) => ({
+          field: entry.field,
+          value:
+            entry.value && typeof entry.value === "object" && "value" in entry.value
+              ? { value: entry.value.value, unit: entry.value.unit }
+              : Array.isArray(entry.value)
+                ? [...entry.value]
+                : entry.value,
+        }))
+      : undefined,
+    typedBlocks: object.typedBlocks
+      ? Object.fromEntries(
+          Object.entries(object.typedBlocks).map(([key, block]) => [key, { ...(block ?? {}) }]),
+        )
+      : undefined,
     properties: cloneProperties(object.properties),
     placement: object.placement ? structuredClone(object.placement) : null,
     info: { ...object.info },
@@ -362,6 +398,18 @@ function materializeDraftSystemProperties(
 
   if (system.defaults.units) {
     properties.units = system.defaults.units;
+  }
+
+  if (system.description) {
+    properties.description = system.description;
+  }
+
+  if (system.epoch) {
+    properties.epoch = system.epoch;
+  }
+
+  if (system.referencePlane) {
+    properties.referencePlane = system.referencePlane;
   }
 
   return properties;
@@ -454,7 +502,7 @@ function serializeViewpointLayers(
     tokens.push(orbitFront !== false || orbitBack !== false ? "orbits" : "-orbits");
   }
 
-  for (const key of ["background", "guides", "objects", "labels", "metadata"] as const) {
+  for (const key of ["background", "guides", "relations", "objects", "labels", "metadata"] as const) {
     if (layers[key] !== undefined) {
       tokens.push(layers[key] ? key : `-${key}`);
     }
@@ -469,5 +517,6 @@ function convertAtlasDocumentToLegacyDraft(
   return {
     ...document,
     version: "2.0-draft" as const,
+    schemaVersion: "2.0-draft" as const,
   };
 }

@@ -815,6 +815,9 @@ export function createInteractiveViewer(
       renderObject,
       label: scene.labels.find((label) => label.objectId === renderObject.objectId && !label.hidden) ?? null,
       group: scene.groups.find((group) => group.renderId === renderObject.groupId) ?? null,
+      semanticGroups: scene.semanticGroups.filter((group) =>
+        renderObject.semanticGroupIds.includes(group.id),
+      ),
       orbit: scene.orbitVisuals.find((orbit) => orbit.objectId === renderObject.objectId && !orbit.hidden) ?? null,
       relatedOrbits: scene.orbitVisuals.filter(
         (orbit) =>
@@ -822,6 +825,12 @@ export function createInteractiveViewer(
           (orbit.objectId === renderObject.objectId ||
             renderObject.ancestorIds.includes(orbit.objectId) ||
             renderObject.childIds.includes(orbit.objectId)),
+      ),
+      relations: scene.relations.filter(
+        (relation) =>
+          !relation.hidden &&
+          (relation.fromObjectId === renderObject.objectId ||
+            relation.toObjectId === renderObject.objectId),
       ),
       parent: getObjectById(renderObject.parentId),
       children: renderObject.childIds.map((childId) => getObjectById(childId)).filter(Boolean) as RenderSceneObject[],

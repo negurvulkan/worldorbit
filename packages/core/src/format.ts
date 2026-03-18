@@ -6,6 +6,8 @@ import type {
   UnitValue,
   WorldOrbitAtlasAnnotation,
   WorldOrbitAtlasDocument,
+  WorldOrbitGroup,
+  WorldOrbitRelation,
   WorldOrbitAtlasSystem,
   WorldOrbitAtlasViewpoint,
   WorldOrbitDraftDocument,
@@ -58,8 +60,10 @@ export function formatDocument(
   const schema = options.schema ?? "auto";
   const useDraft =
     schema === "2.0" ||
+    schema === "2.1" ||
     schema === "2.0-draft" ||
     document.version === "2.0" ||
+    document.version === "2.1" ||
     document.version === "2.0-draft";
 
   if (useDraft) {
@@ -67,24 +71,33 @@ export function formatDocument(
       const legacyDraftDocument =
         document.version === "2.0-draft"
           ? document
-          : document.version === "2.0"
+          : document.version === "2.0" || document.version === "2.1"
             ? {
                 ...document,
                 version: "2.0-draft" as const,
+                schemaVersion: "2.0-draft" as const,
               }
             : upgradeDocumentToDraftV2(document as WorldOrbitDocument);
       return formatDraftDocument(legacyDraftDocument);
     }
 
     const atlasDocument =
-      document.version === "2.0"
+      document.version === "2.0" || document.version === "2.1"
         ? document
         : document.version === "2.0-draft"
           ? {
               ...document,
               version: "2.0" as const,
+              schemaVersion: "2.0" as const,
             }
           : upgradeDocumentToV2(document as WorldOrbitDocument);
+    if (schema === "2.1" && atlasDocument.version !== "2.1") {
+      return formatAtlasDocument({
+        ...atlasDocument,
+        version: "2.1",
+        schemaVersion: "2.1",
+      });
+    }
     return formatAtlasDocument(atlasDocument);
   }
 
@@ -107,10 +120,20 @@ export function formatDocument(
 }
 
 export function formatAtlasDocument(document: WorldOrbitAtlasDocument): string {
-  const lines = ["schema 2.0", ""];
+  const lines = [`schema ${document.version}`, ""];
 
   if (document.system) {
     lines.push(...formatAtlasSystem(document.system));
+  }
+
+  for (const group of [...document.groups].sort(compareIdLike)) {
+    lines.push("");
+    lines.push(...formatAtlasGroup(group));
+  }
+
+  for (const relation of [...document.relations].sort(compareIdLike)) {
+    lines.push("");
+    lines.push(...formatAtlasRelation(relation));
   }
 
   const sortedObjects = [...document.objects].sort(compareObjects);
@@ -137,11 +160,22 @@ export function formatDraftDocument(
       : {
           ...document,
           version: "2.0-draft",
+          schemaVersion: "2.0-draft",
         };
   const lines = ["schema 2.0-draft", ""];
 
   if (legacy.system) {
     lines.push(...formatAtlasSystem(legacy.system));
+  }
+
+  for (const group of [...legacy.groups].sort(compareIdLike)) {
+    lines.push("");
+    lines.push(...formatAtlasGroup(group));
+  }
+
+  for (const relation of [...legacy.relations].sort(compareIdLike)) {
+    lines.push("");
+    lines.push(...formatAtlasRelation(relation));
   }
 
   const sortedObjects = [...legacy.objects].sort(compareObjects);
@@ -163,11 +197,48 @@ function formatSystem(system: WorldOrbitSystem): string[] {
   return formatLines("system", system.id, system.properties, null, system.info);
 }
 
+function formatLines(
+  objectType: string,
+  id: string,
+  properties: Record<string, NormalizedValue>,
+  placement: WorldOrbitObject["placement"],
+  info: Record<string, string>,
+): string[] {
+  const lines = [`${objectType} ${id}`];
+  const fieldLines = [...formatPlacement(placement), ...formatProperties(properties)];
+
+  for (const fieldLine of fieldLines) {
+    lines.push(`  ${fieldLine}`);
+  }
+
+  const infoEntries = Object.entries(info).sort(([left], [right]) => left.localeCompare(right));
+  if (infoEntries.length > 0) {
+    if (fieldLines.length > 0) {
+      lines.push("");
+    }
+    lines.push("  info");
+    for (const [key, value] of infoEntries) {
+      lines.push(`    ${key} ${quoteIfNeeded(value)}`);
+    }
+  }
+
+  return lines;
+}
+
 function formatAtlasSystem(system: WorldOrbitAtlasSystem): string[] {
   const lines = [`system ${system.id}`];
 
   if (system.title) {
     lines.push(`  title ${quoteIfNeeded(system.title)}`);
+  }
+  if (system.description) {
+    lines.push(`  description ${quoteIfNeeded(system.description)}`);
+  }
+  if (system.epoch) {
+    lines.push(`  epoch ${quoteIfNeeded(system.epoch)}`);
+  }
+  if (system.referencePlane) {
+    lines.push(`  referencePlane ${quoteIfNeeded(system.referencePlane)}`);
   }
 
   lines.push("");
@@ -211,28 +282,30 @@ function formatAtlasSystem(system: WorldOrbitAtlasSystem): string[] {
 }
 
 function formatObject(object: WorldOrbitObject): string[] {
-  return formatLines(object.type, object.id, object.properties, object.placement, object.info);
+  return formatWorldOrbitObject(object.type, object.id, object);
 }
 
 function formatAtlasObject(object: WorldOrbitObject): string[] {
-  return formatLines(`object ${object.type}`, object.id, object.properties, object.placement, object.info);
+  return formatWorldOrbitObject(`object ${object.type}`, object.id, object);
 }
 
-function formatLines(
+function formatWorldOrbitObject(
   objectType: string,
   id: string,
-  properties: Record<string, NormalizedValue>,
-  placement: WorldOrbitObject["placement"],
-  info: Record<string, string>,
+  object: WorldOrbitObject,
 ): string[] {
   const lines = [`${objectType} ${id}`];
-  const fieldLines = [...formatPlacement(placement), ...formatProperties(properties)];
+  const fieldLines = [
+    ...formatPlacement(object.placement),
+    ...formatProperties(object.properties),
+    ...formatObjectMetadata(object),
+  ];
 
   for (const fieldLine of fieldLines) {
     lines.push(`  ${fieldLine}`);
   }
 
-  const infoEntries = Object.entries(info).sort(([left], [right]) => left.localeCompare(right));
+  const infoEntries = Object.entries(object.info).sort(([left], [right]) => left.localeCompare(right));
   if (infoEntries.length > 0) {
     if (fieldLines.length > 0) {
       lines.push("");
@@ -240,6 +313,19 @@ function formatLines(
     lines.push("  info");
     for (const [key, value] of infoEntries) {
       lines.push(`    ${key} ${quoteIfNeeded(value)}`);
+    }
+  }
+
+  for (const blockName of ["climate", "habitability", "settlement"] as const) {
+    const blockEntries = Object.entries(object.typedBlocks?.[blockName] ?? {}).sort(([left], [right]) =>
+      left.localeCompare(right),
+    );
+    if (blockEntries.length > 0) {
+      lines.push("");
+      lines.push(`  ${blockName}`);
+      for (const [key, value] of blockEntries) {
+        lines.push(`    ${key} ${quoteIfNeeded(value)}`);
+      }
     }
   }
 
@@ -274,6 +360,49 @@ function formatProperties(properties: Record<string, NormalizedValue>): string[]
   return Object.keys(properties)
     .sort(compareFieldKeys)
     .map((key) => `${key} ${formatValue(properties[key])}`);
+}
+
+function formatObjectMetadata(object: WorldOrbitObject): string[] {
+  const lines: string[] = [];
+
+  if (object.groups?.length) {
+    lines.push(`groups ${object.groups.join(" ")}`);
+  }
+  if (object.epoch) {
+    lines.push(`epoch ${quoteIfNeeded(object.epoch)}`);
+  }
+  if (object.referencePlane) {
+    lines.push(`referencePlane ${quoteIfNeeded(object.referencePlane)}`);
+  }
+  if (object.tidalLock !== undefined) {
+    lines.push(`tidalLock ${object.tidalLock ? "true" : "false"}`);
+  }
+  if (object.renderHints?.renderLabel !== undefined) {
+    lines.push(`renderLabel ${object.renderHints.renderLabel ? "true" : "false"}`);
+  }
+  if (object.renderHints?.renderOrbit !== undefined) {
+    lines.push(`renderOrbit ${object.renderHints.renderOrbit ? "true" : "false"}`);
+  }
+  if (object.renderHints?.renderPriority !== undefined) {
+    lines.push(`renderPriority ${object.renderHints.renderPriority}`);
+  }
+  if (object.resonance) {
+    lines.push(`resonance ${object.resonance.targetObjectId} ${object.resonance.ratio}`);
+  }
+  for (const rule of object.deriveRules ?? []) {
+    lines.push(`derive ${rule.field} ${rule.strategy}`);
+  }
+  for (const rule of object.validationRules ?? []) {
+    lines.push(`validate ${rule.rule}`);
+  }
+  if (object.lockedFields?.length) {
+    lines.push(`locked ${object.lockedFields.join(" ")}`);
+  }
+  for (const tolerance of object.tolerances ?? []) {
+    lines.push(`tolerance ${tolerance.field} ${formatValue(tolerance.value)}`);
+  }
+
+  return lines;
 }
 
 function formatAtlasViewpoint(viewpoint: WorldOrbitAtlasViewpoint): string[] {
@@ -339,6 +468,52 @@ function formatAtlasAnnotation(annotation: WorldOrbitAtlasAnnotation): string[] 
   return lines;
 }
 
+function formatAtlasGroup(group: WorldOrbitGroup): string[] {
+  const lines = [`group ${group.id}`, `  label ${quoteIfNeeded(group.label)}`];
+  if (group.summary) {
+    lines.push(`  summary ${quoteIfNeeded(group.summary)}`);
+  }
+  if (group.color) {
+    lines.push(`  color ${quoteIfNeeded(group.color)}`);
+  }
+  if (group.tags.length > 0) {
+    lines.push(`  tags ${group.tags.map(quoteIfNeeded).join(" ")}`);
+  }
+  if (group.hidden) {
+    lines.push("  hidden true");
+  }
+  return lines;
+}
+
+function formatAtlasRelation(relation: WorldOrbitRelation): string[] {
+  const lines = [`relation ${relation.id}`];
+  if (relation.from) {
+    lines.push(`  from ${quoteIfNeeded(relation.from)}`);
+  }
+  if (relation.to) {
+    lines.push(`  to ${quoteIfNeeded(relation.to)}`);
+  }
+  if (relation.kind) {
+    lines.push(`  kind ${quoteIfNeeded(relation.kind)}`);
+  }
+  if (relation.label) {
+    lines.push(`  label ${quoteIfNeeded(relation.label)}`);
+  }
+  if (relation.summary) {
+    lines.push(`  summary ${quoteIfNeeded(relation.summary)}`);
+  }
+  if (relation.tags.length > 0) {
+    lines.push(`  tags ${relation.tags.map(quoteIfNeeded).join(" ")}`);
+  }
+  if (relation.color) {
+    lines.push(`  color ${quoteIfNeeded(relation.color)}`);
+  }
+  if (relation.hidden) {
+    lines.push("  hidden true");
+  }
+  return lines;
+}
+
 function formatValue(value: NormalizedValue): string {
   if (Array.isArray(value)) {
     return value.map((item) => quoteIfNeeded(item)).join(" ");
@@ -395,7 +570,7 @@ function formatDraftLayers(
     );
   }
 
-  for (const key of ["background", "guides", "objects", "labels", "metadata"] as const) {
+  for (const key of ["background", "guides", "relations", "objects", "labels", "metadata"] as const) {
     if (layers[key] !== undefined) {
       tokens.push(layers[key] ? key : `-${key}`);
     }
@@ -418,6 +593,10 @@ function compareObjects(left: WorldOrbitObject, right: WorldOrbitObject): number
   const leftIndex = objectTypeIndex(left.type);
   const rightIndex = objectTypeIndex(right.type);
   if (leftIndex !== rightIndex) return leftIndex - rightIndex;
+  return left.id.localeCompare(right.id);
+}
+
+function compareIdLike(left: { id: string }, right: { id: string }): number {
   return left.id.localeCompare(right.id);
 }
 

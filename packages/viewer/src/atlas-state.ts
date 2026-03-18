@@ -190,6 +190,7 @@ export function sceneViewpointToLayerOptions(
   return {
     background: viewpoint.layers.background,
     guides: viewpoint.layers.guides,
+    relations: viewpoint.layers.relations,
     orbits:
       viewpoint.layers["orbits-front"] === undefined && viewpoint.layers["orbits-back"] === undefined
         ? undefined
@@ -246,7 +247,14 @@ function matchesObjectFilter(
   }
 
   if (filter.groupIds?.length && (!object.groupId || !filter.groupIds.includes(object.groupId))) {
-    return false;
+    const hasSemanticMatch =
+      object.semanticGroupIds.length > 0 &&
+      filter.groupIds.some((groupId) => object.semanticGroupIds.includes(groupId));
+    const hasLegacyMatch = Boolean(object.groupId && filter.groupIds.includes(object.groupId));
+
+    if (!hasSemanticMatch && !hasLegacyMatch) {
+      return false;
+    }
   }
 
   if (filter.tags?.length) {

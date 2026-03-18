@@ -611,9 +611,9 @@
         <div class="hero-card">
           <div class="code-title">
             <span>Example source</span>
-            <span>schema 2.0</span>
+            <span>schema 2.1</span>
           </div>
-          <div class="code-view">schema 2.0
+          <div class="code-view">schema 2.1
 
             system Iyath
             title "Iyath System"
@@ -653,6 +653,7 @@
           <p>
             Generic diagram tools can draw connections. WorldOrbit is built specifically for fictional orbital systems,
             Markdown-based lore repositories, codices, browser viewers, and content-first worldbuilding workflows.
+            Schema 2.1 now adds comments, semantic groups, relations, and light validation metadata without breaking Schema 2.0 atlases.
           </p>
         </div>
 
@@ -713,7 +714,7 @@
               </div>
 
               <div class="editor-shell">
-                <textarea id="playground-source" spellcheck="false">schema 2.0
+                <textarea id="playground-source" spellcheck="false">schema 2.1
 
 system Iyath
   title "Iyath System"
@@ -833,7 +834,7 @@ object planet Naar
           <article class="showcase-card">
             <h3>Use in the browser</h3>
             <div class="terminal">&lt;script
-              src="https://unpkg.com/worldorbit@2.5.4/dist/unpkg/worldorbit.min.js"&gt;&lt;/script&gt;</div>
+              src="https://unpkg.com/worldorbit@latest/dist/unpkg/worldorbit.min.js"&gt;&lt;/script&gt;</div>
             <p style="margin-top: 14px;">
               Ideal for quick experiments, standalone demos, or embedding WorldOrbit in static and CMS-driven pages.
             </p>
@@ -856,15 +857,15 @@ object planet Naar
       <div class="footer-links">
         <a href="https://github.com/negurvulkan/worldorbit" target="_blank" rel="noreferrer">GitHub</a>
         <a href="https://www.npmjs.com/package/worldorbit" target="_blank" rel="noreferrer">npm</a>
-        <a href="https://unpkg.com/worldorbit@2.5.12/dist/unpkg/worldorbit.min.js" target="_blank"
+        <a href="https://unpkg.com/worldorbit@latest/dist/unpkg/worldorbit.min.js" target="_blank"
           rel="noreferrer">UNPKG</a>
       </div>
     </div>
   </footer>
 
-  <script src="https://unpkg.com/worldorbit@2.5.12/dist/unpkg/worldorbit.min.js"></script>
+  <script src="https://unpkg.com/worldorbit@latest/dist/unpkg/worldorbit.min.js"></script>
   <script>
-    const heroSource = `schema 2.0
+    const heroSource = `schema 2.1
 
 system Iyath
   title "Iyath System"
@@ -886,7 +887,7 @@ object planet Naar
   phase 42deg
   atmosphere nitrogen-oxygen`;
 
-    const playgroundDefaultSource = `schema 2.0
+    const playgroundDefaultSource = `schema 2.1
 
 system Iyath
   title "Iyath System"

@@ -54,7 +54,10 @@ export function normalizeDocument(ast: AstDocument): WorldOrbitDocument {
   return {
     format: "worldorbit",
     version: "1.0",
+    schemaVersion: "1.0",
     system,
+    groups: [],
+    relations: [],
     objects,
   };
 }
@@ -74,6 +77,10 @@ function normalizeObject(
     return {
       type: "system",
       id: node.name,
+      title: typeof properties.title === "string" ? properties.title : null,
+      description: null,
+      epoch: null,
+      referencePlane: null,
       properties,
       info,
     };

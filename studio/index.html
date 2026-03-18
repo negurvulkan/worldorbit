@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>WorldOrbit Studio v2.5.12</title>
+  <title>WorldOrbit Studio v2.5.15</title>
   <style>
     :root {
       color-scheme: dark;
@@ -178,25 +178,26 @@
 <body>
   <main>
     <section class="hero">
-      <strong>WorldOrbit Studio v2.5.12</strong>
+      <strong>WorldOrbit Studio v2.5.15</strong>
       <h1>WorldOrbit Visual Editor</h1>
       <p>
-        This reference app loads the local WorldOrbit packages from the repository so editor,
-        viewer, preview, and source stay in sync while you iterate on schema 2.0 atlases.
+        This reference app loads the published WorldOrbit packages from UNPKG using
+        <code>@latest</code> so editor, viewer, preview, and source stay aligned with the current
+        public release while you iterate on schema 2.1 atlases.
       </p>
     </section>
 
-    <div id="studio" data-example-url="../examples/iyath.schema2.worldorbit"></div>
+    <div id="studio" data-example-url="../examples/iyath.schema21.worldorbit"></div>
   </main>
 
   <script type="importmap">
       {
         "imports": {
-          "@worldorbit/core": "../packages/core/dist/index.js",
-          "@worldorbit/viewer": "../packages/viewer/dist/index.js",
-          "@worldorbit/viewer/viewer-state": "../packages/viewer/dist/viewer-state.js",
-          "@worldorbit/markdown": "../packages/markdown/dist/index.js",
-          "@worldorbit/editor": "../packages/editor/dist/index.js"
+          "@worldorbit/core": "https://unpkg.com/@worldorbit/core@latest/dist/index.js",
+          "@worldorbit/viewer": "https://unpkg.com/@worldorbit/viewer@latest/dist/index.js",
+          "@worldorbit/viewer/viewer-state": "https://unpkg.com/@worldorbit/viewer@latest/dist/viewer-state.js",
+          "@worldorbit/markdown": "https://unpkg.com/@worldorbit/markdown@latest/dist/index.js",
+          "@worldorbit/editor": "https://unpkg.com/@worldorbit/editor@latest/dist/index.js"
         }
       }
       </script>

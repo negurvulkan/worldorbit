@@ -1,31 +1,79 @@
 import { WorldOrbitError } from "./errors.js";
-import { normalizeDocument } from "./normalize.js";
-import { getFieldSchema, isKnownFieldKey, WORLDORBIT_OBJECT_TYPES } from "./schema.js";
+import { getFieldSchema, WORLDORBIT_OBJECT_TYPES } from "./schema.js";
 import { getIndent, tokenizeLineDetailed } from "./tokenize.js";
 import type {
-  AstDocument,
   AstFieldNode,
   AstInfoEntryNode,
-  AstObjectNode,
+  AstSourceLocation,
   LineToken,
   RenderPresetName,
   RenderSceneLayer,
   RenderSceneViewpointFilter,
   ViewProjection,
   WorldOrbitAtlasDocument,
+  WorldOrbitAtlasDocumentVersion,
+  WorldOrbitDiagnostic,
   WorldOrbitDraftAnnotation,
   WorldOrbitDraftDocument,
+  WorldOrbitDraftDocumentVersion,
   WorldOrbitDraftSystem,
   WorldOrbitDraftViewpoint,
+  WorldOrbitFieldSchema,
+  WorldOrbitGroup,
   WorldOrbitObject,
   WorldOrbitObjectType,
+  WorldOrbitRelation,
+  WorldOrbitTypedBlockName,
 } from "./types.js";
-import { validateDocument } from "./validate.js";
+import {
+  ensureAtlasFieldSupported,
+  humanizeIdentifier,
+  normalizeIdentifier,
+  normalizeLegacyScalarValue,
+  parseAtlasAtReference,
+  parseAtlasBoolean,
+  parseAtlasNumber,
+  parseAtlasUnitValue,
+  singleAtlasValue,
+  tryParseAtlasUnitValue,
+} from "./atlas-utils.js";
+import { collectAtlasDiagnostics } from "./atlas-validate.js";
+
+type SourceSchemaVersion =
+  | WorldOrbitAtlasDocumentVersion
+  | WorldOrbitDraftDocumentVersion;
+type DraftOutputVersion =
+  | WorldOrbitAtlasDocumentVersion
+  | WorldOrbitDraftDocumentVersion;
+
+interface AtlasComment {
+  kind: "line" | "block";
+  line: number;
+  column: number;
+}
+
+interface PreparedAtlasSource {
+  source: string;
+  comments: AtlasComment[];
+}
+
+interface DraftRawObject {
+  objectType: Exclude<WorldOrbitObjectType, "system">;
+  id: string;
+  fields: AstFieldNode[];
+  infoEntries: AstInfoEntryNode[];
+  typedBlockEntries: Partial<Record<WorldOrbitTypedBlockName, AstInfoEntryNode[]>>;
+  location: AstSourceLocation;
+}
+
+type ObjectBlockKind = "info" | WorldOrbitTypedBlockName;
 
 type DraftSectionState =
   | {
       kind: "system";
       system: WorldOrbitDraftSystem;
+      sourceSchemaVersion: SourceSchemaVersion;
+      diagnostics: WorldOrbitDiagnostic[];
       seenFields: Set<string>;
     }
   | {
@@ -53,14 +101,112 @@ type DraftSectionState =
       seenFields: Set<string>;
     }
   | {
+      kind: "group";
+      group: WorldOrbitGroup;
+      seenFields: Set<string>;
+    }
+  | {
+      kind: "relation";
+      relation: WorldOrbitRelation;
+      seenFields: Set<string>;
+    }
+  | {
       kind: "object";
-      objectNode: AstObjectNode;
-      inInfoBlock: boolean;
-      infoIndent: number | null;
+      objectNode: DraftRawObject;
+      sourceSchemaVersion: SourceSchemaVersion;
+      diagnostics: WorldOrbitDiagnostic[];
+      activeBlock: ObjectBlockKind | null;
+      blockIndent: number | null;
+      seenInfoKeys: Set<string>;
+      seenTypedBlockKeys: Partial<Record<WorldOrbitTypedBlockName, Set<string>>>;
     };
 
+interface DraftObjectFieldSpec {
+  key: string;
+  version: "2.0" | "2.1";
+  inlineMode: "single" | "multiple" | "pair";
+  allowRepeat: boolean;
+  legacySchema?: WorldOrbitFieldSchema;
+}
+
+const STRUCTURED_TYPED_BLOCKS = new Set<WorldOrbitTypedBlockName>([
+  "climate",
+  "habitability",
+  "settlement",
+]);
+
+const DRAFT_OBJECT_FIELD_SPECS = new Map<string, DraftObjectFieldSpec>();
+
+for (const key of [
+  "orbit",
+  "distance",
+  "semiMajor",
+  "eccentricity",
+  "period",
+  "angle",
+  "inclination",
+  "phase",
+  "at",
+  "surface",
+  "free",
+  "kind",
+  "class",
+  "culture",
+  "tags",
+  "color",
+  "image",
+  "hidden",
+  "radius",
+  "mass",
+  "density",
+  "gravity",
+  "temperature",
+  "albedo",
+  "atmosphere",
+  "inner",
+  "outer",
+  "on",
+  "source",
+  "cycle",
+] as const) {
+  const schema = getFieldSchema(key);
+  if (schema) {
+    DRAFT_OBJECT_FIELD_SPECS.set(key, {
+      key,
+      version: "2.0",
+      inlineMode: schema.arity === "multiple" ? "multiple" : "single",
+      allowRepeat: false,
+      legacySchema: schema,
+    });
+  }
+}
+
+for (const spec of [
+  { key: "groups", inlineMode: "multiple", allowRepeat: false },
+  { key: "epoch", inlineMode: "single", allowRepeat: false },
+  { key: "referencePlane", inlineMode: "single", allowRepeat: false },
+  { key: "tidalLock", inlineMode: "single", allowRepeat: false },
+  { key: "renderLabel", inlineMode: "single", allowRepeat: false },
+  { key: "renderOrbit", inlineMode: "single", allowRepeat: false },
+  { key: "renderPriority", inlineMode: "single", allowRepeat: false },
+  { key: "resonance", inlineMode: "pair", allowRepeat: false },
+  { key: "derive", inlineMode: "pair", allowRepeat: true },
+  { key: "validate", inlineMode: "single", allowRepeat: true },
+  { key: "locked", inlineMode: "multiple", allowRepeat: false },
+  { key: "tolerance", inlineMode: "pair", allowRepeat: true },
+] as const) {
+  DRAFT_OBJECT_FIELD_SPECS.set(spec.key, {
+    key: spec.key,
+    version: "2.1",
+    inlineMode: spec.inlineMode,
+    allowRepeat: spec.allowRepeat,
+  });
+}
+
+const DRAFT_OBJECT_FIELD_KEYS = new Set(DRAFT_OBJECT_FIELD_SPECS.keys());
+
 export function parseWorldOrbitAtlas(source: string): WorldOrbitAtlasDocument {
-  return parseAtlasSource(source, "2.0") as WorldOrbitAtlasDocument;
+  return parseAtlasSource(source) as WorldOrbitAtlasDocument;
 }
 
 export function parseWorldOrbitDraft(source: string): WorldOrbitDraftDocument {
@@ -69,18 +215,24 @@ export function parseWorldOrbitDraft(source: string): WorldOrbitDraftDocument {
 
 function parseAtlasSource(
   source: string,
-  outputVersion: "2.0" | "2.0-draft",
+  forcedOutputVersion?: DraftOutputVersion,
 ): WorldOrbitAtlasDocument | WorldOrbitDraftDocument {
-  const lines = source.split(/\r?\n/);
+  const prepared = preprocessAtlasSource(source);
+  const lines = prepared.source.split(/\r?\n/);
+  const diagnostics: WorldOrbitDiagnostic[] = [];
   let sawSchemaHeader = false;
-  let schemaVersion: "2.0" | "2.0-draft" = "2.0";
+  let sourceSchemaVersion: SourceSchemaVersion = "2.0";
   let system: WorldOrbitDraftSystem | null = null;
   let section: DraftSectionState | null = null;
-  const objectNodes: AstObjectNode[] = [];
+  const objectNodes: DraftRawObject[] = [];
+  const groups: WorldOrbitGroup[] = [];
+  const relations: WorldOrbitRelation[] = [];
   let sawDefaults = false;
   let sawAtlas = false;
   const viewpointIds = new Set<string>();
   const annotationIds = new Set<string>();
+  const groupIds = new Set<string>();
+  const relationIds = new Set<string>();
 
   for (let index = 0; index < lines.length; index++) {
     const rawLine = lines[index];
@@ -101,8 +253,18 @@ function parseAtlasSource(
     }
 
     if (!sawSchemaHeader) {
-      schemaVersion = assertDraftSchemaHeader(tokens, lineNumber);
+      sourceSchemaVersion = assertDraftSchemaHeader(tokens, lineNumber);
       sawSchemaHeader = true;
+      if (prepared.comments.length > 0 && sourceSchemaVersion !== "2.1") {
+        diagnostics.push({
+          code: "parse.schema21.commentCompatibility",
+          severity: "warning",
+          source: "parse",
+          message: `Comments require schema 2.1; parsed in compatibility mode because the document header is "schema ${sourceSchemaVersion}".`,
+          line: prepared.comments[0].line,
+          column: prepared.comments[0].column,
+        });
+      }
       continue;
     }
 
@@ -110,14 +272,17 @@ function parseAtlasSource(
       section = startTopLevelSection(
         tokens,
         lineNumber,
+        sourceSchemaVersion,
+        diagnostics,
         system,
         objectNodes,
+        groups,
+        relations,
         viewpointIds,
         annotationIds,
-        {
-          sawDefaults,
-          sawAtlas,
-        },
+        groupIds,
+        relationIds,
+        { sawDefaults, sawAtlas },
       );
 
       if (section.kind === "system") {
@@ -146,68 +311,91 @@ function parseAtlasSource(
     throw new WorldOrbitError('Missing required atlas schema header "schema 2.0"');
   }
 
-  const ast: AstDocument = {
-    type: "document",
-    objects: objectNodes,
-  };
-  const normalizedObjects = normalizeDocument(ast).objects;
-  validateDocument({
-    format: "worldorbit",
-    version: "1.0",
-    system: null,
-    objects: normalizedObjects,
-  });
+  const objects = objectNodes.map((node) =>
+    normalizeDraftObject(node, sourceSchemaVersion, diagnostics),
+  );
 
-  const diagnostics =
-    schemaVersion === "2.0-draft" && outputVersion === "2.0"
-      ? [
-          {
-            code: "load.schema.deprecatedDraft",
-            severity: "warning" as const,
-            source: "upgrade" as const,
-            message:
-              'Source header "schema 2.0-draft" is deprecated; canonical v2 documents now use "schema 2.0".',
-          },
-        ]
-      : [];
+  const outputVersion =
+    forcedOutputVersion ??
+    (sourceSchemaVersion === "2.0-draft" ? "2.0" : sourceSchemaVersion);
 
-  return {
-    format: "worldorbit",
-    version: outputVersion,
-    sourceVersion: "1.0",
+  const baseDocument = {
+    format: "worldorbit" as const,
+    sourceVersion: "1.0" as const,
     system,
-    objects: normalizedObjects,
+    groups,
+    relations,
+    objects,
     diagnostics,
   };
+
+  if (outputVersion === "2.0-draft") {
+    const document: WorldOrbitDraftDocument = {
+      ...baseDocument,
+      version: "2.0-draft",
+      schemaVersion: "2.0-draft",
+    };
+    document.diagnostics.push(...collectAtlasDiagnostics(document, sourceSchemaVersion));
+    return document;
+  }
+
+  const document: WorldOrbitAtlasDocument = {
+    ...baseDocument,
+    version: outputVersion,
+    schemaVersion: outputVersion,
+  };
+
+  if (sourceSchemaVersion === "2.0-draft") {
+    document.diagnostics.push({
+      code: "load.schema.deprecatedDraft",
+      severity: "warning",
+      source: "upgrade",
+      message:
+        'Source header "schema 2.0-draft" is deprecated; canonical v2 documents now use "schema 2.0".',
+    });
+  }
+
+  document.diagnostics.push(...collectAtlasDiagnostics(document, sourceSchemaVersion));
+  return document;
 }
 
 function assertDraftSchemaHeader(
   tokens: LineToken[],
   line: number,
-): "2.0" | "2.0-draft" {
+): SourceSchemaVersion {
   if (
     tokens.length !== 2 ||
     tokens[0].value.toLowerCase() !== "schema" ||
-    (tokens[1].value.toLowerCase() !== "2.0-draft" &&
-      tokens[1].value.toLowerCase() !== "2.0")
+    !["2.0-draft", "2.0", "2.1"].includes(tokens[1].value.toLowerCase())
   ) {
     throw new WorldOrbitError(
-      'Expected atlas header "schema 2.0" or legacy "schema 2.0-draft"',
+      'Expected atlas header "schema 2.0", "schema 2.1", or legacy "schema 2.0-draft"',
       line,
       tokens[0]?.column ?? 1,
     );
   }
 
-  return tokens[1].value.toLowerCase() === "2.0-draft" ? "2.0-draft" : "2.0";
+  const version = tokens[1].value.toLowerCase();
+  return version === "2.1"
+    ? "2.1"
+    : version === "2.0-draft"
+      ? "2.0-draft"
+      : "2.0";
 }
 
 function startTopLevelSection(
   tokens: LineToken[],
   line: number,
+  sourceSchemaVersion: SourceSchemaVersion,
+  diagnostics: WorldOrbitDiagnostic[],
   system: WorldOrbitDraftSystem | null,
-  objectNodes: AstObjectNode[],
+  objectNodes: DraftRawObject[],
+  groups: WorldOrbitGroup[],
+  relations: WorldOrbitRelation[],
   viewpointIds: Set<string>,
   annotationIds: Set<string>,
+  groupIds: Set<string>,
+  relationIds: Set<string>,
   flags: {
     sawDefaults: boolean;
     sawAtlas: boolean;
@@ -224,7 +412,7 @@ function startTopLevelSection(
           tokens[0].column,
         );
       }
-      return startSystemSection(tokens, line);
+      return startSystemSection(tokens, line, sourceSchemaVersion, diagnostics);
     case "defaults":
       if (!system) {
         throw new WorldOrbitError(
@@ -284,8 +472,24 @@ function startTopLevelSection(
         );
       }
       return startAnnotationSection(tokens, line, system, annotationIds);
+    case "group":
+      warnIfSchema21Feature(
+        sourceSchemaVersion,
+        diagnostics,
+        "group",
+        { line, column: tokens[0].column },
+      );
+      return startGroupSection(tokens, line, groups, groupIds);
+    case "relation":
+      warnIfSchema21Feature(
+        sourceSchemaVersion,
+        diagnostics,
+        "relation",
+        { line, column: tokens[0].column },
+      );
+      return startRelationSection(tokens, line, relations, relationIds);
     case "object":
-      return startObjectSection(tokens, line, objectNodes);
+      return startObjectSection(tokens, line, sourceSchemaVersion, diagnostics, objectNodes);
     default:
       throw new WorldOrbitError(
         `Unknown atlas section "${tokens[0]?.value ?? ""}"`,
@@ -295,7 +499,12 @@ function startTopLevelSection(
   }
 }
 
-function startSystemSection(tokens: LineToken[], line: number): DraftSectionState {
+function startSystemSection(
+  tokens: LineToken[],
+  line: number,
+  sourceSchemaVersion: SourceSchemaVersion,
+  diagnostics: WorldOrbitDiagnostic[],
+): DraftSectionState {
   if (tokens.length !== 2) {
     throw new WorldOrbitError(
       "Invalid atlas system declaration",
@@ -308,6 +517,9 @@ function startSystemSection(tokens: LineToken[], line: number): DraftSectionStat
     type: "system",
     id: tokens[1].value,
     title: null,
+    description: null,
+    epoch: null,
+    referencePlane: null,
     defaults: {
       view: "topdown",
       scale: null,
@@ -323,6 +535,8 @@ function startSystemSection(tokens: LineToken[], line: number): DraftSectionStat
   return {
     kind: "system",
     system,
+    sourceSchemaVersion,
+    diagnostics,
     seenFields: new Set<string>(),
   };
 }
@@ -417,10 +631,97 @@ function startAnnotationSection(
   };
 }
 
+function startGroupSection(
+  tokens: LineToken[],
+  line: number,
+  groups: WorldOrbitGroup[],
+  groupIds: Set<string>,
+): DraftSectionState {
+  if (tokens.length !== 2) {
+    throw new WorldOrbitError(
+      "Invalid group declaration",
+      line,
+      tokens[0]?.column ?? 1,
+    );
+  }
+
+  const id = normalizeIdentifier(tokens[1].value);
+  if (!id) {
+    throw new WorldOrbitError("Group id must not be empty", line, tokens[1].column);
+  }
+  if (groupIds.has(id)) {
+    throw new WorldOrbitError(`Duplicate group id "${id}"`, line, tokens[1].column);
+  }
+
+  const group: WorldOrbitGroup = {
+    id,
+    label: humanizeIdentifier(id),
+    summary: "",
+    color: null,
+    tags: [],
+    hidden: false,
+  };
+
+  groups.push(group);
+  groupIds.add(id);
+
+  return {
+    kind: "group",
+    group,
+    seenFields: new Set<string>(),
+  };
+}
+
+function startRelationSection(
+  tokens: LineToken[],
+  line: number,
+  relations: WorldOrbitRelation[],
+  relationIds: Set<string>,
+): DraftSectionState {
+  if (tokens.length !== 2) {
+    throw new WorldOrbitError(
+      "Invalid relation declaration",
+      line,
+      tokens[0]?.column ?? 1,
+    );
+  }
+
+  const id = normalizeIdentifier(tokens[1].value);
+  if (!id) {
+    throw new WorldOrbitError("Relation id must not be empty", line, tokens[1].column);
+  }
+  if (relationIds.has(id)) {
+    throw new WorldOrbitError(`Duplicate relation id "${id}"`, line, tokens[1].column);
+  }
+
+  const relation: WorldOrbitRelation = {
+    id,
+    from: "",
+    to: "",
+    kind: "",
+    label: null,
+    summary: null,
+    tags: [],
+    color: null,
+    hidden: false,
+  };
+
+  relations.push(relation);
+  relationIds.add(id);
+
+  return {
+    kind: "relation",
+    relation,
+    seenFields: new Set<string>(),
+  };
+}
+
 function startObjectSection(
   tokens: LineToken[],
   line: number,
-  objectNodes: AstObjectNode[],
+  sourceSchemaVersion: SourceSchemaVersion,
+  diagnostics: WorldOrbitDiagnostic[],
+  objectNodes: DraftRawObject[],
 ): DraftSectionState {
   if (tokens.length < 3) {
     throw new WorldOrbitError(
@@ -434,10 +735,7 @@ function startObjectSection(
   const idToken = tokens[2];
   const objectType = objectTypeToken.value as WorldOrbitObjectType;
 
-  if (
-    !WORLDORBIT_OBJECT_TYPES.has(objectType) ||
-    objectType === "system"
-  ) {
+  if (!WORLDORBIT_OBJECT_TYPES.has(objectType) || objectType === "system") {
     throw new WorldOrbitError(
       `Unknown object type "${objectTypeToken.value}"`,
       line,
@@ -445,13 +743,18 @@ function startObjectSection(
     );
   }
 
-  const objectNode: AstObjectNode = {
-    type: "object",
-    objectType,
-    name: idToken.value,
-    inlineFields: parseInlineFields(tokens.slice(3), line),
-    blockFields: [],
+  const objectNode: DraftRawObject = {
+    objectType: objectType as Exclude<WorldOrbitObjectType, "system">,
+    id: idToken.value,
+    fields: parseInlineObjectFields(
+      tokens.slice(3),
+      line,
+      objectType as Exclude<WorldOrbitObjectType, "system">,
+      sourceSchemaVersion,
+      diagnostics,
+    ),
     infoEntries: [],
+    typedBlockEntries: {},
     location: {
       line,
       column: objectTypeToken.column,
@@ -463,8 +766,12 @@ function startObjectSection(
   return {
     kind: "object",
     objectNode,
-    inInfoBlock: false,
-    infoIndent: null,
+    sourceSchemaVersion,
+    diagnostics,
+    activeBlock: null,
+    blockIndent: null,
+    seenInfoKeys: new Set<string>(),
+    seenTypedBlockKeys: {},
   };
 }
 
@@ -490,6 +797,12 @@ function handleSectionLine(
     case "annotation":
       applyAnnotationField(section, tokens, line);
       return;
+    case "group":
+      applyGroupField(section, tokens, line);
+      return;
+    case "relation":
+      applyRelationField(section, tokens, line);
+      return;
     case "object":
       applyObjectField(section, indent, tokens, line);
       return;
@@ -502,16 +815,40 @@ function applySystemField(
   line: number,
 ): void {
   const key = requireUniqueField(tokens, section.seenFields, line);
+  const value = joinFieldValue(tokens, line);
 
-  if (key !== "title") {
-    throw new WorldOrbitError(
-      `Unknown system atlas field "${tokens[0].value}"`,
-      line,
-      tokens[0].column,
-    );
+  switch (key) {
+    case "title":
+      section.system.title = value;
+      return;
+    case "description":
+      warnIfSchema21Feature(section.sourceSchemaVersion, section.diagnostics, key, {
+        line,
+        column: tokens[0].column,
+      });
+      section.system.description = value;
+      return;
+    case "epoch":
+      warnIfSchema21Feature(section.sourceSchemaVersion, section.diagnostics, key, {
+        line,
+        column: tokens[0].column,
+      });
+      section.system.epoch = value;
+      return;
+    case "referenceplane":
+      warnIfSchema21Feature(section.sourceSchemaVersion, section.diagnostics, "referencePlane", {
+        line,
+        column: tokens[0].column,
+      });
+      section.system.referencePlane = value;
+      return;
+    default:
+      throw new WorldOrbitError(
+        `Unknown system atlas field "${tokens[0].value}"`,
+        line,
+        tokens[0].column,
+      );
   }
-
-  section.system.title = joinFieldValue(tokens, line);
 }
 
 function applyDefaultsField(
@@ -559,20 +896,16 @@ function applyAtlasField(
   }
 
   if (section.inMetadata) {
-    if (tokens.length < 2) {
-      throw new WorldOrbitError("Invalid atlas metadata entry", line, tokens[0]?.column ?? 1);
-    }
-
-    const key = tokens[0].value;
-    if (key in section.system.atlasMetadata) {
+    const entry = parseInfoLikeEntry(tokens, line, "Invalid atlas metadata entry");
+    if (entry.key in section.system.atlasMetadata) {
       throw new WorldOrbitError(
-        `Duplicate atlas metadata key "${key}"`,
+        `Duplicate atlas metadata key "${entry.key}"`,
         line,
         tokens[0].column,
       );
     }
 
-    section.system.atlasMetadata[key] = joinFieldValue(tokens, line);
+    section.system.atlasMetadata[entry.key] = entry.value;
     return;
   }
 
@@ -721,29 +1054,153 @@ function applyAnnotationField(
   }
 }
 
+function applyGroupField(
+  section: Extract<DraftSectionState, { kind: "group" }>,
+  tokens: LineToken[],
+  line: number,
+): void {
+  const key = requireUniqueField(tokens, section.seenFields, line);
+
+  switch (key) {
+    case "label":
+      section.group.label = joinFieldValue(tokens, line);
+      return;
+    case "summary":
+      section.group.summary = joinFieldValue(tokens, line);
+      return;
+    case "color":
+      section.group.color = joinFieldValue(tokens, line);
+      return;
+    case "tags":
+      section.group.tags = parseTokenList(tokens.slice(1), line, "tags");
+      return;
+    case "hidden":
+      section.group.hidden = parseAtlasBoolean(joinFieldValue(tokens, line), "hidden", {
+        line,
+        column: tokens[0].column,
+      });
+      return;
+    default:
+      throw new WorldOrbitError(
+        `Unknown group field "${tokens[0].value}"`,
+        line,
+        tokens[0].column,
+      );
+  }
+}
+
+function applyRelationField(
+  section: Extract<DraftSectionState, { kind: "relation" }>,
+  tokens: LineToken[],
+  line: number,
+): void {
+  const key = requireUniqueField(tokens, section.seenFields, line);
+
+  switch (key) {
+    case "from":
+      section.relation.from = joinFieldValue(tokens, line);
+      return;
+    case "to":
+      section.relation.to = joinFieldValue(tokens, line);
+      return;
+    case "kind":
+      section.relation.kind = joinFieldValue(tokens, line);
+      return;
+    case "label":
+      section.relation.label = joinFieldValue(tokens, line);
+      return;
+    case "summary":
+      section.relation.summary = joinFieldValue(tokens, line);
+      return;
+    case "tags":
+      section.relation.tags = parseTokenList(tokens.slice(1), line, "tags");
+      return;
+    case "color":
+      section.relation.color = joinFieldValue(tokens, line);
+      return;
+    case "hidden":
+      section.relation.hidden = parseAtlasBoolean(joinFieldValue(tokens, line), "hidden", {
+        line,
+        column: tokens[0].column,
+      });
+      return;
+    default:
+      throw new WorldOrbitError(
+        `Unknown relation field "${tokens[0].value}"`,
+        line,
+        tokens[0].column,
+      );
+  }
+}
+
 function applyObjectField(
   section: Extract<DraftSectionState, { kind: "object" }>,
   indent: number,
   tokens: LineToken[],
   line: number,
 ): void {
-  if (tokens.length === 1 && tokens[0].value === "info") {
-    section.inInfoBlock = true;
-    section.infoIndent = indent;
+  if (section.activeBlock && indent <= (section.blockIndent ?? 0)) {
+    section.activeBlock = null;
+    section.blockIndent = null;
+  }
+
+  if (tokens.length === 1) {
+    const blockName = tokens[0].value.toLowerCase();
+    if (blockName === "info" || STRUCTURED_TYPED_BLOCKS.has(blockName as WorldOrbitTypedBlockName)) {
+      if (blockName !== "info") {
+        warnIfSchema21Feature(
+          section.sourceSchemaVersion,
+          section.diagnostics,
+          blockName,
+          { line, column: tokens[0].column },
+        );
+      }
+      section.activeBlock = blockName as ObjectBlockKind;
+      section.blockIndent = indent;
+      return;
+    }
+  }
+
+  if (section.activeBlock) {
+    const entry = parseInfoLikeEntry(tokens, line, `Invalid ${section.activeBlock} entry`);
+    if (section.activeBlock === "info") {
+      if (section.seenInfoKeys.has(entry.key)) {
+        throw new WorldOrbitError(`Duplicate info key "${entry.key}"`, line, tokens[0].column);
+      }
+      section.seenInfoKeys.add(entry.key);
+      section.objectNode.infoEntries.push(entry);
+      return;
+    }
+
+    const typedBlock = section.activeBlock as WorldOrbitTypedBlockName;
+    const seenKeys =
+      section.seenTypedBlockKeys[typedBlock] ??
+      (section.seenTypedBlockKeys[typedBlock] = new Set<string>());
+
+    if (seenKeys.has(entry.key)) {
+      throw new WorldOrbitError(
+        `Duplicate ${typedBlock} key "${entry.key}"`,
+        line,
+        tokens[0].column,
+      );
+    }
+    seenKeys.add(entry.key);
+    const entries =
+      section.objectNode.typedBlockEntries[typedBlock] ??
+      (section.objectNode.typedBlockEntries[typedBlock] = []);
+    entries.push(entry);
     return;
   }
 
-  if (section.inInfoBlock && indent <= (section.infoIndent ?? 0)) {
-    section.inInfoBlock = false;
-    section.infoIndent = null;
-  }
-
-  if (section.inInfoBlock) {
-    section.objectNode.infoEntries.push(parseInfoEntry(tokens, line));
-    return;
-  }
-
-  section.objectNode.blockFields.push(parseField(tokens, line));
+  section.objectNode.fields.push(
+    parseObjectField(
+      tokens,
+      line,
+      section.objectNode.objectType,
+      section.sourceSchemaVersion,
+      section.diagnostics,
+    ),
+  );
 }
 
 function requireUniqueField(
@@ -779,84 +1236,65 @@ function joinFieldValue(tokens: LineToken[], line: number): string {
 function parseObjectTypeTokens(
   tokens: LineToken[],
   line: number,
-): Array<WorldOrbitObject["type"]> {
-  if (tokens.length === 0) {
-    throw new WorldOrbitError("Missing value for atlas field", line);
-  }
-
-  return tokens.map((token) => {
-    const value = token.value as WorldOrbitObject["type"];
-    if (
-      value !== "star" &&
-      value !== "planet" &&
-      value !== "moon" &&
-      value !== "belt" &&
-      value !== "asteroid" &&
-      value !== "comet" &&
-      value !== "ring" &&
-      value !== "structure" &&
-      value !== "phenomenon"
-    ) {
-      throw new WorldOrbitError(
-        `Unknown viewpoint object type "${token.value}"`,
-        line,
-        token.column,
-      );
-    }
-
-    return value;
-  });
-}
-
-function parseTokenList(tokens: LineToken[], line: number, field: string): string[] {
-  if (tokens.length === 0) {
-    throw new WorldOrbitError(`Missing value for field "${field}"`, line);
-  }
-
-  return tokens.map((token) => token.value);
+): Array<Exclude<WorldOrbitObjectType, "system">> {
+  return parseTokenList(tokens, line, "objectTypes").filter(
+    (value): value is Exclude<WorldOrbitObjectType, "system"> =>
+      value === "star" ||
+      value === "planet" ||
+      value === "moon" ||
+      value === "belt" ||
+      value === "asteroid" ||
+      value === "comet" ||
+      value === "ring" ||
+      value === "structure" ||
+      value === "phenomenon",
+  );
 }
 
 function parseLayerTokens(
   tokens: LineToken[],
   line: number,
 ): Partial<Record<RenderSceneLayer["id"], boolean>> {
-  if (tokens.length === 0) {
-    throw new WorldOrbitError('Missing value for field "layers"', line);
-  }
+  const layers: Partial<Record<RenderSceneLayer["id"], boolean>> = {};
 
-  const next: Partial<Record<RenderSceneLayer["id"], boolean>> = {};
+  for (const token of parseTokenList(tokens, line, "layers")) {
+    const enabled = !token.startsWith("-") && !token.startsWith("!");
+    const raw = token.replace(/^[-!]+/, "").toLowerCase();
 
-  for (const token of tokens) {
-    const enabled = !token.value.startsWith("-") && !token.value.startsWith("!");
-    const rawLayer = token.value.replace(/^[-!]+/, "").toLowerCase();
-
-    if (rawLayer === "orbits") {
-      next["orbits-back"] = enabled;
-      next["orbits-front"] = enabled;
+    if (raw === "orbits") {
+      layers["orbits-back"] = enabled;
+      layers["orbits-front"] = enabled;
       continue;
     }
 
     if (
-      rawLayer === "background" ||
-      rawLayer === "guides" ||
-      rawLayer === "orbits-back" ||
-      rawLayer === "orbits-front" ||
-      rawLayer === "objects" ||
-      rawLayer === "labels" ||
-      rawLayer === "metadata"
+      raw === "background" ||
+      raw === "guides" ||
+      raw === "orbits-back" ||
+      raw === "orbits-front" ||
+      raw === "relations" ||
+      raw === "objects" ||
+      raw === "labels" ||
+      raw === "metadata"
     ) {
-      next[rawLayer] = enabled;
-      continue;
+      layers[raw] = enabled;
     }
-
-    throw new WorldOrbitError(
-      `Unknown layer token "${token.value}"`,
-      line,
-      token.column,
-    );
   }
 
-  return next;
+  return layers;
+}
+
+function parseTokenList(tokens: LineToken[], line: number, fieldName: string): string[] {
+  if (tokens.length === 0) {
+    throw new WorldOrbitError(`Missing value for atlas field "${fieldName}"`, line, 1);
+  }
+
+  const values = tokens.map((token) => token.value).filter(Boolean);
+  if (values.length === 0) {
+    throw new WorldOrbitError(`Missing value for atlas field "${fieldName}"`, line, tokens[0]?.column ?? 1);
+  }
+
+  return values;
 }
 
 function parseProjectionValue(
@@ -865,19 +1303,20 @@ function parseProjectionValue(
   column: number,
 ): ViewProjection {
   const normalized = value.toLowerCase();
-  if (normalized === "topdown" || normalized === "isometric") {
-    return normalized;
+  if (normalized !== "topdown" && normalized !== "isometric") {
+    throw new WorldOrbitError(`Unknown projection "${value}"`, line, column);
   }
 
-  throw new WorldOrbitError(`Unknown projection "${value}"`, line, column);
+  return normalized;
 }
 
 function parsePresetValue(
   value: string,
   line: number,
   column: number,
-): RenderPresetName {
+): RenderPresetName | null {
   const normalized = value.toLowerCase();
+
   if (
     normalized === "diagram" ||
     normalized === "presentation" ||
@@ -896,13 +1335,9 @@ function parsePositiveNumber(
   column: number,
   field: string,
 ): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new WorldOrbitError(
-      `Field "${field}" expects a positive number`,
-      line,
-      column,
-    );
+  const parsed = parseFiniteNumber(value, line, column, field);
+  if (parsed <= 0) {
+    throw new WorldOrbitError(`Field "${field}" must be greater than zero`, line, column);
   }
 
   return parsed;
@@ -916,11 +1351,7 @@ function parseFiniteNumber(
 ): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
-    throw new WorldOrbitError(
-      `Field "${field}" expects a finite number`,
-      line,
-      column,
-    );
+    throw new WorldOrbitError(`Invalid numeric value "${value}" for "${field}"`, line, column);
   }
 
   return parsed;
@@ -935,34 +1366,52 @@ function createEmptyViewpointFilter(): RenderSceneViewpointFilter {
   };
 }
 
-function parseInlineFields(tokens: LineToken[], line: number): AstFieldNode[] {
+function parseInlineObjectFields(
+  tokens: LineToken[],
+  line: number,
+  objectType: Exclude<WorldOrbitObjectType, "system">,
+  sourceSchemaVersion: SourceSchemaVersion,
+  diagnostics: WorldOrbitDiagnostic[],
+): AstFieldNode[] {
   const fields: AstFieldNode[] = [];
   let index = 0;
 
   while (index < tokens.length) {
     const keyToken = tokens[index];
-    const schema = getFieldSchema(keyToken.value);
+    const spec = getDraftObjectFieldSpec(keyToken.value);
 
-    if (!schema) {
-      throw new WorldOrbitError(
-        `Unknown field "${keyToken.value}"`,
+    if (!spec) {
+      throw new WorldOrbitError(`Unknown field "${keyToken.value}"`, line, keyToken.column);
+    }
+
+    if (spec.version === "2.1") {
+      warnIfSchema21Feature(sourceSchemaVersion, diagnostics, keyToken.value, {
         line,
-        keyToken.column,
-      );
+        column: keyToken.column,
+      });
     }
 
     index++;
     const valueTokens: LineToken[] = [];
 
-    if (schema.arity === "multiple") {
-      while (index < tokens.length && !isKnownFieldKey(tokens[index].value)) {
-        valueTokens.push(tokens[index]);
-        index++;
-      }
-    } else {
+    if (spec.inlineMode === "single") {
       const nextToken = tokens[index];
       if (nextToken) {
         valueTokens.push(nextToken);
+        index++;
+      }
+    } else if (spec.inlineMode === "pair") {
+      for (let count = 0; count < 2; count++) {
+        const nextToken = tokens[index];
+        if (!nextToken) {
+          break;
+        }
+        valueTokens.push(nextToken);
+        index++;
+      }
+    } else {
+      while (index < tokens.length && !DRAFT_OBJECT_FIELD_KEYS.has(tokens[index].value)) {
+        valueTokens.push(tokens[index]);
         index++;
       }
     }
@@ -983,19 +1432,23 @@ function parseInlineFields(tokens: LineToken[], line: number): AstFieldNode[] {
     });
   }
 
+  validateDraftObjectFieldCompatibility(fields, objectType);
   return fields;
 }
 
-function parseField(tokens: LineToken[], line: number): AstFieldNode {
+function parseObjectField(
+  tokens: LineToken[],
+  line: number,
+  objectType: Exclude<WorldOrbitObjectType, "system">,
+  sourceSchemaVersion: SourceSchemaVersion,
+  diagnostics: WorldOrbitDiagnostic[],
+): AstFieldNode {
   if (tokens.length < 2) {
-    throw new WorldOrbitError(
-      "Invalid field line",
-      line,
-      tokens[0]?.column ?? 1,
-    );
+    throw new WorldOrbitError("Invalid field line", line, tokens[0]?.column ?? 1);
   }
 
-  if (!getFieldSchema(tokens[0].value)) {
+  const spec = getDraftObjectFieldSpec(tokens[0].value);
+  if (!spec) {
     throw new WorldOrbitError(
       `Unknown field "${tokens[0].value}"`,
       line,
@@ -1003,21 +1456,31 @@ function parseField(tokens: LineToken[], line: number): AstFieldNode {
     );
   }
 
-  return {
+  if (spec.version === "2.1") {
+    warnIfSchema21Feature(sourceSchemaVersion, diagnostics, tokens[0].value, {
+      line,
+      column: tokens[0].column,
+    });
+  }
+
+  const field = {
     type: "field",
     key: tokens[0].value,
     values: tokens.slice(1).map((token) => token.value),
     location: { line, column: tokens[0].column },
-  };
+  } satisfies AstFieldNode;
+
+  validateDraftObjectFieldCompatibility([field], objectType);
+  return field;
 }
 
-function parseInfoEntry(tokens: LineToken[], line: number): AstInfoEntryNode {
+function parseInfoLikeEntry(
+  tokens: LineToken[],
+  line: number,
+  errorMessage: string,
+): AstInfoEntryNode {
   if (tokens.length < 2) {
-    throw new WorldOrbitError(
-      "Invalid info entry",
-      line,
-      tokens[0]?.column ?? 1,
-    );
+    throw new WorldOrbitError(errorMessage, line, tokens[0]?.column ?? 1);
   }
 
   return {
@@ -1028,18 +1491,463 @@ function parseInfoEntry(tokens: LineToken[], line: number): AstInfoEntryNode {
   };
 }
 
-function normalizeIdentifier(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+function normalizeDraftObject(
+  node: DraftRawObject,
+  sourceSchemaVersion: SourceSchemaVersion,
+  diagnostics: WorldOrbitDiagnostic[],
+): WorldOrbitObject {
+  const fieldMap = collectDraftFields(node.fields);
+  const placement = extractDraftPlacement(node.objectType, fieldMap);
+  const properties = normalizeDraftProperties(node.objectType, fieldMap);
+  const groups = parseOptionalTokenList(fieldMap.get("groups")?.[0]);
+  const epoch = parseOptionalJoinedValue(fieldMap.get("epoch")?.[0]);
+  const referencePlane = parseOptionalJoinedValue(fieldMap.get("referencePlane")?.[0]);
+  const tidalLock = fieldMap.has("tidalLock")
+    ? parseAtlasBoolean(singleFieldValue(fieldMap.get("tidalLock")![0]), "tidalLock", fieldMap.get("tidalLock")![0].location)
+    : undefined;
+  const resonance = fieldMap.has("resonance")
+    ? parseResonanceField(fieldMap.get("resonance")![0])
+    : undefined;
+  const renderHints = extractRenderHints(fieldMap);
+  const deriveRules = fieldMap.get("derive")?.map((field) => parseDeriveField(field));
+  const validationRules = fieldMap.get("validate")?.map((field) => ({
+    rule: singleFieldValue(field),
+  }));
+  const lockedFields = fieldMap.has("locked")
+    ? [...new Set(fieldMap.get("locked")!.flatMap((field) => field.values))]
+    : undefined;
+  const tolerances = fieldMap.get("tolerance")?.map((field) => parseToleranceField(field));
+  const typedBlocks = normalizeTypedBlocks(node.typedBlockEntries);
+  const info = normalizeInfoEntries(node.infoEntries, "info");
+
+  const object: WorldOrbitObject = {
+    type: node.objectType,
+    id: node.id,
+    properties,
+    placement,
+    info,
+  };
+
+  if (groups.length > 0) object.groups = groups;
+  if (epoch) object.epoch = epoch;
+  if (referencePlane) object.referencePlane = referencePlane;
+  if (tidalLock !== undefined) object.tidalLock = tidalLock;
+  if (resonance) object.resonance = resonance;
+  if (renderHints) object.renderHints = renderHints;
+  if (deriveRules?.length) object.deriveRules = deriveRules;
+  if (validationRules?.length) object.validationRules = validationRules;
+  if (lockedFields?.length) object.lockedFields = lockedFields;
+  if (tolerances?.length) object.tolerances = tolerances;
+  if (typedBlocks && Object.keys(typedBlocks).length > 0) object.typedBlocks = typedBlocks;
+
+  if (sourceSchemaVersion !== "2.1") {
+    if (
+      object.groups ||
+      object.epoch ||
+      object.referencePlane ||
+      object.tidalLock !== undefined ||
+      object.resonance ||
+      object.renderHints ||
+      object.deriveRules?.length ||
+      object.validationRules?.length ||
+      object.lockedFields?.length ||
+      object.tolerances?.length ||
+      object.typedBlocks
+    ) {
+      warnIfSchema21Feature(sourceSchemaVersion, diagnostics, node.id, node.location);
+    }
+  }
+
+  return object;
 }
 
-function humanizeIdentifier(value: string): string {
-  return value
-    .split(/[-_]+/)
-    .filter(Boolean)
-    .map((segment) => segment[0].toUpperCase() + segment.slice(1))
-    .join(" ");
+function collectDraftFields(fields: AstFieldNode[]): Map<string, AstFieldNode[]> {
+  const grouped = new Map<string, AstFieldNode[]>();
+
+  for (const field of fields) {
+    const spec = getDraftObjectFieldSpec(field.key);
+    if (!spec) {
+      throw WorldOrbitError.fromLocation(`Unknown field "${field.key}"`, field.location);
+    }
+
+    if (!spec.allowRepeat && grouped.has(field.key)) {
+      throw WorldOrbitError.fromLocation(`Duplicate field "${field.key}"`, field.location);
+    }
+
+    const existing = grouped.get(field.key) ?? [];
+    existing.push(field);
+    grouped.set(field.key, existing);
+  }
+
+  return grouped;
+}
+
+function extractDraftPlacement(
+  objectType: Exclude<WorldOrbitObjectType, "system">,
+  fieldMap: Map<string, AstFieldNode[]>,
+): WorldOrbitObject["placement"] {
+  const orbitField = fieldMap.get("orbit")?.[0];
+  const atField = fieldMap.get("at")?.[0];
+  const surfaceField = fieldMap.get("surface")?.[0];
+  const freeField = fieldMap.get("free")?.[0];
+  const count = [orbitField, atField, surfaceField, freeField].filter(Boolean).length;
+
+  if (count > 1) {
+    const conflictingField = orbitField ?? atField ?? surfaceField ?? freeField;
+    throw WorldOrbitError.fromLocation("Object has multiple placement modes", conflictingField?.location);
+  }
+
+  if (orbitField) {
+    return {
+      mode: "orbit",
+      target: singleFieldValue(orbitField),
+      distance: parseOptionalUnitField(fieldMap.get("distance")?.[0], "distance"),
+      semiMajor: parseOptionalUnitField(fieldMap.get("semiMajor")?.[0], "semiMajor"),
+      eccentricity: parseOptionalNumberField(fieldMap.get("eccentricity")?.[0], "eccentricity"),
+      period: parseOptionalUnitField(fieldMap.get("period")?.[0], "period"),
+      angle: parseOptionalUnitField(fieldMap.get("angle")?.[0], "angle"),
+      inclination: parseOptionalUnitField(fieldMap.get("inclination")?.[0], "inclination"),
+      phase: parseOptionalUnitField(fieldMap.get("phase")?.[0], "phase"),
+    };
+  }
+
+  if (atField) {
+    const target = singleFieldValue(atField);
+    return {
+      mode: "at",
+      target,
+      reference: parseAtlasAtReference(target, atField.location),
+    };
+  }
+
+  if (surfaceField) {
+    return {
+      mode: "surface",
+      target: singleFieldValue(surfaceField),
+    };
+  }
+
+  if (freeField) {
+    const raw = singleFieldValue(freeField);
+    const distance = tryParseAtlasUnitValue(raw);
+    return {
+      mode: "free",
+      distance: distance ?? undefined,
+      descriptor: distance ? undefined : raw,
+    };
+  }
+
+  return null;
+}
+
+function normalizeDraftProperties(
+  objectType: Exclude<WorldOrbitObjectType, "system">,
+  fieldMap: Map<string, AstFieldNode[]>,
+): Record<string, WorldOrbitObject["properties"][string]> {
+  const properties: Record<string, WorldOrbitObject["properties"][string]> = {};
+
+  for (const [key, fields] of fieldMap.entries()) {
+    const field = fields[0];
+    const spec = getDraftObjectFieldSpec(key);
+    if (!field || !spec?.legacySchema || spec.legacySchema.placement) {
+      continue;
+    }
+
+    ensureAtlasFieldSupported(key, objectType, field.location);
+    properties[key] = normalizeLegacyScalarValue(key, field.values, field.location);
+  }
+
+  return properties;
+}
+
+function normalizeInfoEntries(
+  entries: AstInfoEntryNode[],
+  label: string,
+): Record<string, string> {
+  const normalized: Record<string, string> = {};
+
+  for (const entry of entries) {
+    if (entry.key in normalized) {
+      throw WorldOrbitError.fromLocation(`Duplicate ${label} key "${entry.key}"`, entry.location);
+    }
+
+    normalized[entry.key] = entry.value;
+  }
+
+  return normalized;
+}
+
+function normalizeTypedBlocks(
+  typedBlockEntries: DraftRawObject["typedBlockEntries"],
+): Partial<Record<WorldOrbitTypedBlockName, Record<string, string>>> {
+  const typedBlocks: Partial<Record<WorldOrbitTypedBlockName, Record<string, string>>> = {};
+
+  for (const blockName of Object.keys(typedBlockEntries) as WorldOrbitTypedBlockName[]) {
+    const entries = typedBlockEntries[blockName];
+    if (entries?.length) {
+      typedBlocks[blockName] = normalizeInfoEntries(entries, blockName);
+    }
+  }
+
+  return typedBlocks;
+}
+
+function extractRenderHints(
+  fieldMap: Map<string, AstFieldNode[]>,
+): WorldOrbitObject["renderHints"] | undefined {
+  const renderHints: NonNullable<WorldOrbitObject["renderHints"]> = {};
+  const renderLabelField = fieldMap.get("renderLabel")?.[0];
+  const renderOrbitField = fieldMap.get("renderOrbit")?.[0];
+  const renderPriorityField = fieldMap.get("renderPriority")?.[0];
+
+  if (renderLabelField) {
+    renderHints.renderLabel = parseAtlasBoolean(
+      singleFieldValue(renderLabelField),
+      "renderLabel",
+      renderLabelField.location,
+    );
+  }
+  if (renderOrbitField) {
+    renderHints.renderOrbit = parseAtlasBoolean(
+      singleFieldValue(renderOrbitField),
+      "renderOrbit",
+      renderOrbitField.location,
+    );
+  }
+  if (renderPriorityField) {
+    renderHints.renderPriority = parseAtlasNumber(
+      singleFieldValue(renderPriorityField),
+      "renderPriority",
+      renderPriorityField.location,
+    );
+  }
+
+  return Object.keys(renderHints).length > 0 ? renderHints : undefined;
+}
+
+function parseResonanceField(field: AstFieldNode): NonNullable<WorldOrbitObject["resonance"]> {
+  if (field.values.length !== 2) {
+    throw WorldOrbitError.fromLocation(
+      'Field "resonance" expects "<targetObjectId> <ratio>"',
+      field.location,
+    );
+  }
+
+  const ratio = field.values[1];
+  if (!/^\d+:\d+$/.test(ratio)) {
+    throw WorldOrbitError.fromLocation(`Invalid resonance ratio "${ratio}"`, field.location);
+  }
+
+  return {
+    targetObjectId: field.values[0],
+    ratio,
+  };
+}
+
+function parseDeriveField(field: AstFieldNode): NonNullable<WorldOrbitObject["deriveRules"]>[number] {
+  if (field.values.length !== 2) {
+    throw WorldOrbitError.fromLocation(
+      'Field "derive" expects "<field> <strategy>"',
+      field.location,
+    );
+  }
+
+  return {
+    field: field.values[0],
+    strategy: field.values[1],
+  };
+}
+
+function parseToleranceField(field: AstFieldNode): NonNullable<WorldOrbitObject["tolerances"]>[number] {
+  if (field.values.length !== 2) {
+    throw WorldOrbitError.fromLocation(
+      'Field "tolerance" expects "<field> <value>"',
+      field.location,
+    );
+  }
+
+  const rawValue = field.values[1];
+  const unitValue = tryParseAtlasUnitValue(rawValue);
+  const numericValue = Number(rawValue);
+
+  return {
+    field: field.values[0],
+    value: unitValue ?? (Number.isFinite(numericValue) ? numericValue : rawValue),
+  };
+}
+
+function parseOptionalTokenList(field?: AstFieldNode): string[] {
+  return field ? [...new Set(field.values)] : [];
+}
+
+function parseOptionalJoinedValue(field?: AstFieldNode): string | null {
+  if (!field) {
+    return null;
+  }
+
+  return field.values.join(" ").trim() || null;
+}
+
+function parseOptionalUnitField(field: AstFieldNode | undefined, key: string) {
+  return field ? parseAtlasUnitValue(singleFieldValue(field), field.location, key) : undefined;
+}
+
+function parseOptionalNumberField(field: AstFieldNode | undefined, key: string) {
+  return field ? parseAtlasNumber(singleFieldValue(field), key, field.location) : undefined;
+}
+
+function singleFieldValue(field: AstFieldNode): string {
+  return singleAtlasValue(field.values, field.key, field.location);
+}
+
+function getDraftObjectFieldSpec(key: string): DraftObjectFieldSpec | undefined {
+  return DRAFT_OBJECT_FIELD_SPECS.get(key);
+}
+
+function validateDraftObjectFieldCompatibility(
+  fields: AstFieldNode[],
+  objectType: Exclude<WorldOrbitObjectType, "system">,
+): void {
+  for (const field of fields) {
+    const spec = getDraftObjectFieldSpec(field.key);
+    if (!spec) {
+      throw WorldOrbitError.fromLocation(`Unknown field "${field.key}"`, field.location);
+    }
+
+    if (spec.legacySchema) {
+      ensureAtlasFieldSupported(field.key, objectType, field.location);
+      continue;
+    }
+
+    if (
+      (field.key === "renderLabel" || field.key === "renderOrbit" || field.key === "tidalLock") &&
+      field.values.length !== 1
+    ) {
+      throw WorldOrbitError.fromLocation(
+        `Field "${field.key}" expects exactly one value`,
+        field.location,
+      );
+    }
+  }
+}
+
+function warnIfSchema21Feature(
+  sourceSchemaVersion: SourceSchemaVersion,
+  diagnostics: WorldOrbitDiagnostic[],
+  featureName: string,
+  location: AstSourceLocation,
+): void {
+  if (sourceSchemaVersion === "2.1") {
+    return;
+  }
+
+  diagnostics.push({
+    code: "parse.schema21.featureCompatibility",
+    severity: "warning",
+    source: "parse",
+    message: `Feature "${featureName}" requires schema 2.1; parsed in compatibility mode because the document header is "schema ${sourceSchemaVersion}".`,
+    line: location.line,
+    column: location.column,
+  });
+}
+
+function preprocessAtlasSource(source: string): PreparedAtlasSource {
+  const chars = [...source];
+  const comments: AtlasComment[] = [];
+  let inString = false;
+  let inBlockComment = false;
+  let blockCommentStart: AstSourceLocation | null = null;
+  let line = 1;
+  let column = 1;
+
+  for (let index = 0; index < chars.length; index++) {
+    const ch = chars[index];
+    const next = chars[index + 1];
+
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        chars[index] = " ";
+        chars[index + 1] = " ";
+        inBlockComment = false;
+        blockCommentStart = null;
+        index++;
+        column += 2;
+        continue;
+      }
+
+      if (ch !== "\n" && ch !== "\r") {
+        chars[index] = " ";
+      }
+
+      if (ch === "\n") {
+        line++;
+        column = 1;
+      } else {
+        column++;
+      }
+      continue;
+    }
+
+    if (!inString && ch === "/" && next === "*") {
+      comments.push({ kind: "block", line, column });
+      chars[index] = " ";
+      chars[index + 1] = " ";
+      inBlockComment = true;
+      blockCommentStart = { line, column };
+      index++;
+      column += 2;
+      continue;
+    }
+
+    if (!inString && ch === "#" && !isHexColorLiteral(chars, index)) {
+      comments.push({ kind: "line", line, column });
+      chars[index] = " ";
+
+      let inner = index + 1;
+      while (inner < chars.length && chars[inner] !== "\n" && chars[inner] !== "\r") {
+        chars[inner] = " ";
+        inner++;
+      }
+      column += inner - index;
+      index = inner - 1;
+      continue;
+    }
+
+    if (ch === '"' && chars[index - 1] !== "\\") {
+      inString = !inString;
+    }
+
+    if (ch === "\n") {
+      line++;
+      column = 1;
+    } else {
+      column++;
+    }
+  }
+
+  if (inBlockComment) {
+    throw WorldOrbitError.fromLocation("Unclosed block comment", blockCommentStart ?? undefined);
+  }
+
+  return {
+    source: chars.join(""),
+    comments,
+  };
+}
+
+function isHexColorLiteral(chars: string[], start: number): boolean {
+  let index = start + 1;
+  let length = 0;
+
+  while (index < chars.length && /[0-9a-f]/i.test(chars[index] ?? "")) {
+    index++;
+    length++;
+  }
+
+  if (![3, 4, 6, 8].includes(length)) {
+    return false;
+  }
+
+  const next = chars[index];
+  return next === undefined || next === " " || next === "\t" || next === "\r" || next === "\n";
 }

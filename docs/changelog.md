@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- added backward-compatible Schema 2.1 atlas support with comments, `group`, `relation`, object-level reference metadata, resonance declarations, typed lore blocks, and light validation/derive rules
+- updated the viewer, atlas controls, and Studio to preserve Schema 2.1 semantic groups, relation overlays, render hints, and object detail metadata instead of assuming Schema 2.0-only authoring
+- refreshed the README, language references, migration notes, examples, markdown embeds, and Studio starter/example flows around the new Schema 2.1 default while keeping `schema 2.0` and `schema 2.0-draft` compatibility documented
+
 ## v2.5.0
 
 - stabilized `@worldorbit/editor` with `isDirty()`, `markSaved()`, `onDirtyChange`, keyboard shortcuts, and a debounced source/preview flow tuned for real save/recovery workflows

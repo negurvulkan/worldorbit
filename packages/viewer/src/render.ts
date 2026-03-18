@@ -65,6 +65,16 @@ export function renderSceneToSvg(scene: RenderScene, options: SvgRenderOptions =
         )
         .join("")
     : "";
+  const relationMarkup = layers.relations
+    ? scene.relations
+        .filter((relation) => !relation.hidden)
+        .filter((relation) => visibleObjectIds.has(relation.fromObjectId) && visibleObjectIds.has(relation.toObjectId))
+        .map(
+          (relation) =>
+            `<line class="wo-relation" x1="${relation.x1}" y1="${relation.y1}" x2="${relation.x2}" y2="${relation.y2}" data-render-id="${escapeXml(relation.renderId)}" data-relation-id="${escapeAttribute(relation.relationId)}" />`,
+        )
+        .join("")
+    : "";
   const objectMarkup = layers.objects
     ? visibleObjects
         .map((object) => renderSceneObject(object, options.selectedObjectId ?? null, theme))
@@ -114,6 +124,7 @@ export function renderSceneToSvg(scene: RenderScene, options: SvgRenderOptions =
     .wo-orbit-back { opacity: 0.38; stroke-dasharray: 8 6; }
     .wo-orbit-front { opacity: 0.9; }
     .wo-orbit-band { stroke: ${theme.orbitBand}; stroke-linecap: round; }
+    .wo-relation { stroke: ${theme.relation}; stroke-width: 2; stroke-dasharray: 10 6; }
     .wo-leader { stroke: ${theme.leader}; stroke-width: 1.5; stroke-dasharray: 6 5; }
     .wo-label { fill: ${theme.ink}; font-family: ${theme.fontFamily}; font-weight: 600; letter-spacing: 0.02em; }
     .wo-label-secondary { fill: ${theme.muted}; font-family: ${theme.fontFamily}; font-weight: 500; }
@@ -147,6 +158,7 @@ export function renderSceneToSvg(scene: RenderScene, options: SvgRenderOptions =
       <g data-worldorbit-world-content="true">
         ${layers.orbits ? `<g data-layer-id="orbits-back">${orbitMarkup.back}</g>` : ""}
         ${layers.guides ? `<g data-layer-id="guides">${leaderMarkup}</g>` : ""}
+        ${layers.relations ? `<g data-layer-id="relations">${relationMarkup}</g>` : ""}
         ${layers.objects ? `<g data-layer-id="objects">${objectMarkup}</g>` : ""}
         ${layers.orbits ? `<g data-layer-id="orbits-front">${orbitMarkup.front}</g>` : ""}
         ${layers.labels ? `<g data-layer-id="labels">${labelMarkup}</g>` : ""}

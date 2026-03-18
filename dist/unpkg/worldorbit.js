@@ -643,7 +643,10 @@ var WorldOrbit = (() => {
     return {
       format: "worldorbit",
       version: "1.0",
+      schemaVersion: "1.0",
       system,
+      groups: [],
+      relations: [],
       objects
     };
   }
@@ -653,13 +656,17 @@ var WorldOrbit = (() => {
     const fieldMap = collectFields(mergedFields);
     const placement = extractPlacement(node.objectType, fieldMap);
     const properties = normalizeProperties(fieldMap);
-    const info = normalizeInfo(node.infoEntries);
+    const info2 = normalizeInfo(node.infoEntries);
     if (node.objectType === "system") {
       return {
         type: "system",
         id: node.name,
+        title: typeof properties.title === "string" ? properties.title : null,
+        description: null,
+        epoch: null,
+        referencePlane: null,
         properties,
-        info
+        info: info2
       };
     }
     return {
@@ -667,7 +674,7 @@ var WorldOrbit = (() => {
       id: node.name,
       properties,
       placement,
-      info
+      info: info2
     };
   }
   function validateFieldCompatibility(objectType, fields) {
@@ -797,14 +804,14 @@ var WorldOrbit = (() => {
     }
   }
   function normalizeInfo(entries) {
-    const info = {};
+    const info2 = {};
     for (const entry of entries) {
-      if (entry.key in info) {
+      if (entry.key in info2) {
         throw WorldOrbitError.fromLocation(`Duplicate info key "${entry.key}"`, entry.location);
       }
-      info[entry.key] = entry.value;
+      info2[entry.key] = entry.value;
     }
-    return info;
+    return info2;
   }
   function parseAtReference(target, location) {
     if (/^[A-Za-z0-9._-]+-[A-Za-z0-9._-]+:L\d+$/i.test(target)) {
@@ -978,38 +985,38 @@ var WorldOrbit = (() => {
   function createDiagnostic(diagnostic) {
     return { ...diagnostic };
   }
-  function diagnosticFromError(error, source, code = `${source}.failed`) {
-    if (error instanceof WorldOrbitError) {
+  function diagnosticFromError(error2, source, code = `${source}.failed`) {
+    if (error2 instanceof WorldOrbitError) {
       return {
         code,
         severity: "error",
         source,
-        message: error.message,
-        line: error.line,
-        column: error.column
+        message: error2.message,
+        line: error2.line,
+        column: error2.column
       };
     }
-    if (error instanceof Error) {
+    if (error2 instanceof Error) {
       return {
         code,
         severity: "error",
         source,
-        message: error.message
+        message: error2.message
       };
     }
     return {
       code,
       severity: "error",
       source,
-      message: String(error)
+      message: String(error2)
     };
   }
   function parseWithDiagnostics(source) {
     let ast;
     try {
       ast = parseWorldOrbit(source);
-    } catch (error) {
-      const diagnostic = diagnosticFromError(error, "parse");
+    } catch (error2) {
+      const diagnostic = diagnosticFromError(error2, "parse");
       return {
         ok: false,
         value: null,
@@ -1019,20 +1026,20 @@ var WorldOrbit = (() => {
     let document2;
     try {
       document2 = normalizeDocument(ast);
-    } catch (error) {
+    } catch (error2) {
       return {
         ok: false,
         value: null,
-        diagnostics: [diagnosticFromError(error, "normalize")]
+        diagnostics: [diagnosticFromError(error2, "normalize")]
       };
     }
     try {
       validateDocument(document2);
-    } catch (error) {
+    } catch (error2) {
       return {
         ok: false,
         value: null,
-        diagnostics: [diagnosticFromError(error, "validate")]
+        diagnostics: [diagnosticFromError(error2, "validate")]
       };
     }
     return {
@@ -1051,11 +1058,11 @@ var WorldOrbit = (() => {
         value: normalizeDocument(ast),
         diagnostics: []
       };
-    } catch (error) {
+    } catch (error2) {
       return {
         ok: false,
         value: null,
-        diagnostics: [diagnosticFromError(error, "normalize")]
+        diagnostics: [diagnosticFromError(error2, "normalize")]
       };
     }
   }
@@ -1067,11 +1074,11 @@ var WorldOrbit = (() => {
         value: document2,
         diagnostics: []
       };
-    } catch (error) {
+    } catch (error2) {
       return {
         ok: false,
         value: null,
-        diagnostics: [diagnosticFromError(error, "validate")]
+        diagnostics: [diagnosticFromError(error2, "validate")]
       };
     }
   }
@@ -1203,8 +1210,10 @@ var WorldOrbit = (() => {
     const orbitVisuals = orbitDrafts.map((draft) => createOrbitVisual(draft, relationships.groupIds.get(draft.object.id) ?? null));
     const leaders = leaderDrafts.map((draft) => createLeaderLine(draft));
     const labels = createSceneLabels(objects, height, scaleModel.labelMultiplier);
-    const layers = createSceneLayers(orbitVisuals, leaders, objects, labels);
+    const relations = createSceneRelations(document2, objects);
+    const layers = createSceneLayers(orbitVisuals, relations, leaders, objects, labels);
     const groups = createSceneGroups(objects, orbitVisuals, leaders, labels, relationships);
+    const semanticGroups = createSceneSemanticGroups(document2, objects);
     const viewpoints = createSceneViewpoints(document2, projection, frame.preset, relationships, objectMap);
     const contentBounds = calculateContentBounds(width, height, objects, orbitVisuals, leaders, labels);
     return {
@@ -1214,7 +1223,7 @@ var WorldOrbit = (() => {
       renderPreset: frame.preset,
       projection,
       scaleModel,
-      title: String(document2.system?.properties.title ?? document2.system?.id ?? "WorldOrbit") || "WorldOrbit",
+      title: String(document2.system?.title ?? document2.system?.properties.title ?? document2.system?.id ?? "WorldOrbit") || "WorldOrbit",
       subtitle: `${capitalizeLabel(projection)} view - ${capitalizeLabel(layoutPreset)} layout`,
       systemId,
       viewMode: projection,
@@ -1230,9 +1239,11 @@ var WorldOrbit = (() => {
       contentBounds,
       layers,
       groups,
+      semanticGroups,
       viewpoints,
       objects,
       orbitVisuals,
+      relations,
       leaders,
       labels
     };
@@ -1342,6 +1353,7 @@ var WorldOrbit = (() => {
   }
   function createSceneObject(position, scaleModel, relationships) {
     const { object, x, y, radius, sortKey, anchorX, anchorY } = position;
+    const renderPriority = object.renderHints?.renderPriority ?? 0;
     return {
       renderId: createRenderId(object.id),
       objectId: object.id,
@@ -1350,11 +1362,12 @@ var WorldOrbit = (() => {
       ancestorIds: relationships.ancestorIds.get(object.id) ?? [],
       childIds: relationships.childIds.get(object.id) ?? [],
       groupId: relationships.groupIds.get(object.id) ?? null,
+      semanticGroupIds: [...object.groups ?? []],
       x,
       y,
       radius,
       visualRadius: visualExtentForObject(object, radius, scaleModel),
-      sortKey,
+      sortKey: sortKey + renderPriority * 1e-3,
       anchorX,
       anchorY,
       label: object.id,
@@ -1371,6 +1384,7 @@ var WorldOrbit = (() => {
       object: draft.object,
       parentId: draft.parentId,
       groupId,
+      semanticGroupIds: [...draft.object.groups ?? []],
       kind: draft.kind,
       cx: draft.cx,
       cy: draft.cy,
@@ -1382,7 +1396,7 @@ var WorldOrbit = (() => {
       bandThickness: draft.bandThickness,
       frontArcPath: draft.frontArcPath,
       backArcPath: draft.backArcPath,
-      hidden: draft.object.properties.hidden === true
+      hidden: draft.object.properties.hidden === true || draft.object.renderHints?.renderOrbit === false
     };
   }
   function createLeaderLine(draft) {
@@ -1391,6 +1405,7 @@ var WorldOrbit = (() => {
       objectId: draft.object.id,
       object: draft.object,
       groupId: draft.groupId,
+      semanticGroupIds: [...draft.object.groups ?? []],
       x1: draft.x1,
       y1: draft.y1,
       x2: draft.x2,
@@ -1402,7 +1417,7 @@ var WorldOrbit = (() => {
   function createSceneLabels(objects, sceneHeight, labelMultiplier) {
     const labels = [];
     const occupied = [];
-    const visibleObjects = [...objects].filter((object) => !object.hidden).sort((left, right) => left.sortKey - right.sortKey);
+    const visibleObjects = [...objects].filter((object) => !object.hidden && object.object.renderHints?.renderLabel !== false).sort((left, right) => left.sortKey - right.sortKey);
     for (const object of visibleObjects) {
       const direction = object.y > sceneHeight * 0.62 ? -1 : 1;
       const labelHalfWidth = estimateLabelHalfWidth(object, labelMultiplier);
@@ -1422,6 +1437,7 @@ var WorldOrbit = (() => {
         objectId: object.objectId,
         object: object.object,
         groupId: object.groupId,
+        semanticGroupIds: [...object.semanticGroupIds],
         label: object.label,
         secondaryLabel: object.secondaryLabel,
         x: object.x,
@@ -1434,7 +1450,7 @@ var WorldOrbit = (() => {
     }
     return labels;
   }
-  function createSceneLayers(orbitVisuals, leaders, objects, labels) {
+  function createSceneLayers(orbitVisuals, relations, leaders, objects, labels) {
     const backOrbitIds = orbitVisuals.filter((visual) => !visual.hidden && Boolean(visual.backArcPath)).map((visual) => visual.renderId);
     const frontOrbitIds = orbitVisuals.filter((visual) => !visual.hidden).map((visual) => visual.renderId);
     return [
@@ -1445,6 +1461,10 @@ var WorldOrbit = (() => {
       },
       { id: "orbits-back", renderIds: backOrbitIds },
       { id: "orbits-front", renderIds: frontOrbitIds },
+      {
+        id: "relations",
+        renderIds: relations.filter((relation) => !relation.hidden).map((relation) => relation.renderId)
+      },
       {
         id: "objects",
         renderIds: objects.filter((object) => !object.hidden).map((object) => object.renderId)
@@ -1509,6 +1529,36 @@ var WorldOrbit = (() => {
     }
     return [...groups.values()].sort((left, right) => left.label.localeCompare(right.label));
   }
+  function createSceneSemanticGroups(document2, objects) {
+    return [...document2.groups].map((group) => ({
+      id: group.id,
+      label: group.label,
+      summary: group.summary,
+      color: group.color,
+      tags: [...group.tags],
+      hidden: group.hidden,
+      objectIds: objects.filter((object) => !object.hidden && object.semanticGroupIds.includes(group.id)).map((object) => object.objectId)
+    })).sort((left, right) => left.label.localeCompare(right.label));
+  }
+  function createSceneRelations(document2, objects) {
+    const objectMap = new Map(objects.map((object) => [object.objectId, object]));
+    return document2.relations.map((relation) => {
+      const from = objectMap.get(relation.from);
+      const to = objectMap.get(relation.to);
+      return {
+        renderId: `${createRenderId(relation.id)}-relation`,
+        relationId: relation.id,
+        relation,
+        fromObjectId: relation.from,
+        toObjectId: relation.to,
+        x1: from?.x ?? 0,
+        y1: from?.y ?? 0,
+        x2: to?.x ?? 0,
+        y2: to?.y ?? 0,
+        hidden: relation.hidden || !from || !to || from.hidden || to.hidden
+      };
+    }).sort((left, right) => left.relation.id.localeCompare(right.relation.id));
+  }
   function createSceneViewpoints(document2, projection, preset, relationships, objectMap) {
     const generatedOverview = createGeneratedOverviewViewpoint(document2, projection, preset);
     const drafts = /* @__PURE__ */ new Map();
@@ -1526,7 +1576,7 @@ var WorldOrbit = (() => {
       }
       const field = fieldParts.join(".").toLowerCase();
       const draft = drafts.get(id) ?? { id };
-      applyViewpointField(draft, field, value, projection, preset, relationships, objectMap);
+      applyViewpointField(draft, field, value, document2, projection, preset, relationships, objectMap);
       drafts.set(id, draft);
     }
     const viewpoints = [...drafts.values()].map((draft) => finalizeViewpointDraft(draft, projection, preset, objectMap)).filter(Boolean);
@@ -1554,7 +1604,8 @@ var WorldOrbit = (() => {
     });
   }
   function createGeneratedOverviewViewpoint(document2, projection, preset) {
-    const label = document2.system?.properties.title ? `${String(document2.system.properties.title)} Overview` : "Overview";
+    const title = document2.system?.title ?? document2.system?.properties.title;
+    const label = title ? `${String(title)} Overview` : "Overview";
     return {
       id: "overview",
       label,
@@ -1570,7 +1621,7 @@ var WorldOrbit = (() => {
       generated: true
     };
   }
-  function applyViewpointField(draft, field, value, projection, preset, relationships, objectMap) {
+  function applyViewpointField(draft, field, value, document2, projection, preset, relationships, objectMap) {
     const normalizedValue = value.trim();
     switch (field) {
       case "label":
@@ -1637,7 +1688,7 @@ var WorldOrbit = (() => {
       case "groups":
         draft.filter = {
           ...draft.filter ?? createEmptyViewpointFilter(),
-          groupIds: parseViewpointGroups(normalizedValue, relationships, objectMap)
+          groupIds: parseViewpointGroups(normalizedValue, document2, relationships, objectMap)
         };
         return;
     }
@@ -1710,7 +1761,7 @@ var WorldOrbit = (() => {
         next["orbits-front"] = enabled;
         continue;
       }
-      if (rawLayer === "background" || rawLayer === "guides" || rawLayer === "orbits-back" || rawLayer === "orbits-front" || rawLayer === "objects" || rawLayer === "labels" || rawLayer === "metadata") {
+      if (rawLayer === "background" || rawLayer === "guides" || rawLayer === "orbits-back" || rawLayer === "orbits-front" || rawLayer === "relations" || rawLayer === "objects" || rawLayer === "labels" || rawLayer === "metadata") {
         next[rawLayer] = enabled;
       }
     }
@@ -1719,8 +1770,11 @@ var WorldOrbit = (() => {
   function parseViewpointObjectTypes(value) {
     return splitListValue(value).filter((entry) => entry === "star" || entry === "planet" || entry === "moon" || entry === "belt" || entry === "asteroid" || entry === "comet" || entry === "ring" || entry === "structure" || entry === "phenomenon");
   }
-  function parseViewpointGroups(value, relationships, objectMap) {
+  function parseViewpointGroups(value, document2, relationships, objectMap) {
     return splitListValue(value).map((entry) => {
+      if (document2.schemaVersion === "2.1" || document2.groups.some((group) => group.id === entry)) {
+        return entry;
+      }
       if (entry.startsWith("wo-") && entry.endsWith("-group")) {
         return entry;
       }
@@ -2504,8 +2558,11 @@ var WorldOrbit = (() => {
     return {
       format: "worldorbit",
       version: "2.0",
+      schemaVersion: "2.0",
       sourceVersion: document2.version,
       system,
+      groups: structuredClone(document2.groups ?? []),
+      relations: structuredClone(document2.relations ?? []),
       objects: document2.objects.map(cloneWorldOrbitObject),
       diagnostics
     };
@@ -2517,13 +2574,20 @@ var WorldOrbit = (() => {
     const system = document2.system ? {
       type: "system",
       id: document2.system.id,
+      title: document2.system.title,
+      description: document2.system.description,
+      epoch: document2.system.epoch,
+      referencePlane: document2.system.referencePlane,
       properties: materializeDraftSystemProperties(document2.system),
       info: materializeDraftSystemInfo(document2.system)
     } : null;
     return {
       format: "worldorbit",
       version: "1.0",
+      schemaVersion: document2.version,
       system,
+      groups: structuredClone(document2.groups ?? []),
+      relations: structuredClone(document2.relations ?? []),
       objects: document2.objects.map(cloneWorldOrbitObject)
     };
   }
@@ -2538,7 +2602,10 @@ var WorldOrbit = (() => {
     return {
       type: "system",
       id: document2.system?.id ?? "WorldOrbit",
-      title: typeof document2.system?.properties.title === "string" ? document2.system.properties.title : null,
+      title: document2.system?.title ?? (typeof document2.system?.properties.title === "string" ? document2.system.properties.title : null),
+      description: document2.system?.description ?? null,
+      epoch: document2.system?.epoch ?? null,
+      referencePlane: document2.system?.referencePlane ?? null,
       defaults,
       atlasMetadata,
       viewpoints: scene.viewpoints.map(mapSceneViewpointToDraftViewpoint),
@@ -2665,6 +2732,17 @@ var WorldOrbit = (() => {
   function cloneWorldOrbitObject(object) {
     return {
       ...object,
+      groups: object.groups ? [...object.groups] : void 0,
+      resonance: object.resonance ? { ...object.resonance } : object.resonance,
+      renderHints: object.renderHints ? { ...object.renderHints } : object.renderHints,
+      deriveRules: object.deriveRules ? object.deriveRules.map((rule) => ({ ...rule })) : void 0,
+      validationRules: object.validationRules ? object.validationRules.map((rule) => ({ ...rule })) : void 0,
+      lockedFields: object.lockedFields ? [...object.lockedFields] : void 0,
+      tolerances: object.tolerances ? object.tolerances.map((entry) => ({
+        field: entry.field,
+        value: entry.value && typeof entry.value === "object" && "value" in entry.value ? { value: entry.value.value, unit: entry.value.unit } : Array.isArray(entry.value) ? [...entry.value] : entry.value
+      })) : void 0,
+      typedBlocks: object.typedBlocks ? Object.fromEntries(Object.entries(object.typedBlocks).map(([key, block]) => [key, { ...block ?? {} }])) : void 0,
       properties: cloneProperties(object.properties),
       placement: object.placement ? structuredClone(object.placement) : null,
       info: { ...object.info }
@@ -2709,71 +2787,80 @@ var WorldOrbit = (() => {
     if (system.defaults.units) {
       properties.units = system.defaults.units;
     }
+    if (system.description) {
+      properties.description = system.description;
+    }
+    if (system.epoch) {
+      properties.epoch = system.epoch;
+    }
+    if (system.referencePlane) {
+      properties.referencePlane = system.referencePlane;
+    }
     return properties;
   }
   function materializeDraftSystemInfo(system) {
-    const info = {
+    const info2 = {
       ...system.atlasMetadata
     };
     if (system.defaults.theme) {
-      info["atlas.theme"] = system.defaults.theme;
+      info2["atlas.theme"] = system.defaults.theme;
     }
     for (const viewpoint of system.viewpoints) {
       const prefix = `viewpoint.${viewpoint.id}`;
-      info[`${prefix}.label`] = viewpoint.label;
+      info2[`${prefix}.label`] = viewpoint.label;
       if (viewpoint.summary) {
-        info[`${prefix}.summary`] = viewpoint.summary;
+        info2[`${prefix}.summary`] = viewpoint.summary;
       }
       if (viewpoint.focusObjectId) {
-        info[`${prefix}.focus`] = viewpoint.focusObjectId;
+        info2[`${prefix}.focus`] = viewpoint.focusObjectId;
       }
       if (viewpoint.selectedObjectId) {
-        info[`${prefix}.select`] = viewpoint.selectedObjectId;
+        info2[`${prefix}.select`] = viewpoint.selectedObjectId;
       }
       if (viewpoint.projection) {
-        info[`${prefix}.projection`] = viewpoint.projection;
+        info2[`${prefix}.projection`] = viewpoint.projection;
       }
       if (viewpoint.preset) {
-        info[`${prefix}.preset`] = viewpoint.preset;
+        info2[`${prefix}.preset`] = viewpoint.preset;
       }
       if (viewpoint.zoom !== null) {
-        info[`${prefix}.zoom`] = String(viewpoint.zoom);
+        info2[`${prefix}.zoom`] = String(viewpoint.zoom);
       }
       if (viewpoint.rotationDeg !== 0) {
-        info[`${prefix}.rotation`] = String(viewpoint.rotationDeg);
+        info2[`${prefix}.rotation`] = String(viewpoint.rotationDeg);
       }
       const serializedLayers = serializeViewpointLayers(viewpoint.layers);
       if (serializedLayers) {
-        info[`${prefix}.layers`] = serializedLayers;
+        info2[`${prefix}.layers`] = serializedLayers;
       }
       if (viewpoint.filter?.query) {
-        info[`${prefix}.query`] = viewpoint.filter.query;
+        info2[`${prefix}.query`] = viewpoint.filter.query;
       }
       if ((viewpoint.filter?.objectTypes.length ?? 0) > 0) {
-        info[`${prefix}.types`] = viewpoint.filter?.objectTypes.join(" ") ?? "";
+        info2[`${prefix}.types`] = viewpoint.filter?.objectTypes.join(" ") ?? "";
       }
       if ((viewpoint.filter?.tags.length ?? 0) > 0) {
-        info[`${prefix}.tags`] = viewpoint.filter?.tags.join(" ") ?? "";
+        info2[`${prefix}.tags`] = viewpoint.filter?.tags.join(" ") ?? "";
       }
       if ((viewpoint.filter?.groupIds.length ?? 0) > 0) {
-        info[`${prefix}.groups`] = viewpoint.filter?.groupIds.join(" ") ?? "";
+        info2[`${prefix}.groups`] = viewpoint.filter?.groupIds.join(" ") ?? "";
       }
     }
     for (const annotation of system.annotations) {
       const prefix = `annotation.${annotation.id}`;
-      info[`${prefix}.label`] = annotation.label;
+      info2[`${prefix}.label`] = annotation.label;
       if (annotation.targetObjectId) {
-        info[`${prefix}.target`] = annotation.targetObjectId;
+        info2[`${prefix}.target`] = annotation.targetObjectId;
       }
-      info[`${prefix}.body`] = annotation.body;
+      info2[`${prefix}.body`] = annotation.body;
       if (annotation.tags.length > 0) {
-        info[`${prefix}.tags`] = annotation.tags.join(" ");
+        info2[`${prefix}.tags`] = annotation.tags.join(" ");
       }
       if (annotation.sourceObjectId) {
-        info[`${prefix}.source`] = annotation.sourceObjectId;
+        info2[`${prefix}.source`] = annotation.sourceObjectId;
       }
     }
-    return info;
+    return info2;
   }
   function serializeViewpointLayers(layers) {
     const tokens = [];
@@ -2782,7 +2869,7 @@ var WorldOrbit = (() => {
     if (orbitFront !== void 0 || orbitBack !== void 0) {
       tokens.push(orbitFront !== false || orbitBack !== false ? "orbits" : "-orbits");
     }
-    for (const key of ["background", "guides", "objects", "labels", "metadata"]) {
+    for (const key of ["background", "guides", "relations", "objects", "labels", "metadata"]) {
       if (layers[key] !== void 0) {
         tokens.push(layers[key] ? key : `-${key}`);
       }
@@ -2792,7 +2879,8 @@ var WorldOrbit = (() => {
   function convertAtlasDocumentToLegacyDraft(document2) {
     return {
       ...document2,
-      version: "2.0-draft"
+      version: "2.0-draft",
+      schemaVersion: "2.0-draft"
     };
   }
 
@@ -2834,19 +2922,28 @@ var WorldOrbit = (() => {
   ];
   function formatDocument(document2, options = {}) {
     const schema = options.schema ?? "auto";
-    const useDraft = schema === "2.0" || schema === "2.0-draft" || document2.version === "2.0" || document2.version === "2.0-draft";
+    const useDraft = schema === "2.0" || schema === "2.1" || schema === "2.0-draft" || document2.version === "2.0" || document2.version === "2.1" || document2.version === "2.0-draft";
     if (useDraft) {
       if (schema === "2.0-draft") {
-        const legacyDraftDocument = document2.version === "2.0-draft" ? document2 : document2.version === "2.0" ? {
+        const legacyDraftDocument = document2.version === "2.0-draft" ? document2 : document2.version === "2.0" || document2.version === "2.1" ? {
           ...document2,
-          version: "2.0-draft"
+          version: "2.0-draft",
+          schemaVersion: "2.0-draft"
         } : upgradeDocumentToDraftV2(document2);
         return formatDraftDocument(legacyDraftDocument);
       }
-      const atlasDocument = document2.version === "2.0" ? document2 : document2.version === "2.0-draft" ? {
+      const atlasDocument = document2.version === "2.0" || document2.version === "2.1" ? document2 : document2.version === "2.0-draft" ? {
         ...document2,
-        version: "2.0"
+        version: "2.0",
+        schemaVersion: "2.0"
       } : upgradeDocumentToV2(document2);
+      if (schema === "2.1" && atlasDocument.version !== "2.1") {
+        return formatAtlasDocument({
+          ...atlasDocument,
+          version: "2.1",
+          schemaVersion: "2.1"
+        });
+      }
       return formatAtlasDocument(atlasDocument);
     }
     const lines = [];
@@ -2864,9 +2961,17 @@ var WorldOrbit = (() => {
     return lines.join("\n");
   }
   function formatAtlasDocument(document2) {
-    const lines = ["schema 2.0", ""];
+    const lines = [`schema ${document2.version}`, ""];
     if (document2.system) {
       lines.push(...formatAtlasSystem(document2.system));
+    }
+    for (const group of [...document2.groups].sort(compareIdLike)) {
+      lines.push("");
+      lines.push(...formatAtlasGroup(group));
+    }
+    for (const relation of [...document2.relations].sort(compareIdLike)) {
+      lines.push("");
+      lines.push(...formatAtlasRelation(relation));
     }
     const sortedObjects = [...document2.objects].sort(compareObjects);
     if (sortedObjects.length > 0 && lines.at(-1) !== "") {
@@ -2883,11 +2988,20 @@ var WorldOrbit = (() => {
   function formatDraftDocument(document2) {
     const legacy = document2.version === "2.0-draft" ? document2 : {
       ...document2,
-      version: "2.0-draft"
+      version: "2.0-draft",
+      schemaVersion: "2.0-draft"
     };
     const lines = ["schema 2.0-draft", ""];
     if (legacy.system) {
       lines.push(...formatAtlasSystem(legacy.system));
+    }
+    for (const group of [...legacy.groups].sort(compareIdLike)) {
+      lines.push("");
+      lines.push(...formatAtlasGroup(group));
+    }
+    for (const relation of [...legacy.relations].sort(compareIdLike)) {
+      lines.push("");
+      lines.push(...formatAtlasRelation(relation));
     }
     const sortedObjects = [...legacy.objects].sort(compareObjects);
     if (sortedObjects.length > 0 && lines.at(-1) !== "") {
@@ -2904,10 +3018,37 @@ var WorldOrbit = (() => {
   function formatSystem(system) {
     return formatLines("system", system.id, system.properties, null, system.info);
   }
+  function formatLines(objectType, id, properties, placement, info2) {
+    const lines = [`${objectType} ${id}`];
+    const fieldLines = [...formatPlacement(placement), ...formatProperties(properties)];
+    for (const fieldLine of fieldLines) {
+      lines.push(`  ${fieldLine}`);
+    }
+    const infoEntries = Object.entries(info2).sort(([left], [right]) => left.localeCompare(right));
+    if (infoEntries.length > 0) {
+      if (fieldLines.length > 0) {
+        lines.push("");
+      }
+      lines.push("  info");
+      for (const [key, value] of infoEntries) {
+        lines.push(`    ${key} ${quoteIfNeeded(value)}`);
+      }
+    }
+    return lines;
+  }
   function formatAtlasSystem(system) {
     const lines = [`system ${system.id}`];
     if (system.title) {
       lines.push(`  title ${quoteIfNeeded(system.title)}`);
+    }
+    if (system.description) {
+      lines.push(`  description ${quoteIfNeeded(system.description)}`);
+    }
+    if (system.epoch) {
+      lines.push(`  epoch ${quoteIfNeeded(system.epoch)}`);
+    }
+    if (system.referencePlane) {
+      lines.push(`  referencePlane ${quoteIfNeeded(system.referencePlane)}`);
     }
     lines.push("");
     lines.push("defaults");
@@ -2943,18 +3084,22 @@ var WorldOrbit = (() => {
     return lines;
   }
   function formatObject(object) {
-    return formatLines(object.type, object.id, object.properties, object.placement, object.info);
+    return formatWorldOrbitObject(object.type, object.id, object);
   }
   function formatAtlasObject(object) {
-    return formatLines(`object ${object.type}`, object.id, object.properties, object.placement, object.info);
+    return formatWorldOrbitObject(`object ${object.type}`, object.id, object);
   }
-  function formatLines(objectType, id, properties, placement, info) {
+  function formatWorldOrbitObject(objectType, id, object) {
     const lines = [`${objectType} ${id}`];
-    const fieldLines = [...formatPlacement(placement), ...formatProperties(properties)];
+    const fieldLines = [
+      ...formatPlacement(object.placement),
+      ...formatProperties(object.properties),
+      ...formatObjectMetadata(object)
+    ];
     for (const fieldLine of fieldLines) {
       lines.push(`  ${fieldLine}`);
     }
-    const infoEntries = Object.entries(info).sort(([left], [right]) => left.localeCompare(right));
+    const infoEntries = Object.entries(object.info).sort(([left], [right]) => left.localeCompare(right));
     if (infoEntries.length > 0) {
       if (fieldLines.length > 0) {
         lines.push("");
@@ -2962,6 +3107,16 @@ var WorldOrbit = (() => {
       lines.push("  info");
       for (const [key, value] of infoEntries) {
         lines.push(`    ${key} ${quoteIfNeeded(value)}`);
+      }
+    }
+    for (const blockName of ["climate", "habitability", "settlement"]) {
+      const blockEntries = Object.entries(object.typedBlocks?.[blockName] ?? {}).sort(([left], [right]) => left.localeCompare(right));
+      if (blockEntries.length > 0) {
+        lines.push("");
+        lines.push(`  ${blockName}`);
+        for (const [key, value] of blockEntries) {
+          lines.push(`    ${key} ${quoteIfNeeded(value)}`);
+        }
       }
     }
     return lines;
@@ -2991,6 +3146,46 @@ var WorldOrbit = (() => {
   }
   function formatProperties(properties) {
     return Object.keys(properties).sort(compareFieldKeys).map((key) => `${key} ${formatValue(properties[key])}`);
+  }
+  function formatObjectMetadata(object) {
+    const lines = [];
+    if (object.groups?.length) {
+      lines.push(`groups ${object.groups.join(" ")}`);
+    }
+    if (object.epoch) {
+      lines.push(`epoch ${quoteIfNeeded(object.epoch)}`);
+    }
+    if (object.referencePlane) {
+      lines.push(`referencePlane ${quoteIfNeeded(object.referencePlane)}`);
+    }
+    if (object.tidalLock !== void 0) {
+      lines.push(`tidalLock ${object.tidalLock ? "true" : "false"}`);
+    }
+    if (object.renderHints?.renderLabel !== void 0) {
+      lines.push(`renderLabel ${object.renderHints.renderLabel ? "true" : "false"}`);
+    }
+    if (object.renderHints?.renderOrbit !== void 0) {
+      lines.push(`renderOrbit ${object.renderHints.renderOrbit ? "true" : "false"}`);
+    }
+    if (object.renderHints?.renderPriority !== void 0) {
+      lines.push(`renderPriority ${object.renderHints.renderPriority}`);
+    }
+    if (object.resonance) {
+      lines.push(`resonance ${object.resonance.targetObjectId} ${object.resonance.ratio}`);
+    }
+    for (const rule of object.deriveRules ?? []) {
+      lines.push(`derive ${rule.field} ${rule.strategy}`);
+    }
+    for (const rule of object.validationRules ?? []) {
+      lines.push(`validate ${rule.rule}`);
+    }
+    if (object.lockedFields?.length) {
+      lines.push(`locked ${object.lockedFields.join(" ")}`);
+    }
+    for (const tolerance of object.tolerances ?? []) {
+      lines.push(`tolerance ${tolerance.field} ${formatValue(tolerance.value)}`);
+    }
+    return lines;
   }
   function formatAtlasViewpoint(viewpoint) {
     const lines = [`viewpoint ${viewpoint.id}`, `  label ${quoteIfNeeded(viewpoint.label)}`];
@@ -3047,6 +3242,50 @@ var WorldOrbit = (() => {
     }
     return lines;
   }
+  function formatAtlasGroup(group) {
+    const lines = [`group ${group.id}`, `  label ${quoteIfNeeded(group.label)}`];
+    if (group.summary) {
+      lines.push(`  summary ${quoteIfNeeded(group.summary)}`);
+    }
+    if (group.color) {
+      lines.push(`  color ${quoteIfNeeded(group.color)}`);
+    }
+    if (group.tags.length > 0) {
+      lines.push(`  tags ${group.tags.map(quoteIfNeeded).join(" ")}`);
+    }
+    if (group.hidden) {
+      lines.push("  hidden true");
+    }
+    return lines;
+  }
+  function formatAtlasRelation(relation) {
+    const lines = [`relation ${relation.id}`];
+    if (relation.from) {
+      lines.push(`  from ${quoteIfNeeded(relation.from)}`);
+    }
+    if (relation.to) {
+      lines.push(`  to ${quoteIfNeeded(relation.to)}`);
+    }
+    if (relation.kind) {
+      lines.push(`  kind ${quoteIfNeeded(relation.kind)}`);
+    }
+    if (relation.label) {
+      lines.push(`  label ${quoteIfNeeded(relation.label)}`);
+    }
+    if (relation.summary) {
+      lines.push(`  summary ${quoteIfNeeded(relation.summary)}`);
+    }
+    if (relation.tags.length > 0) {
+      lines.push(`  tags ${relation.tags.map(quoteIfNeeded).join(" ")}`);
+    }
+    if (relation.color) {
+      lines.push(`  color ${quoteIfNeeded(relation.color)}`);
+    }
+    if (relation.hidden) {
+      lines.push("  hidden true");
+    }
+    return lines;
+  }
   function formatValue(value) {
     if (Array.isArray(value)) {
       return value.map((item) => quoteIfNeeded(item)).join(" ");
@@ -3088,7 +3327,7 @@ var WorldOrbit = (() => {
     if (orbitFront !== void 0 || orbitBack !== void 0) {
       tokens.push(orbitFront !== false || orbitBack !== false ? "orbits" : "-orbits");
     }
-    for (const key of ["background", "guides", "objects", "labels", "metadata"]) {
+    for (const key of ["background", "guides", "relations", "objects", "labels", "metadata"]) {
       if (layers[key] !== void 0) {
         tokens.push(layers[key] ? key : `-${key}`);
       }
@@ -3111,6 +3350,9 @@ var WorldOrbit = (() => {
     const rightIndex = objectTypeIndex(right.type);
     if (leftIndex !== rightIndex)
       return leftIndex - rightIndex;
+    return left.id.localeCompare(right.id);
+  }
+  function compareIdLike(left, right) {
     return left.id.localeCompare(right.id);
   }
   function objectTypeIndex(objectType) {
@@ -3142,24 +3384,533 @@ var WorldOrbit = (() => {
     return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
   }
 
+  // packages/core/dist/atlas-utils.js
+  var UNIT_PATTERN2 = /^(-?\d+(?:\.\d+)?)(kpc|min|mj|rj|ky|my|gy|au|km|me|re|pc|ly|deg|sol|K|m|s|h|d|y)?$/;
+  var BOOLEAN_VALUES2 = /* @__PURE__ */ new Map([
+    ["true", true],
+    ["false", false],
+    ["yes", true],
+    ["no", false]
+  ]);
+  var URL_SCHEME_PATTERN2 = /^[A-Za-z][A-Za-z0-9+.-]*:/;
+  function normalizeIdentifier2(value) {
+    return value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  }
+  function humanizeIdentifier3(value) {
+    return value.split(/[-_]+/).filter(Boolean).map((segment) => segment[0].toUpperCase() + segment.slice(1)).join(" ");
+  }
+  function parseAtlasUnitValue(input, location, fieldKey) {
+    const match = input.match(UNIT_PATTERN2);
+    if (!match) {
+      throw WorldOrbitError.fromLocation(`Invalid unit value "${input}"`, location);
+    }
+    const unitValue = {
+      value: Number(match[1]),
+      unit: match[2] ?? null
+    };
+    if (fieldKey) {
+      const schema = getFieldSchema(fieldKey);
+      if (schema?.unitFamily && !unitFamilyAllowsUnit(schema.unitFamily, unitValue.unit)) {
+        throw WorldOrbitError.fromLocation(`Unit "${unitValue.unit ?? "none"}" is not valid for "${fieldKey}"`, location);
+      }
+    }
+    return unitValue;
+  }
+  function tryParseAtlasUnitValue(input) {
+    const match = input.match(UNIT_PATTERN2);
+    if (!match) {
+      return null;
+    }
+    return {
+      value: Number(match[1]),
+      unit: match[2] ?? null
+    };
+  }
+  function parseAtlasNumber(input, key, location) {
+    const value = Number(input);
+    if (!Number.isFinite(value)) {
+      throw WorldOrbitError.fromLocation(`Invalid numeric value "${input}" for "${key}"`, location);
+    }
+    return value;
+  }
+  function parseAtlasBoolean(input, key, location) {
+    const parsed = BOOLEAN_VALUES2.get(input.toLowerCase());
+    if (parsed === void 0) {
+      throw WorldOrbitError.fromLocation(`Invalid boolean value "${input}" for "${key}"`, location);
+    }
+    return parsed;
+  }
+  function parseAtlasAtReference(target, location) {
+    if (/^[A-Za-z0-9._-]+-[A-Za-z0-9._-]+:L\d+$/i.test(target)) {
+      throw WorldOrbitError.fromLocation(`Invalid special position "${target}"`, location);
+    }
+    const pairedMatch = target.match(/^([A-Za-z0-9._-]+)-([A-Za-z0-9._-]+):(L[1-5])$/);
+    if (pairedMatch) {
+      return {
+        kind: "lagrange",
+        primary: pairedMatch[1],
+        secondary: pairedMatch[2],
+        point: pairedMatch[3]
+      };
+    }
+    const simpleMatch = target.match(/^([A-Za-z0-9._-]+):(L[1-5])$/);
+    if (simpleMatch) {
+      return {
+        kind: "lagrange",
+        primary: simpleMatch[1],
+        secondary: null,
+        point: simpleMatch[2]
+      };
+    }
+    if (/^[A-Za-z0-9._-]+:L\d+$/i.test(target)) {
+      throw WorldOrbitError.fromLocation(`Invalid special position "${target}"`, location);
+    }
+    const anchorMatch = target.match(/^([A-Za-z0-9._-]+):([A-Za-z0-9._-]+)$/);
+    if (anchorMatch) {
+      return {
+        kind: "anchor",
+        objectId: anchorMatch[1],
+        anchor: anchorMatch[2]
+      };
+    }
+    return {
+      kind: "named",
+      name: target
+    };
+  }
+  function validateAtlasImageSource(value, location) {
+    if (!value) {
+      throw WorldOrbitError.fromLocation('Field "image" must not be empty', location);
+    }
+    if (value.startsWith("//")) {
+      throw WorldOrbitError.fromLocation('Field "image" must use a relative path, root-relative path, or an http/https URL', location);
+    }
+    const schemeMatch = value.match(URL_SCHEME_PATTERN2);
+    if (!schemeMatch) {
+      return;
+    }
+    const scheme = schemeMatch[0].slice(0, -1).toLowerCase();
+    if (scheme !== "http" && scheme !== "https") {
+      throw WorldOrbitError.fromLocation(`Field "image" does not support the "${scheme}" scheme`, location);
+    }
+  }
+  function normalizeLegacyScalarValue(key, values, location) {
+    const schema = getFieldSchema(key);
+    if (!schema) {
+      throw WorldOrbitError.fromLocation(`Unknown field "${key}"`, location);
+    }
+    if (schema.arity === "single" && values.length !== 1) {
+      throw WorldOrbitError.fromLocation(`Field "${key}" expects exactly one value`, location);
+    }
+    switch (schema.kind) {
+      case "list":
+        return values;
+      case "boolean":
+        return parseAtlasBoolean(singleAtlasValue(values, key, location), key, location);
+      case "number":
+        return parseAtlasNumber(singleAtlasValue(values, key, location), key, location);
+      case "unit":
+        return parseAtlasUnitValue(singleAtlasValue(values, key, location), location, key);
+      case "string": {
+        const value = values.join(" ").trim();
+        if (key === "image") {
+          validateAtlasImageSource(value, location);
+        }
+        return value;
+      }
+    }
+  }
+  function ensureAtlasFieldSupported(key, objectType, location) {
+    const schema = getFieldSchema(key);
+    if (!schema) {
+      throw WorldOrbitError.fromLocation(`Unknown field "${key}"`, location);
+    }
+    if (!schema.objectTypes.includes(objectType)) {
+      throw WorldOrbitError.fromLocation(`Field "${key}" is not valid on "${objectType}"`, location);
+    }
+  }
+  function singleAtlasValue(values, key, location) {
+    if (values.length !== 1) {
+      throw WorldOrbitError.fromLocation(`Field "${key}" expects exactly one value`, location);
+    }
+    return values[0];
+  }
+
+  // packages/core/dist/atlas-validate.js
+  var SURFACE_TARGET_TYPES2 = /* @__PURE__ */ new Set(["star", "planet", "moon", "asteroid", "comet"]);
+  var EARTH_MASSES_PER_SOLAR = 332946.0487;
+  var JUPITER_MASSES_PER_SOLAR = 1047.3486;
+  var AU_IN_KM2 = 1495978707e-1;
+  var EARTH_RADIUS_IN_KM2 = 6371;
+  var SOLAR_RADIUS_IN_KM2 = 695700;
+  var LY_IN_AU2 = 63241.077;
+  var PC_IN_AU2 = 206264.806;
+  var KPC_IN_AU2 = 206264806;
+  function collectAtlasDiagnostics(document2, sourceSchemaVersion) {
+    const diagnostics = [];
+    const objectMap = new Map(document2.objects.map((object) => [object.id, object]));
+    const groupIds = new Set(document2.groups.map((group) => group.id));
+    if (!document2.system) {
+      diagnostics.push(error("validate.system.required", "Atlas documents must declare exactly one system."));
+    }
+    const knownIds = /* @__PURE__ */ new Map();
+    for (const [kind, ids] of [
+      ["group", document2.groups.map((group) => group.id)],
+      ["viewpoint", document2.system?.viewpoints.map((viewpoint) => viewpoint.id) ?? []],
+      ["annotation", document2.system?.annotations.map((annotation) => annotation.id) ?? []],
+      ["relation", document2.relations.map((relation) => relation.id)],
+      ["object", document2.objects.map((object) => object.id)]
+    ]) {
+      for (const id of ids) {
+        const previous = knownIds.get(id);
+        if (previous) {
+          diagnostics.push(error("validate.id.duplicate", `Duplicate ${kind} id "${id}" already used by ${previous}.`));
+        } else {
+          knownIds.set(id, kind);
+        }
+      }
+    }
+    for (const relation of document2.relations) {
+      validateRelation(relation, objectMap, diagnostics);
+    }
+    for (const viewpoint of document2.system?.viewpoints ?? []) {
+      validateViewpointFilter(viewpoint.filter, groupIds, sourceSchemaVersion, diagnostics, viewpoint.id);
+    }
+    for (const object of document2.objects) {
+      validateObject(object, document2.system, objectMap, groupIds, diagnostics);
+    }
+    return diagnostics;
+  }
+  function validateRelation(relation, objectMap, diagnostics) {
+    if (!relation.from) {
+      diagnostics.push(error("validate.relation.from.required", `Relation "${relation.id}" is missing a "from" target.`));
+    } else if (!objectMap.has(relation.from)) {
+      diagnostics.push(error("validate.relation.from.unknown", `Unknown relation source "${relation.from}" on "${relation.id}".`));
+    }
+    if (!relation.to) {
+      diagnostics.push(error("validate.relation.to.required", `Relation "${relation.id}" is missing a "to" target.`));
+    } else if (!objectMap.has(relation.to)) {
+      diagnostics.push(error("validate.relation.to.unknown", `Unknown relation target "${relation.to}" on "${relation.id}".`));
+    }
+    if (!relation.kind) {
+      diagnostics.push(error("validate.relation.kind.required", `Relation "${relation.id}" is missing a "kind" value.`));
+    }
+  }
+  function validateViewpointFilter(filter, groupIds, sourceSchemaVersion, diagnostics, viewpointId) {
+    if (!filter || sourceSchemaVersion !== "2.1") {
+      return;
+    }
+    for (const groupId of filter.groupIds) {
+      if (!groupIds.has(groupId)) {
+        diagnostics.push(warn("validate.viewpoint.group.unknown", `Unknown group "${groupId}" in viewpoint "${viewpointId}".`));
+      }
+    }
+  }
+  function validateObject(object, system, objectMap, groupIds, diagnostics) {
+    const placement = object.placement;
+    const orbitPlacement = placement?.mode === "orbit" ? placement : null;
+    const parentObject = placement?.mode === "orbit" ? objectMap.get(placement.target) ?? null : null;
+    if (object.groups) {
+      for (const groupId of object.groups) {
+        if (!groupIds.has(groupId)) {
+          diagnostics.push(warn("validate.group.unknown", `Unknown group "${groupId}" on "${object.id}".`, object.id, "groups"));
+        }
+      }
+    }
+    if (orbitPlacement) {
+      if (!objectMap.has(orbitPlacement.target)) {
+        diagnostics.push(error("validate.orbit.target.unknown", `Unknown placement target "${orbitPlacement.target}" on "${object.id}".`, object.id, "orbit"));
+      }
+      if (orbitPlacement.distance && orbitPlacement.semiMajor) {
+        diagnostics.push(error("validate.orbit.distanceConflict", `Object "${object.id}" cannot declare both "distance" and "semiMajor".`, object.id, "distance"));
+      }
+      if (orbitPlacement.phase && !object.epoch && !system?.epoch) {
+        diagnostics.push(warn("validate.phase.epochMissing", `Object "${object.id}" sets "phase" without an object or system epoch.`, object.id, "phase"));
+      }
+      if (orbitPlacement.inclination && !object.referencePlane && !system?.referencePlane) {
+        diagnostics.push(warn("validate.inclination.referencePlaneMissing", `Object "${object.id}" sets "inclination" without an object or system reference plane.`, object.id, "inclination"));
+      }
+      if (orbitPlacement.period && !massInSolar(parentObject?.properties.mass)) {
+        diagnostics.push(warn("validate.period.massMissing", `Object "${object.id}" sets "period" but its central mass cannot be derived.`, object.id, "period"));
+      }
+    }
+    if (placement?.mode === "surface") {
+      const target = objectMap.get(placement.target);
+      if (!target) {
+        diagnostics.push(error("validate.surface.target.unknown", `Unknown placement target "${placement.target}" on "${object.id}".`, object.id, "surface"));
+      } else if (!SURFACE_TARGET_TYPES2.has(target.type)) {
+        diagnostics.push(error("validate.surface.target.invalid", `Surface target "${placement.target}" on "${object.id}" is not surface-capable.`, object.id, "surface"));
+      }
+    }
+    if (placement?.mode === "at") {
+      if (object.type !== "structure" && object.type !== "phenomenon") {
+        diagnostics.push(error("validate.at.objectType", `Only structures and phenomena may use "at" placement; found "${object.type}" on "${object.id}".`, object.id, "at"));
+      }
+      if (!validateAtTarget(object, objectMap, diagnostics)) {
+        diagnostics.push(error("validate.at.target.unknown", `Unknown at-reference target "${placement.target}" on "${object.id}".`, object.id, "at"));
+      }
+    }
+    if (object.resonance) {
+      const target = objectMap.get(object.resonance.targetObjectId);
+      if (!target) {
+        diagnostics.push(error("validate.resonance.target.unknown", `Unknown resonance target "${object.resonance.targetObjectId}" on "${object.id}".`, object.id, "resonance"));
+      } else if (object.placement?.mode !== "orbit" || target.placement?.mode !== "orbit" || object.placement.target !== target.placement.target) {
+        diagnostics.push(warn("validate.resonance.orbitMismatch", `Resonance target "${object.resonance.targetObjectId}" on "${object.id}" does not share a compatible orbital parent.`, object.id, "resonance"));
+      }
+    }
+    for (const rule of object.deriveRules ?? []) {
+      if (rule.field !== "period" || rule.strategy !== "kepler") {
+        diagnostics.push(warn("validate.derive.unsupported", `Unsupported derive rule "${rule.field} ${rule.strategy}" on "${object.id}".`, object.id, "derive"));
+        continue;
+      }
+      const derivedPeriodDays = keplerPeriodDays(object, parentObject);
+      if (derivedPeriodDays === null) {
+        diagnostics.push(warn("validate.derive.inputsMissing", `Object "${object.id}" requests "derive period kepler" but lacks enough input data.`, object.id, "derive"));
+        continue;
+      }
+      if (!orbitPlacement?.period) {
+        diagnostics.push(info("validate.derive.period.available", `Object "${object.id}" can derive a Kepler period of ${formatDays(derivedPeriodDays)}.`, object.id, "derive"));
+      }
+    }
+    for (const rule of object.validationRules ?? []) {
+      if (rule.rule !== "kepler") {
+        diagnostics.push(warn("validate.rule.unsupported", `Unsupported validation rule "${rule.rule}" on "${object.id}".`, object.id, "validate"));
+        continue;
+      }
+      const actualPeriodDays = durationInDays(orbitPlacement?.period);
+      const derivedPeriodDays = keplerPeriodDays(object, parentObject);
+      if (actualPeriodDays === null || derivedPeriodDays === null) {
+        continue;
+      }
+      const toleranceDays = toleranceForField(object, "period");
+      if (Math.abs(actualPeriodDays - derivedPeriodDays) > toleranceDays) {
+        diagnostics.push(error("validate.kepler.mismatch", `Object "${object.id}" fails Kepler validation for "period".`, object.id, "validate"));
+      }
+    }
+  }
+  function validateAtTarget(object, objectMap, diagnostics) {
+    const reference = object.placement?.mode === "at" ? object.placement.reference : null;
+    if (!reference) {
+      return true;
+    }
+    if (reference.kind === "named") {
+      return objectMap.has(reference.name);
+    }
+    if (reference.kind === "anchor") {
+      if (!objectMap.has(reference.objectId)) {
+        diagnostics.push(error("validate.anchor.target.unknown", `Unknown anchor target "${reference.objectId}" on "${object.id}".`, object.id, "at"));
+        return false;
+      }
+      return true;
+    }
+    if (!objectMap.has(reference.primary)) {
+      diagnostics.push(error("validate.lagrange.primary.unknown", `Unknown Lagrange reference "${reference.primary}" on "${object.id}".`, object.id, "at"));
+      return false;
+    }
+    if (reference.secondary && !objectMap.has(reference.secondary)) {
+      diagnostics.push(error("validate.lagrange.secondary.unknown", `Unknown Lagrange reference "${reference.secondary}" on "${object.id}".`, object.id, "at"));
+      return false;
+    }
+    return true;
+  }
+  function keplerPeriodDays(object, parentObject) {
+    const placement = object.placement;
+    if (!placement || placement.mode !== "orbit") {
+      return null;
+    }
+    const semiMajorAu = distanceInAu(placement.semiMajor ?? placement.distance);
+    const centralMassSolar = massInSolar(parentObject?.properties.mass);
+    if (semiMajorAu === null || centralMassSolar === null || centralMassSolar <= 0) {
+      return null;
+    }
+    const periodYears = Math.sqrt(semiMajorAu ** 3 / centralMassSolar);
+    return periodYears * 365.25;
+  }
+  function distanceInAu(value) {
+    if (!value)
+      return null;
+    switch (value.unit) {
+      case null:
+      case "au":
+        return value.value;
+      case "km":
+        return value.value / AU_IN_KM2;
+      case "m":
+        return value.value / (AU_IN_KM2 * 1e3);
+      case "ly":
+        return value.value * LY_IN_AU2;
+      case "pc":
+        return value.value * PC_IN_AU2;
+      case "kpc":
+        return value.value * KPC_IN_AU2;
+      case "re":
+        return value.value * EARTH_RADIUS_IN_KM2 / AU_IN_KM2;
+      case "sol":
+        return value.value * SOLAR_RADIUS_IN_KM2 / AU_IN_KM2;
+      default:
+        return null;
+    }
+  }
+  function massInSolar(value) {
+    if (!value || typeof value !== "object" || !("value" in value)) {
+      return null;
+    }
+    const unitValue = value;
+    switch (unitValue.unit) {
+      case null:
+      case "sol":
+        return unitValue.value;
+      case "me":
+        return unitValue.value / EARTH_MASSES_PER_SOLAR;
+      case "mj":
+        return unitValue.value / JUPITER_MASSES_PER_SOLAR;
+      default:
+        return null;
+    }
+  }
+  function durationInDays(value) {
+    if (!value)
+      return null;
+    switch (value.unit) {
+      case null:
+      case "d":
+        return value.value;
+      case "s":
+        return value.value / 86400;
+      case "min":
+        return value.value / 1440;
+      case "h":
+        return value.value / 24;
+      case "y":
+        return value.value * 365.25;
+      case "ky":
+        return value.value * 365250;
+      case "my":
+        return value.value * 36525e4;
+      case "gy":
+        return value.value * 36525e7;
+      default:
+        return null;
+    }
+  }
+  function toleranceForField(object, field) {
+    const tolerance = object.tolerances?.find((entry) => entry.field === field)?.value;
+    if (typeof tolerance === "number") {
+      return tolerance;
+    }
+    if (tolerance && typeof tolerance === "object" && "value" in tolerance) {
+      return durationInDays(tolerance) ?? 0;
+    }
+    return 0;
+  }
+  function formatDays(days) {
+    return `${Math.round(days * 100) / 100}d`;
+  }
+  function error(code, message, objectId, field) {
+    return { code, severity: "error", source: "validate", message, objectId, field };
+  }
+  function warn(code, message, objectId, field) {
+    return { code, severity: "warning", source: "validate", message, objectId, field };
+  }
+  function info(code, message, objectId, field) {
+    return { code, severity: "info", source: "validate", message, objectId, field };
+  }
+
   // packages/core/dist/draft-parse.js
+  var STRUCTURED_TYPED_BLOCKS = /* @__PURE__ */ new Set([
+    "climate",
+    "habitability",
+    "settlement"
+  ]);
+  var DRAFT_OBJECT_FIELD_SPECS = /* @__PURE__ */ new Map();
+  for (const key of [
+    "orbit",
+    "distance",
+    "semiMajor",
+    "eccentricity",
+    "period",
+    "angle",
+    "inclination",
+    "phase",
+    "at",
+    "surface",
+    "free",
+    "kind",
+    "class",
+    "culture",
+    "tags",
+    "color",
+    "image",
+    "hidden",
+    "radius",
+    "mass",
+    "density",
+    "gravity",
+    "temperature",
+    "albedo",
+    "atmosphere",
+    "inner",
+    "outer",
+    "on",
+    "source",
+    "cycle"
+  ]) {
+    const schema = getFieldSchema(key);
+    if (schema) {
+      DRAFT_OBJECT_FIELD_SPECS.set(key, {
+        key,
+        version: "2.0",
+        inlineMode: schema.arity === "multiple" ? "multiple" : "single",
+        allowRepeat: false,
+        legacySchema: schema
+      });
+    }
+  }
+  for (const spec of [
+    { key: "groups", inlineMode: "multiple", allowRepeat: false },
+    { key: "epoch", inlineMode: "single", allowRepeat: false },
+    { key: "referencePlane", inlineMode: "single", allowRepeat: false },
+    { key: "tidalLock", inlineMode: "single", allowRepeat: false },
+    { key: "renderLabel", inlineMode: "single", allowRepeat: false },
+    { key: "renderOrbit", inlineMode: "single", allowRepeat: false },
+    { key: "renderPriority", inlineMode: "single", allowRepeat: false },
+    { key: "resonance", inlineMode: "pair", allowRepeat: false },
+    { key: "derive", inlineMode: "pair", allowRepeat: true },
+    { key: "validate", inlineMode: "single", allowRepeat: true },
+    { key: "locked", inlineMode: "multiple", allowRepeat: false },
+    { key: "tolerance", inlineMode: "pair", allowRepeat: true }
+  ]) {
+    DRAFT_OBJECT_FIELD_SPECS.set(spec.key, {
+      key: spec.key,
+      version: "2.1",
+      inlineMode: spec.inlineMode,
+      allowRepeat: spec.allowRepeat
+    });
+  }
+  var DRAFT_OBJECT_FIELD_KEYS = new Set(DRAFT_OBJECT_FIELD_SPECS.keys());
   function parseWorldOrbitAtlas(source) {
-    return parseAtlasSource(source, "2.0");
+    return parseAtlasSource(source);
   }
   function parseWorldOrbitDraft(source) {
     return parseAtlasSource(source, "2.0-draft");
   }
-  function parseAtlasSource(source, outputVersion) {
-    const lines = source.split(/\r?\n/);
+  function parseAtlasSource(source, forcedOutputVersion) {
+    const prepared = preprocessAtlasSource(source);
+    const lines = prepared.source.split(/\r?\n/);
+    const diagnostics = [];
     let sawSchemaHeader = false;
-    let schemaVersion = "2.0";
+    let sourceSchemaVersion = "2.0";
     let system = null;
     let section = null;
     const objectNodes = [];
+    const groups = [];
+    const relations = [];
     let sawDefaults = false;
     let sawAtlas = false;
     const viewpointIds = /* @__PURE__ */ new Set();
     const annotationIds = /* @__PURE__ */ new Set();
+    const groupIds = /* @__PURE__ */ new Set();
+    const relationIds = /* @__PURE__ */ new Set();
     for (let index = 0; index < lines.length; index++) {
       const rawLine = lines[index];
       const lineNumber = index + 1;
@@ -3175,15 +3926,22 @@ var WorldOrbit = (() => {
         continue;
       }
       if (!sawSchemaHeader) {
-        schemaVersion = assertDraftSchemaHeader(tokens, lineNumber);
+        sourceSchemaVersion = assertDraftSchemaHeader(tokens, lineNumber);
         sawSchemaHeader = true;
+        if (prepared.comments.length > 0 && sourceSchemaVersion !== "2.1") {
+          diagnostics.push({
+            code: "parse.schema21.commentCompatibility",
+            severity: "warning",
+            source: "parse",
+            message: `Comments require schema 2.1; parsed in compatibility mode because the document header is "schema ${sourceSchemaVersion}".`,
+            line: prepared.comments[0].line,
+            column: prepared.comments[0].column
+          });
+        }
         continue;
       }
       if (indent === 0) {
-        section = startTopLevelSection(tokens, lineNumber, system, objectNodes, viewpointIds, annotationIds, {
-          sawDefaults,
-          sawAtlas
-        });
+        section = startTopLevelSection(tokens, lineNumber, sourceSchemaVersion, diagnostics, system, objectNodes, groups, relations, viewpointIds, annotationIds, groupIds, relationIds, { sawDefaults, sawAtlas });
         if (section.kind === "system") {
           system = section.system;
         } else if (section.kind === "defaults") {
@@ -3201,48 +3959,57 @@ var WorldOrbit = (() => {
     if (!sawSchemaHeader) {
       throw new WorldOrbitError('Missing required atlas schema header "schema 2.0"');
     }
-    const ast = {
-      type: "document",
-      objects: objectNodes
-    };
-    const normalizedObjects = normalizeDocument(ast).objects;
-    validateDocument({
+    const objects = objectNodes.map((node) => normalizeDraftObject(node, sourceSchemaVersion, diagnostics));
+    const outputVersion = forcedOutputVersion ?? (sourceSchemaVersion === "2.0-draft" ? "2.0" : sourceSchemaVersion);
+    const baseDocument = {
       format: "worldorbit",
-      version: "1.0",
-      system: null,
-      objects: normalizedObjects
-    });
-    const diagnostics = schemaVersion === "2.0-draft" && outputVersion === "2.0" ? [
-      {
+      sourceVersion: "1.0",
+      system,
+      groups,
+      relations,
+      objects,
+      diagnostics
+    };
+    if (outputVersion === "2.0-draft") {
+      const document3 = {
+        ...baseDocument,
+        version: "2.0-draft",
+        schemaVersion: "2.0-draft"
+      };
+      document3.diagnostics.push(...collectAtlasDiagnostics(document3, sourceSchemaVersion));
+      return document3;
+    }
+    const document2 = {
+      ...baseDocument,
+      version: outputVersion,
+      schemaVersion: outputVersion
+    };
+    if (sourceSchemaVersion === "2.0-draft") {
+      document2.diagnostics.push({
         code: "load.schema.deprecatedDraft",
         severity: "warning",
         source: "upgrade",
         message: 'Source header "schema 2.0-draft" is deprecated; canonical v2 documents now use "schema 2.0".'
-      }
-    ] : [];
-    return {
-      format: "worldorbit",
-      version: outputVersion,
-      sourceVersion: "1.0",
-      system,
-      objects: normalizedObjects,
-      diagnostics
-    };
+      });
+    }
+    document2.diagnostics.push(...collectAtlasDiagnostics(document2, sourceSchemaVersion));
+    return document2;
   }
   function assertDraftSchemaHeader(tokens, line) {
-    if (tokens.length !== 2 || tokens[0].value.toLowerCase() !== "schema" || tokens[1].value.toLowerCase() !== "2.0-draft" && tokens[1].value.toLowerCase() !== "2.0") {
-      throw new WorldOrbitError('Expected atlas header "schema 2.0" or legacy "schema 2.0-draft"', line, tokens[0]?.column ?? 1);
+    if (tokens.length !== 2 || tokens[0].value.toLowerCase() !== "schema" || !["2.0-draft", "2.0", "2.1"].includes(tokens[1].value.toLowerCase())) {
+      throw new WorldOrbitError('Expected atlas header "schema 2.0", "schema 2.1", or legacy "schema 2.0-draft"', line, tokens[0]?.column ?? 1);
     }
-    return tokens[1].value.toLowerCase() === "2.0-draft" ? "2.0-draft" : "2.0";
+    const version = tokens[1].value.toLowerCase();
+    return version === "2.1" ? "2.1" : version === "2.0-draft" ? "2.0-draft" : "2.0";
   }
-  function startTopLevelSection(tokens, line, system, objectNodes, viewpointIds, annotationIds, flags) {
+  function startTopLevelSection(tokens, line, sourceSchemaVersion, diagnostics, system, objectNodes, groups, relations, viewpointIds, annotationIds, groupIds, relationIds, flags) {
     const keyword = tokens[0]?.value.toLowerCase();
     switch (keyword) {
       case "system":
         if (system) {
           throw new WorldOrbitError('Atlas section "system" may only appear once', line, tokens[0].column);
         }
-        return startSystemSection(tokens, line);
+        return startSystemSection(tokens, line, sourceSchemaVersion, diagnostics);
       case "defaults":
         if (!system) {
           throw new WorldOrbitError('Atlas section "defaults" requires a preceding system declaration', line, tokens[0].column);
@@ -3278,13 +4045,19 @@ var WorldOrbit = (() => {
           throw new WorldOrbitError('Atlas section "annotation" requires a preceding system declaration', line, tokens[0].column);
         }
         return startAnnotationSection(tokens, line, system, annotationIds);
+      case "group":
+        warnIfSchema21Feature(sourceSchemaVersion, diagnostics, "group", { line, column: tokens[0].column });
+        return startGroupSection(tokens, line, groups, groupIds);
+      case "relation":
+        warnIfSchema21Feature(sourceSchemaVersion, diagnostics, "relation", { line, column: tokens[0].column });
+        return startRelationSection(tokens, line, relations, relationIds);
       case "object":
-        return startObjectSection(tokens, line, objectNodes);
+        return startObjectSection(tokens, line, sourceSchemaVersion, diagnostics, objectNodes);
       default:
         throw new WorldOrbitError(`Unknown atlas section "${tokens[0]?.value ?? ""}"`, line, tokens[0]?.column ?? 1);
     }
   }
-  function startSystemSection(tokens, line) {
+  function startSystemSection(tokens, line, sourceSchemaVersion, diagnostics) {
     if (tokens.length !== 2) {
       throw new WorldOrbitError("Invalid atlas system declaration", line, tokens[0]?.column ?? 1);
     }
@@ -3292,6 +4065,9 @@ var WorldOrbit = (() => {
       type: "system",
       id: tokens[1].value,
       title: null,
+      description: null,
+      epoch: null,
+      referencePlane: null,
       defaults: {
         view: "topdown",
         scale: null,
@@ -3306,6 +4082,8 @@ var WorldOrbit = (() => {
     return {
       kind: "system",
       system,
+      sourceSchemaVersion,
+      diagnostics,
       seenFields: /* @__PURE__ */ new Set()
     };
   }
@@ -3371,7 +4149,64 @@ var WorldOrbit = (() => {
       seenFields: /* @__PURE__ */ new Set()
     };
   }
-  function startObjectSection(tokens, line, objectNodes) {
+  function startGroupSection(tokens, line, groups, groupIds) {
+    if (tokens.length !== 2) {
+      throw new WorldOrbitError("Invalid group declaration", line, tokens[0]?.column ?? 1);
+    }
+    const id = normalizeIdentifier2(tokens[1].value);
+    if (!id) {
+      throw new WorldOrbitError("Group id must not be empty", line, tokens[1].column);
+    }
+    if (groupIds.has(id)) {
+      throw new WorldOrbitError(`Duplicate group id "${id}"`, line, tokens[1].column);
+    }
+    const group = {
+      id,
+      label: humanizeIdentifier3(id),
+      summary: "",
+      color: null,
+      tags: [],
+      hidden: false
+    };
+    groups.push(group);
+    groupIds.add(id);
+    return {
+      kind: "group",
+      group,
+      seenFields: /* @__PURE__ */ new Set()
+    };
+  }
+  function startRelationSection(tokens, line, relations, relationIds) {
+    if (tokens.length !== 2) {
+      throw new WorldOrbitError("Invalid relation declaration", line, tokens[0]?.column ?? 1);
+    }
+    const id = normalizeIdentifier2(tokens[1].value);
+    if (!id) {
+      throw new WorldOrbitError("Relation id must not be empty", line, tokens[1].column);
+    }
+    if (relationIds.has(id)) {
+      throw new WorldOrbitError(`Duplicate relation id "${id}"`, line, tokens[1].column);
+    }
+    const relation = {
+      id,
+      from: "",
+      to: "",
+      kind: "",
+      label: null,
+      summary: null,
+      tags: [],
+      color: null,
+      hidden: false
+    };
+    relations.push(relation);
+    relationIds.add(id);
+    return {
+      kind: "relation",
+      relation,
+      seenFields: /* @__PURE__ */ new Set()
+    };
+  }
+  function startObjectSection(tokens, line, sourceSchemaVersion, diagnostics, objectNodes) {
     if (tokens.length < 3) {
       throw new WorldOrbitError("Invalid atlas object declaration", line, tokens[0]?.column ?? 1);
     }
@@ -3382,12 +4217,11 @@ var WorldOrbit = (() => {
       throw new WorldOrbitError(`Unknown object type "${objectTypeToken.value}"`, line, objectTypeToken.column);
     }
     const objectNode = {
-      type: "object",
       objectType,
-      name: idToken.value,
-      inlineFields: parseInlineFields2(tokens.slice(3), line),
-      blockFields: [],
+      id: idToken.value,
+      fields: parseInlineObjectFields(tokens.slice(3), line, objectType, sourceSchemaVersion, diagnostics),
       infoEntries: [],
+      typedBlockEntries: {},
       location: {
         line,
         column: objectTypeToken.column
@@ -3397,8 +4231,12 @@ var WorldOrbit = (() => {
     return {
       kind: "object",
       objectNode,
-      inInfoBlock: false,
-      infoIndent: null
+      sourceSchemaVersion,
+      diagnostics,
+      activeBlock: null,
+      blockIndent: null,
+      seenInfoKeys: /* @__PURE__ */ new Set(),
+      seenTypedBlockKeys: {}
     };
   }
   function handleSectionLine(section, indent, tokens, line) {
@@ -3418,6 +4256,12 @@ var WorldOrbit = (() => {
       case "annotation":
         applyAnnotationField(section, tokens, line);
         return;
+      case "group":
+        applyGroupField(section, tokens, line);
+        return;
+      case "relation":
+        applyRelationField(section, tokens, line);
+        return;
       case "object":
         applyObjectField(section, indent, tokens, line);
         return;
@@ -3425,10 +4269,35 @@ var WorldOrbit = (() => {
   }
   function applySystemField(section, tokens, line) {
     const key = requireUniqueField(tokens, section.seenFields, line);
-    if (key !== "title") {
-      throw new WorldOrbitError(`Unknown system atlas field "${tokens[0].value}"`, line, tokens[0].column);
+    const value = joinFieldValue(tokens, line);
+    switch (key) {
+      case "title":
+        section.system.title = value;
+        return;
+      case "description":
+        warnIfSchema21Feature(section.sourceSchemaVersion, section.diagnostics, key, {
+          line,
+          column: tokens[0].column
+        });
+        section.system.description = value;
+        return;
+      case "epoch":
+        warnIfSchema21Feature(section.sourceSchemaVersion, section.diagnostics, key, {
+          line,
+          column: tokens[0].column
+        });
+        section.system.epoch = value;
+        return;
+      case "referenceplane":
+        warnIfSchema21Feature(section.sourceSchemaVersion, section.diagnostics, "referencePlane", {
+          line,
+          column: tokens[0].column
+        });
+        section.system.referencePlane = value;
+        return;
+      default:
+        throw new WorldOrbitError(`Unknown system atlas field "${tokens[0].value}"`, line, tokens[0].column);
     }
-    section.system.title = joinFieldValue(tokens, line);
   }
   function applyDefaultsField(section, tokens, line) {
     const key = requireUniqueField(tokens, section.seenFields, line);
@@ -3459,14 +4328,11 @@ var WorldOrbit = (() => {
       section.metadataIndent = null;
     }
     if (section.inMetadata) {
-      if (tokens.length < 2) {
-        throw new WorldOrbitError("Invalid atlas metadata entry", line, tokens[0]?.column ?? 1);
+      const entry = parseInfoLikeEntry(tokens, line, "Invalid atlas metadata entry");
+      if (entry.key in section.system.atlasMetadata) {
+        throw new WorldOrbitError(`Duplicate atlas metadata key "${entry.key}"`, line, tokens[0].column);
       }
-      const key = tokens[0].value;
-      if (key in section.system.atlasMetadata) {
-        throw new WorldOrbitError(`Duplicate atlas metadata key "${key}"`, line, tokens[0].column);
-      }
-      section.system.atlasMetadata[key] = joinFieldValue(tokens, line);
+      section.system.atlasMetadata[entry.key] = entry.value;
       return;
     }
     if (tokens.length === 1 && tokens[0].value.toLowerCase() === "metadata") {
@@ -3568,21 +4434,102 @@ var WorldOrbit = (() => {
         throw new WorldOrbitError(`Unknown annotation field "${tokens[0].value}"`, line, tokens[0].column);
     }
   }
+  function applyGroupField(section, tokens, line) {
+    const key = requireUniqueField(tokens, section.seenFields, line);
+    switch (key) {
+      case "label":
+        section.group.label = joinFieldValue(tokens, line);
+        return;
+      case "summary":
+        section.group.summary = joinFieldValue(tokens, line);
+        return;
+      case "color":
+        section.group.color = joinFieldValue(tokens, line);
+        return;
+      case "tags":
+        section.group.tags = parseTokenList(tokens.slice(1), line, "tags");
+        return;
+      case "hidden":
+        section.group.hidden = parseAtlasBoolean(joinFieldValue(tokens, line), "hidden", {
+          line,
+          column: tokens[0].column
+        });
+        return;
+      default:
+        throw new WorldOrbitError(`Unknown group field "${tokens[0].value}"`, line, tokens[0].column);
+    }
+  }
+  function applyRelationField(section, tokens, line) {
+    const key = requireUniqueField(tokens, section.seenFields, line);
+    switch (key) {
+      case "from":
+        section.relation.from = joinFieldValue(tokens, line);
+        return;
+      case "to":
+        section.relation.to = joinFieldValue(tokens, line);
+        return;
+      case "kind":
+        section.relation.kind = joinFieldValue(tokens, line);
+        return;
+      case "label":
+        section.relation.label = joinFieldValue(tokens, line);
+        return;
+      case "summary":
+        section.relation.summary = joinFieldValue(tokens, line);
+        return;
+      case "tags":
+        section.relation.tags = parseTokenList(tokens.slice(1), line, "tags");
+        return;
+      case "color":
+        section.relation.color = joinFieldValue(tokens, line);
+        return;
+      case "hidden":
+        section.relation.hidden = parseAtlasBoolean(joinFieldValue(tokens, line), "hidden", {
+          line,
+          column: tokens[0].column
+        });
+        return;
+      default:
+        throw new WorldOrbitError(`Unknown relation field "${tokens[0].value}"`, line, tokens[0].column);
+    }
+  }
   function applyObjectField(section, indent, tokens, line) {
-    if (tokens.length === 1 && tokens[0].value === "info") {
-      section.inInfoBlock = true;
-      section.infoIndent = indent;
+    if (section.activeBlock && indent <= (section.blockIndent ?? 0)) {
+      section.activeBlock = null;
+      section.blockIndent = null;
+    }
+    if (tokens.length === 1) {
+      const blockName = tokens[0].value.toLowerCase();
+      if (blockName === "info" || STRUCTURED_TYPED_BLOCKS.has(blockName)) {
+        if (blockName !== "info") {
+          warnIfSchema21Feature(section.sourceSchemaVersion, section.diagnostics, blockName, { line, column: tokens[0].column });
+        }
+        section.activeBlock = blockName;
+        section.blockIndent = indent;
+        return;
+      }
+    }
+    if (section.activeBlock) {
+      const entry = parseInfoLikeEntry(tokens, line, `Invalid ${section.activeBlock} entry`);
+      if (section.activeBlock === "info") {
+        if (section.seenInfoKeys.has(entry.key)) {
+          throw new WorldOrbitError(`Duplicate info key "${entry.key}"`, line, tokens[0].column);
+        }
+        section.seenInfoKeys.add(entry.key);
+        section.objectNode.infoEntries.push(entry);
+        return;
+      }
+      const typedBlock = section.activeBlock;
+      const seenKeys = section.seenTypedBlockKeys[typedBlock] ?? (section.seenTypedBlockKeys[typedBlock] = /* @__PURE__ */ new Set());
+      if (seenKeys.has(entry.key)) {
+        throw new WorldOrbitError(`Duplicate ${typedBlock} key "${entry.key}"`, line, tokens[0].column);
+      }
+      seenKeys.add(entry.key);
+      const entries = section.objectNode.typedBlockEntries[typedBlock] ?? (section.objectNode.typedBlockEntries[typedBlock] = []);
+      entries.push(entry);
       return;
     }
-    if (section.inInfoBlock && indent <= (section.infoIndent ?? 0)) {
-      section.inInfoBlock = false;
-      section.infoIndent = null;
-    }
-    if (section.inInfoBlock) {
-      section.objectNode.infoEntries.push(parseInfoEntry2(tokens, line));
-      return;
-    }
-    section.objectNode.blockFields.push(parseField2(tokens, line));
+    section.objectNode.fields.push(parseObjectField(tokens, line, section.objectNode.objectType, section.sourceSchemaVersion, section.diagnostics));
   }
   function requireUniqueField(tokens, seenFields, line) {
     if (tokens.length < 2) {
@@ -3602,50 +4549,40 @@ var WorldOrbit = (() => {
     return tokens.slice(1).map((token) => token.value).join(" ").trim();
   }
   function parseObjectTypeTokens(tokens, line) {
-    if (tokens.length === 0) {
-      throw new WorldOrbitError("Missing value for atlas field", line);
-    }
-    return tokens.map((token) => {
-      const value = token.value;
-      if (value !== "star" && value !== "planet" && value !== "moon" && value !== "belt" && value !== "asteroid" && value !== "comet" && value !== "ring" && value !== "structure" && value !== "phenomenon") {
-        throw new WorldOrbitError(`Unknown viewpoint object type "${token.value}"`, line, token.column);
-      }
-      return value;
-    });
-  }
-  function parseTokenList(tokens, line, field) {
-    if (tokens.length === 0) {
-      throw new WorldOrbitError(`Missing value for field "${field}"`, line);
-    }
-    return tokens.map((token) => token.value);
+    return parseTokenList(tokens, line, "objectTypes").filter((value) => value === "star" || value === "planet" || value === "moon" || value === "belt" || value === "asteroid" || value === "comet" || value === "ring" || value === "structure" || value === "phenomenon");
   }
   function parseLayerTokens(tokens, line) {
+    const layers = {};
+    for (const token of parseTokenList(tokens, line, "layers")) {
+      const enabled = !token.startsWith("-") && !token.startsWith("!");
+      const raw = token.replace(/^[-!]+/, "").toLowerCase();
+      if (raw === "orbits") {
+        layers["orbits-back"] = enabled;
+        layers["orbits-front"] = enabled;
+        continue;
+      }
+      if (raw === "background" || raw === "guides" || raw === "orbits-back" || raw === "orbits-front" || raw === "relations" || raw === "objects" || raw === "labels" || raw === "metadata") {
+        layers[raw] = enabled;
+      }
+    }
+    return layers;
+  }
+  function parseTokenList(tokens, line, fieldName) {
     if (tokens.length === 0) {
-      throw new WorldOrbitError('Missing value for field "layers"', line);
+      throw new WorldOrbitError(`Missing value for atlas field "${fieldName}"`, line, 1);
     }
-    const next = {};
-    for (const token of tokens) {
-      const enabled = !token.value.startsWith("-") && !token.value.startsWith("!");
-      const rawLayer = token.value.replace(/^[-!]+/, "").toLowerCase();
-      if (rawLayer === "orbits") {
-        next["orbits-back"] = enabled;
-        next["orbits-front"] = enabled;
-        continue;
-      }
-      if (rawLayer === "background" || rawLayer === "guides" || rawLayer === "orbits-back" || rawLayer === "orbits-front" || rawLayer === "objects" || rawLayer === "labels" || rawLayer === "metadata") {
-        next[rawLayer] = enabled;
-        continue;
-      }
-      throw new WorldOrbitError(`Unknown layer token "${token.value}"`, line, token.column);
+    const values = tokens.map((token) => token.value).filter(Boolean);
+    if (values.length === 0) {
+      throw new WorldOrbitError(`Missing value for atlas field "${fieldName}"`, line, tokens[0]?.column ?? 1);
     }
-    return next;
+    return values;
   }
   function parseProjectionValue(value, line, column) {
     const normalized = value.toLowerCase();
-    if (normalized === "topdown" || normalized === "isometric") {
-      return normalized;
+    if (normalized !== "topdown" && normalized !== "isometric") {
+      throw new WorldOrbitError(`Unknown projection "${value}"`, line, column);
     }
-    throw new WorldOrbitError(`Unknown projection "${value}"`, line, column);
+    return normalized;
   }
   function parsePresetValue(value, line, column) {
     const normalized = value.toLowerCase();
@@ -3655,16 +4592,16 @@ var WorldOrbit = (() => {
     throw new WorldOrbitError(`Unknown render preset "${value}"`, line, column);
   }
   function parsePositiveNumber2(value, line, column, field) {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      throw new WorldOrbitError(`Field "${field}" expects a positive number`, line, column);
+    const parsed = parseFiniteNumber2(value, line, column, field);
+    if (parsed <= 0) {
+      throw new WorldOrbitError(`Field "${field}" must be greater than zero`, line, column);
     }
     return parsed;
   }
   function parseFiniteNumber2(value, line, column, field) {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) {
-      throw new WorldOrbitError(`Field "${field}" expects a finite number`, line, column);
+      throw new WorldOrbitError(`Invalid numeric value "${value}" for "${field}"`, line, column);
     }
     return parsed;
   }
@@ -3676,26 +4613,41 @@ var WorldOrbit = (() => {
       groupIds: []
     };
   }
-  function parseInlineFields2(tokens, line) {
+  function parseInlineObjectFields(tokens, line, objectType, sourceSchemaVersion, diagnostics) {
     const fields = [];
     let index = 0;
     while (index < tokens.length) {
       const keyToken = tokens[index];
-      const schema = getFieldSchema(keyToken.value);
-      if (!schema) {
+      const spec = getDraftObjectFieldSpec(keyToken.value);
+      if (!spec) {
         throw new WorldOrbitError(`Unknown field "${keyToken.value}"`, line, keyToken.column);
+      }
+      if (spec.version === "2.1") {
+        warnIfSchema21Feature(sourceSchemaVersion, diagnostics, keyToken.value, {
+          line,
+          column: keyToken.column
+        });
       }
       index++;
       const valueTokens = [];
-      if (schema.arity === "multiple") {
-        while (index < tokens.length && !isKnownFieldKey(tokens[index].value)) {
-          valueTokens.push(tokens[index]);
-          index++;
-        }
-      } else {
+      if (spec.inlineMode === "single") {
         const nextToken = tokens[index];
         if (nextToken) {
           valueTokens.push(nextToken);
+          index++;
+        }
+      } else if (spec.inlineMode === "pair") {
+        for (let count = 0; count < 2; count++) {
+          const nextToken = tokens[index];
+          if (!nextToken) {
+            break;
+          }
+          valueTokens.push(nextToken);
+          index++;
+        }
+      } else {
+        while (index < tokens.length && !DRAFT_OBJECT_FIELD_KEYS.has(tokens[index].value)) {
+          valueTokens.push(tokens[index]);
           index++;
         }
       }
@@ -3709,25 +4661,35 @@ var WorldOrbit = (() => {
         location: { line, column: keyToken.column }
       });
     }
+    validateDraftObjectFieldCompatibility(fields, objectType);
     return fields;
   }
-  function parseField2(tokens, line) {
+  function parseObjectField(tokens, line, objectType, sourceSchemaVersion, diagnostics) {
     if (tokens.length < 2) {
       throw new WorldOrbitError("Invalid field line", line, tokens[0]?.column ?? 1);
     }
-    if (!getFieldSchema(tokens[0].value)) {
+    const spec = getDraftObjectFieldSpec(tokens[0].value);
+    if (!spec) {
       throw new WorldOrbitError(`Unknown field "${tokens[0].value}"`, line, tokens[0].column);
     }
-    return {
+    if (spec.version === "2.1") {
+      warnIfSchema21Feature(sourceSchemaVersion, diagnostics, tokens[0].value, {
+        line,
+        column: tokens[0].column
+      });
+    }
+    const field = {
       type: "field",
       key: tokens[0].value,
       values: tokens.slice(1).map((token) => token.value),
       location: { line, column: tokens[0].column }
     };
+    validateDraftObjectFieldCompatibility([field], objectType);
+    return field;
   }
-  function parseInfoEntry2(tokens, line) {
+  function parseInfoLikeEntry(tokens, line, errorMessage) {
     if (tokens.length < 2) {
-      throw new WorldOrbitError("Invalid info entry", line, tokens[0]?.column ?? 1);
+      throw new WorldOrbitError(errorMessage, line, tokens[0]?.column ?? 1);
     }
     return {
       type: "info-entry",
@@ -3736,23 +4698,356 @@ var WorldOrbit = (() => {
       location: { line, column: tokens[0].column }
     };
   }
-  function normalizeIdentifier2(value) {
-    return value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  function normalizeDraftObject(node, sourceSchemaVersion, diagnostics) {
+    const fieldMap = collectDraftFields(node.fields);
+    const placement = extractDraftPlacement(node.objectType, fieldMap);
+    const properties = normalizeDraftProperties(node.objectType, fieldMap);
+    const groups = parseOptionalTokenList(fieldMap.get("groups")?.[0]);
+    const epoch = parseOptionalJoinedValue(fieldMap.get("epoch")?.[0]);
+    const referencePlane = parseOptionalJoinedValue(fieldMap.get("referencePlane")?.[0]);
+    const tidalLock = fieldMap.has("tidalLock") ? parseAtlasBoolean(singleFieldValue2(fieldMap.get("tidalLock")[0]), "tidalLock", fieldMap.get("tidalLock")[0].location) : void 0;
+    const resonance = fieldMap.has("resonance") ? parseResonanceField(fieldMap.get("resonance")[0]) : void 0;
+    const renderHints = extractRenderHints(fieldMap);
+    const deriveRules = fieldMap.get("derive")?.map((field) => parseDeriveField(field));
+    const validationRules = fieldMap.get("validate")?.map((field) => ({
+      rule: singleFieldValue2(field)
+    }));
+    const lockedFields = fieldMap.has("locked") ? [...new Set(fieldMap.get("locked").flatMap((field) => field.values))] : void 0;
+    const tolerances = fieldMap.get("tolerance")?.map((field) => parseToleranceField(field));
+    const typedBlocks = normalizeTypedBlocks(node.typedBlockEntries);
+    const info2 = normalizeInfoEntries(node.infoEntries, "info");
+    const object = {
+      type: node.objectType,
+      id: node.id,
+      properties,
+      placement,
+      info: info2
+    };
+    if (groups.length > 0)
+      object.groups = groups;
+    if (epoch)
+      object.epoch = epoch;
+    if (referencePlane)
+      object.referencePlane = referencePlane;
+    if (tidalLock !== void 0)
+      object.tidalLock = tidalLock;
+    if (resonance)
+      object.resonance = resonance;
+    if (renderHints)
+      object.renderHints = renderHints;
+    if (deriveRules?.length)
+      object.deriveRules = deriveRules;
+    if (validationRules?.length)
+      object.validationRules = validationRules;
+    if (lockedFields?.length)
+      object.lockedFields = lockedFields;
+    if (tolerances?.length)
+      object.tolerances = tolerances;
+    if (typedBlocks && Object.keys(typedBlocks).length > 0)
+      object.typedBlocks = typedBlocks;
+    if (sourceSchemaVersion !== "2.1") {
+      if (object.groups || object.epoch || object.referencePlane || object.tidalLock !== void 0 || object.resonance || object.renderHints || object.deriveRules?.length || object.validationRules?.length || object.lockedFields?.length || object.tolerances?.length || object.typedBlocks) {
+        warnIfSchema21Feature(sourceSchemaVersion, diagnostics, node.id, node.location);
+      }
+    }
+    return object;
   }
-  function humanizeIdentifier3(value) {
-    return value.split(/[-_]+/).filter(Boolean).map((segment) => segment[0].toUpperCase() + segment.slice(1)).join(" ");
+  function collectDraftFields(fields) {
+    const grouped = /* @__PURE__ */ new Map();
+    for (const field of fields) {
+      const spec = getDraftObjectFieldSpec(field.key);
+      if (!spec) {
+        throw WorldOrbitError.fromLocation(`Unknown field "${field.key}"`, field.location);
+      }
+      if (!spec.allowRepeat && grouped.has(field.key)) {
+        throw WorldOrbitError.fromLocation(`Duplicate field "${field.key}"`, field.location);
+      }
+      const existing = grouped.get(field.key) ?? [];
+      existing.push(field);
+      grouped.set(field.key, existing);
+    }
+    return grouped;
+  }
+  function extractDraftPlacement(objectType, fieldMap) {
+    const orbitField = fieldMap.get("orbit")?.[0];
+    const atField = fieldMap.get("at")?.[0];
+    const surfaceField = fieldMap.get("surface")?.[0];
+    const freeField = fieldMap.get("free")?.[0];
+    const count = [orbitField, atField, surfaceField, freeField].filter(Boolean).length;
+    if (count > 1) {
+      const conflictingField = orbitField ?? atField ?? surfaceField ?? freeField;
+      throw WorldOrbitError.fromLocation("Object has multiple placement modes", conflictingField?.location);
+    }
+    if (orbitField) {
+      return {
+        mode: "orbit",
+        target: singleFieldValue2(orbitField),
+        distance: parseOptionalUnitField(fieldMap.get("distance")?.[0], "distance"),
+        semiMajor: parseOptionalUnitField(fieldMap.get("semiMajor")?.[0], "semiMajor"),
+        eccentricity: parseOptionalNumberField(fieldMap.get("eccentricity")?.[0], "eccentricity"),
+        period: parseOptionalUnitField(fieldMap.get("period")?.[0], "period"),
+        angle: parseOptionalUnitField(fieldMap.get("angle")?.[0], "angle"),
+        inclination: parseOptionalUnitField(fieldMap.get("inclination")?.[0], "inclination"),
+        phase: parseOptionalUnitField(fieldMap.get("phase")?.[0], "phase")
+      };
+    }
+    if (atField) {
+      const target = singleFieldValue2(atField);
+      return {
+        mode: "at",
+        target,
+        reference: parseAtlasAtReference(target, atField.location)
+      };
+    }
+    if (surfaceField) {
+      return {
+        mode: "surface",
+        target: singleFieldValue2(surfaceField)
+      };
+    }
+    if (freeField) {
+      const raw = singleFieldValue2(freeField);
+      const distance = tryParseAtlasUnitValue(raw);
+      return {
+        mode: "free",
+        distance: distance ?? void 0,
+        descriptor: distance ? void 0 : raw
+      };
+    }
+    return null;
+  }
+  function normalizeDraftProperties(objectType, fieldMap) {
+    const properties = {};
+    for (const [key, fields] of fieldMap.entries()) {
+      const field = fields[0];
+      const spec = getDraftObjectFieldSpec(key);
+      if (!field || !spec?.legacySchema || spec.legacySchema.placement) {
+        continue;
+      }
+      ensureAtlasFieldSupported(key, objectType, field.location);
+      properties[key] = normalizeLegacyScalarValue(key, field.values, field.location);
+    }
+    return properties;
+  }
+  function normalizeInfoEntries(entries, label) {
+    const normalized = {};
+    for (const entry of entries) {
+      if (entry.key in normalized) {
+        throw WorldOrbitError.fromLocation(`Duplicate ${label} key "${entry.key}"`, entry.location);
+      }
+      normalized[entry.key] = entry.value;
+    }
+    return normalized;
+  }
+  function normalizeTypedBlocks(typedBlockEntries) {
+    const typedBlocks = {};
+    for (const blockName of Object.keys(typedBlockEntries)) {
+      const entries = typedBlockEntries[blockName];
+      if (entries?.length) {
+        typedBlocks[blockName] = normalizeInfoEntries(entries, blockName);
+      }
+    }
+    return typedBlocks;
+  }
+  function extractRenderHints(fieldMap) {
+    const renderHints = {};
+    const renderLabelField = fieldMap.get("renderLabel")?.[0];
+    const renderOrbitField = fieldMap.get("renderOrbit")?.[0];
+    const renderPriorityField = fieldMap.get("renderPriority")?.[0];
+    if (renderLabelField) {
+      renderHints.renderLabel = parseAtlasBoolean(singleFieldValue2(renderLabelField), "renderLabel", renderLabelField.location);
+    }
+    if (renderOrbitField) {
+      renderHints.renderOrbit = parseAtlasBoolean(singleFieldValue2(renderOrbitField), "renderOrbit", renderOrbitField.location);
+    }
+    if (renderPriorityField) {
+      renderHints.renderPriority = parseAtlasNumber(singleFieldValue2(renderPriorityField), "renderPriority", renderPriorityField.location);
+    }
+    return Object.keys(renderHints).length > 0 ? renderHints : void 0;
+  }
+  function parseResonanceField(field) {
+    if (field.values.length !== 2) {
+      throw WorldOrbitError.fromLocation('Field "resonance" expects "<targetObjectId> <ratio>"', field.location);
+    }
+    const ratio = field.values[1];
+    if (!/^\d+:\d+$/.test(ratio)) {
+      throw WorldOrbitError.fromLocation(`Invalid resonance ratio "${ratio}"`, field.location);
+    }
+    return {
+      targetObjectId: field.values[0],
+      ratio
+    };
+  }
+  function parseDeriveField(field) {
+    if (field.values.length !== 2) {
+      throw WorldOrbitError.fromLocation('Field "derive" expects "<field> <strategy>"', field.location);
+    }
+    return {
+      field: field.values[0],
+      strategy: field.values[1]
+    };
+  }
+  function parseToleranceField(field) {
+    if (field.values.length !== 2) {
+      throw WorldOrbitError.fromLocation('Field "tolerance" expects "<field> <value>"', field.location);
+    }
+    const rawValue = field.values[1];
+    const unitValue = tryParseAtlasUnitValue(rawValue);
+    const numericValue2 = Number(rawValue);
+    return {
+      field: field.values[0],
+      value: unitValue ?? (Number.isFinite(numericValue2) ? numericValue2 : rawValue)
+    };
+  }
+  function parseOptionalTokenList(field) {
+    return field ? [...new Set(field.values)] : [];
+  }
+  function parseOptionalJoinedValue(field) {
+    if (!field) {
+      return null;
+    }
+    return field.values.join(" ").trim() || null;
+  }
+  function parseOptionalUnitField(field, key) {
+    return field ? parseAtlasUnitValue(singleFieldValue2(field), field.location, key) : void 0;
+  }
+  function parseOptionalNumberField(field, key) {
+    return field ? parseAtlasNumber(singleFieldValue2(field), key, field.location) : void 0;
+  }
+  function singleFieldValue2(field) {
+    return singleAtlasValue(field.values, field.key, field.location);
+  }
+  function getDraftObjectFieldSpec(key) {
+    return DRAFT_OBJECT_FIELD_SPECS.get(key);
+  }
+  function validateDraftObjectFieldCompatibility(fields, objectType) {
+    for (const field of fields) {
+      const spec = getDraftObjectFieldSpec(field.key);
+      if (!spec) {
+        throw WorldOrbitError.fromLocation(`Unknown field "${field.key}"`, field.location);
+      }
+      if (spec.legacySchema) {
+        ensureAtlasFieldSupported(field.key, objectType, field.location);
+        continue;
+      }
+      if ((field.key === "renderLabel" || field.key === "renderOrbit" || field.key === "tidalLock") && field.values.length !== 1) {
+        throw WorldOrbitError.fromLocation(`Field "${field.key}" expects exactly one value`, field.location);
+      }
+    }
+  }
+  function warnIfSchema21Feature(sourceSchemaVersion, diagnostics, featureName, location) {
+    if (sourceSchemaVersion === "2.1") {
+      return;
+    }
+    diagnostics.push({
+      code: "parse.schema21.featureCompatibility",
+      severity: "warning",
+      source: "parse",
+      message: `Feature "${featureName}" requires schema 2.1; parsed in compatibility mode because the document header is "schema ${sourceSchemaVersion}".`,
+      line: location.line,
+      column: location.column
+    });
+  }
+  function preprocessAtlasSource(source) {
+    const chars = [...source];
+    const comments = [];
+    let inString = false;
+    let inBlockComment = false;
+    let blockCommentStart = null;
+    let line = 1;
+    let column = 1;
+    for (let index = 0; index < chars.length; index++) {
+      const ch = chars[index];
+      const next = chars[index + 1];
+      if (inBlockComment) {
+        if (ch === "*" && next === "/") {
+          chars[index] = " ";
+          chars[index + 1] = " ";
+          inBlockComment = false;
+          blockCommentStart = null;
+          index++;
+          column += 2;
+          continue;
+        }
+        if (ch !== "\n" && ch !== "\r") {
+          chars[index] = " ";
+        }
+        if (ch === "\n") {
+          line++;
+          column = 1;
+        } else {
+          column++;
+        }
+        continue;
+      }
+      if (!inString && ch === "/" && next === "*") {
+        comments.push({ kind: "block", line, column });
+        chars[index] = " ";
+        chars[index + 1] = " ";
+        inBlockComment = true;
+        blockCommentStart = { line, column };
+        index++;
+        column += 2;
+        continue;
+      }
+      if (!inString && ch === "#" && !isHexColorLiteral(chars, index)) {
+        comments.push({ kind: "line", line, column });
+        chars[index] = " ";
+        let inner = index + 1;
+        while (inner < chars.length && chars[inner] !== "\n" && chars[inner] !== "\r") {
+          chars[inner] = " ";
+          inner++;
+        }
+        column += inner - index;
+        index = inner - 1;
+        continue;
+      }
+      if (ch === '"' && chars[index - 1] !== "\\") {
+        inString = !inString;
+      }
+      if (ch === "\n") {
+        line++;
+        column = 1;
+      } else {
+        column++;
+      }
+    }
+    if (inBlockComment) {
+      throw WorldOrbitError.fromLocation("Unclosed block comment", blockCommentStart ?? void 0);
+    }
+    return {
+      source: chars.join(""),
+      comments
+    };
+  }
+  function isHexColorLiteral(chars, start) {
+    let index = start + 1;
+    let length = 0;
+    while (index < chars.length && /[0-9a-f]/i.test(chars[index] ?? "")) {
+      index++;
+      length++;
+    }
+    if (![3, 4, 6, 8].includes(length)) {
+      return false;
+    }
+    const next = chars[index];
+    return next === void 0 || next === " " || next === "	" || next === "\r" || next === "\n";
   }
 
   // packages/core/dist/atlas-edit.js
-  function createEmptyAtlasDocument(systemId = "WorldOrbit") {
+  function createEmptyAtlasDocument(systemId = "WorldOrbit", version = "2.0") {
     return {
       format: "worldorbit",
-      version: "2.0",
+      version,
+      schemaVersion: version,
       sourceVersion: "1.0",
       system: {
         type: "system",
         id: systemId,
         title: systemId,
+        description: null,
+        epoch: null,
+        referencePlane: null,
         defaults: {
           view: "topdown",
           scale: null,
@@ -3764,6 +5059,8 @@ var WorldOrbit = (() => {
         viewpoints: [],
         annotations: []
       },
+      groups: [],
+      relations: [],
       objects: [],
       diagnostics: []
     };
@@ -3777,14 +5074,20 @@ var WorldOrbit = (() => {
       for (const key of Object.keys(document2.system.atlasMetadata).sort()) {
         paths.push({ kind: "metadata", key });
       }
-      for (const viewpoint of [...document2.system.viewpoints].sort(compareIdLike)) {
+      for (const viewpoint of [...document2.system.viewpoints].sort(compareIdLike2)) {
         paths.push({ kind: "viewpoint", id: viewpoint.id });
       }
-      for (const annotation of [...document2.system.annotations].sort(compareIdLike)) {
+      for (const annotation of [...document2.system.annotations].sort(compareIdLike2)) {
         paths.push({ kind: "annotation", id: annotation.id });
       }
     }
-    for (const object of [...document2.objects].sort(compareIdLike)) {
+    for (const group of [...document2.groups].sort(compareIdLike2)) {
+      paths.push({ kind: "group", id: group.id });
+    }
+    for (const relation of [...document2.relations].sort(compareIdLike2)) {
+      paths.push({ kind: "relation", id: relation.id });
+    }
+    for (const object of [...document2.objects].sort(compareIdLike2)) {
       paths.push({ kind: "object", id: object.id });
     }
     return paths;
@@ -3797,12 +5100,16 @@ var WorldOrbit = (() => {
         return document2.system?.defaults ?? null;
       case "metadata":
         return path.key ? document2.system?.atlasMetadata[path.key] ?? null : null;
+      case "group":
+        return path.id ? findGroup(document2, path.id) : null;
       case "object":
         return path.id ? findObject(document2, path.id) : null;
       case "viewpoint":
         return path.id ? findViewpoint(document2.system, path.id) : null;
       case "annotation":
         return path.id ? findAnnotation(document2.system, path.id) : null;
+      case "relation":
+        return path.id ? findRelation(document2, path.id) : null;
     }
   }
   function upsertAtlasDocumentNode(document2, path, value) {
@@ -3828,6 +5135,12 @@ var WorldOrbit = (() => {
           system.atlasMetadata[path.key] = String(value);
         }
         return next;
+      case "group":
+        if (!path.id) {
+          throw new Error('Group updates require an "id" value.');
+        }
+        upsertById(next.groups, value);
+        return next;
       case "object":
         if (!path.id) {
           throw new Error('Object updates require an "id" value.');
@@ -3845,6 +5158,12 @@ var WorldOrbit = (() => {
           throw new Error('Annotation updates require an "id" value.');
         }
         upsertById(system.annotations, value);
+        return next;
+      case "relation":
+        if (!path.id) {
+          throw new Error('Relation updates require an "id" value.');
+        }
+        upsertById(next.relations, value);
         return next;
     }
   }
@@ -3865,6 +5184,11 @@ var WorldOrbit = (() => {
           next.objects = next.objects.filter((object) => object.id !== path.id);
         }
         return next;
+      case "group":
+        if (path.id) {
+          next.groups = next.groups.filter((group) => group.id !== path.id);
+        }
+        return next;
       case "viewpoint":
         if (path.id) {
           system.viewpoints = system.viewpoints.filter((viewpoint) => viewpoint.id !== path.id);
@@ -3873,6 +5197,11 @@ var WorldOrbit = (() => {
       case "annotation":
         if (path.id) {
           system.annotations = system.annotations.filter((annotation) => annotation.id !== path.id);
+        }
+        return next;
+      case "relation":
+        if (path.id) {
+          next.relations = next.relations.filter((relation) => relation.id !== path.id);
         }
         return next;
       default:
@@ -3892,6 +5221,15 @@ var WorldOrbit = (() => {
         id: diagnostic.objectId
       };
     }
+    if (diagnostic.field?.startsWith("group.")) {
+      const parts = diagnostic.field.split(".");
+      if (parts[1] && findGroup(document2, parts[1])) {
+        return {
+          kind: "group",
+          id: parts[1]
+        };
+      }
+    }
     if (diagnostic.field?.startsWith("viewpoint.")) {
       const parts = diagnostic.field.split(".");
       if (parts[1] && findViewpoint(document2.system, parts[1])) {
@@ -3910,6 +5248,15 @@ var WorldOrbit = (() => {
         };
       }
     }
+    if (diagnostic.field?.startsWith("relation.")) {
+      const parts = diagnostic.field.split(".");
+      if (parts[1] && findRelation(document2, parts[1])) {
+        return {
+          kind: "relation",
+          id: parts[1]
+        };
+      }
+    }
     if (diagnostic.field && diagnostic.field in ensureSystem(document2).atlasMetadata) {
       return {
         kind: "metadata",
@@ -3919,9 +5266,11 @@ var WorldOrbit = (() => {
     return null;
   }
   function validateAtlasDocumentWithDiagnostics(document2) {
-    const materialized = materializeAtlasDocument(document2);
-    const result = validateDocumentWithDiagnostics(materialized);
-    return resolveAtlasDiagnostics(document2, result.diagnostics);
+    const diagnostics = [
+      ...document2.diagnostics,
+      ...collectAtlasDiagnostics(document2, document2.version)
+    ];
+    return resolveAtlasDiagnostics(document2, diagnostics);
   }
   function ensureSystem(document2) {
     if (document2.system) {
@@ -3933,6 +5282,12 @@ var WorldOrbit = (() => {
   function findObject(document2, objectId) {
     return document2.objects.find((object) => object.id === objectId) ?? null;
   }
+  function findGroup(document2, groupId) {
+    return document2.groups.find((group) => group.id === groupId) ?? null;
+  }
+  function findRelation(document2, relationId) {
+    return document2.relations.find((relation) => relation.id === relationId) ?? null;
+  }
   function findViewpoint(system, viewpointId) {
     return system?.viewpoints.find((viewpoint) => viewpoint.id === viewpointId) ?? null;
   }
@@ -3943,20 +5298,21 @@ var WorldOrbit = (() => {
     const index = items.findIndex((item) => item.id === value.id);
     if (index === -1) {
       items.push(value);
-      items.sort(compareIdLike);
+      items.sort(compareIdLike2);
       return;
     }
     items[index] = value;
   }
-  function compareIdLike(left, right) {
+  function compareIdLike2(left, right) {
     return left.id.localeCompare(right.id);
   }
 
   // packages/core/dist/load.js
-  var ATLAS_SCHEMA_PATTERN = /^schema\s+2(?:\.0)?$/i;
+  var ATLAS_SCHEMA_PATTERN = /^schema\s+2(?:\.0|\.1)?$/i;
+  var ATLAS_SCHEMA_21_PATTERN = /^schema\s+2\.1$/i;
   var LEGACY_DRAFT_SCHEMA_PATTERN = /^schema\s+2\.0-draft$/i;
   function detectWorldOrbitSchemaVersion(source) {
-    for (const line of source.split(/\r?\n/)) {
+    for (const line of stripCommentsForSchemaDetection(source).split(/\r?\n/)) {
       const trimmed = line.trim();
       if (!trimmed) {
         continue;
@@ -3964,12 +5320,58 @@ var WorldOrbit = (() => {
       if (LEGACY_DRAFT_SCHEMA_PATTERN.test(trimmed)) {
         return "2.0-draft";
       }
+      if (ATLAS_SCHEMA_21_PATTERN.test(trimmed)) {
+        return "2.1";
+      }
       if (ATLAS_SCHEMA_PATTERN.test(trimmed)) {
         return "2.0";
       }
       return "1.0";
     }
     return "1.0";
+  }
+  function stripCommentsForSchemaDetection(source) {
+    const chars = [...source];
+    let inString = false;
+    let inBlockComment = false;
+    for (let index = 0; index < chars.length; index++) {
+      const ch = chars[index];
+      const next = chars[index + 1];
+      if (inBlockComment) {
+        if (ch === "*" && next === "/") {
+          chars[index] = " ";
+          chars[index + 1] = " ";
+          inBlockComment = false;
+          index++;
+          continue;
+        }
+        if (ch !== "\n" && ch !== "\r") {
+          chars[index] = " ";
+        }
+        continue;
+      }
+      if (!inString && ch === "/" && next === "*") {
+        chars[index] = " ";
+        chars[index + 1] = " ";
+        inBlockComment = true;
+        index++;
+        continue;
+      }
+      if (!inString && ch === "#") {
+        chars[index] = " ";
+        let inner = index + 1;
+        while (inner < chars.length && chars[inner] !== "\n" && chars[inner] !== "\r") {
+          chars[inner] = " ";
+          inner++;
+        }
+        index = inner - 1;
+        continue;
+      }
+      if (ch === '"' && chars[index - 1] !== "\\") {
+        inString = !inString;
+      }
+    }
+    return chars.join("");
   }
   function loadWorldOrbitSource(source) {
     const result = loadWorldOrbitSourceWithDiagnostics(source);
@@ -3981,36 +5383,36 @@ var WorldOrbit = (() => {
   }
   function loadWorldOrbitSourceWithDiagnostics(source) {
     const schemaVersion = detectWorldOrbitSchemaVersion(source);
-    if (schemaVersion === "2.0" || schemaVersion === "2.0-draft") {
+    if (schemaVersion === "2.0" || schemaVersion === "2.0-draft" || schemaVersion === "2.1") {
       return loadAtlasSourceWithDiagnostics(source, schemaVersion);
     }
     let ast;
     try {
       ast = parseWorldOrbit(source);
-    } catch (error) {
+    } catch (error2) {
       return {
         ok: false,
         value: null,
-        diagnostics: [diagnosticFromError(error, "parse")]
+        diagnostics: [diagnosticFromError(error2, "parse")]
       };
     }
     let document2;
     try {
       document2 = normalizeDocument(ast);
-    } catch (error) {
+    } catch (error2) {
       return {
         ok: false,
         value: null,
-        diagnostics: [diagnosticFromError(error, "normalize")]
+        diagnostics: [diagnosticFromError(error2, "normalize")]
       };
     }
     try {
       validateDocument(document2);
-    } catch (error) {
+    } catch (error2) {
       return {
         ok: false,
         value: null,
-        diagnostics: [diagnosticFromError(error, "validate")]
+        diagnostics: [diagnosticFromError(error2, "validate")]
       };
     }
     return {
@@ -4030,30 +5432,29 @@ var WorldOrbit = (() => {
     let atlasDocument;
     try {
       atlasDocument = parseWorldOrbitAtlas(source);
-    } catch (error) {
+    } catch (error2) {
       return {
         ok: false,
         value: null,
-        diagnostics: [diagnosticFromError(error, "parse", "load.atlas.failed")]
+        diagnostics: [diagnosticFromError(error2, "parse", "load.atlas.failed")]
+      };
+    }
+    const atlasDiagnostics = [...atlasDocument.diagnostics];
+    if (atlasDiagnostics.some((diagnostic) => diagnostic.severity === "error")) {
+      return {
+        ok: false,
+        value: null,
+        diagnostics: atlasDiagnostics
       };
     }
     let document2;
     try {
       document2 = materializeAtlasDocument(atlasDocument);
-    } catch (error) {
+    } catch (error2) {
       return {
         ok: false,
         value: null,
-        diagnostics: [diagnosticFromError(error, "normalize", "load.atlas.materialize.failed")]
-      };
-    }
-    try {
-      validateDocument(document2);
-    } catch (error) {
-      return {
-        ok: false,
-        value: null,
-        diagnostics: [diagnosticFromError(error, "validate", "load.atlas.validate.failed")]
+        diagnostics: [diagnosticFromError(error2, "normalize", "load.atlas.materialize.failed")]
       };
     }
     const loaded = {
@@ -4062,12 +5463,12 @@ var WorldOrbit = (() => {
       document: document2,
       atlasDocument,
       draftDocument: atlasDocument,
-      diagnostics: [...atlasDocument.diagnostics]
+      diagnostics: atlasDiagnostics
     };
     return {
       ok: true,
       value: loaded,
-      diagnostics: [...atlasDocument.diagnostics]
+      diagnostics: atlasDiagnostics
     };
   }
 
@@ -4138,6 +5539,7 @@ var WorldOrbit = (() => {
   var DEFAULT_LAYERS = {
     background: true,
     guides: true,
+    relations: true,
     orbits: true,
     objects: true,
     labels: true,
@@ -4152,6 +5554,7 @@ var WorldOrbit = (() => {
       backgroundGlow: "rgba(240, 180, 100, 0.18)",
       panel: "rgba(7, 17, 27, 0.9)",
       panelLine: "rgba(168, 207, 242, 0.18)",
+      relation: "rgba(240, 180, 100, 0.42)",
       orbit: "rgba(163, 209, 255, 0.24)",
       orbitBand: "rgba(255, 190, 120, 0.28)",
       guide: "rgba(255, 255, 255, 0.04)",
@@ -4174,6 +5577,7 @@ var WorldOrbit = (() => {
       backgroundGlow: "rgba(120, 255, 215, 0.16)",
       panel: "rgba(7, 20, 30, 0.9)",
       panelLine: "rgba(120, 255, 215, 0.16)",
+      relation: "rgba(156, 231, 255, 0.42)",
       orbit: "rgba(120, 255, 215, 0.2)",
       orbitBand: "rgba(137, 185, 255, 0.24)",
       guide: "rgba(255, 255, 255, 0.035)",
@@ -4196,6 +5600,7 @@ var WorldOrbit = (() => {
       backgroundGlow: "rgba(255, 127, 95, 0.18)",
       panel: "rgba(24, 9, 13, 0.9)",
       panelLine: "rgba(255, 166, 149, 0.16)",
+      relation: "rgba(255, 178, 125, 0.42)",
       orbit: "rgba(255, 188, 164, 0.22)",
       orbitBand: "rgba(255, 214, 139, 0.24)",
       guide: "rgba(255, 255, 255, 0.03)",
@@ -4348,6 +5753,7 @@ var WorldOrbit = (() => {
     return {
       background: viewpoint.layers.background,
       guides: viewpoint.layers.guides,
+      relations: viewpoint.layers.relations,
       orbits: viewpoint.layers["orbits-front"] === void 0 && viewpoint.layers["orbits-back"] === void 0 ? void 0 : viewpoint.layers["orbits-front"] !== false || viewpoint.layers["orbits-back"] !== false,
       objects: viewpoint.layers.objects,
       labels: viewpoint.layers.labels,
@@ -4385,7 +5791,11 @@ var WorldOrbit = (() => {
       return false;
     }
     if (filter.groupIds?.length && (!object.groupId || !filter.groupIds.includes(object.groupId))) {
-      return false;
+      const hasSemanticMatch = object.semanticGroupIds.length > 0 && filter.groupIds.some((groupId) => object.semanticGroupIds.includes(groupId));
+      const hasLegacyMatch = Boolean(object.groupId && filter.groupIds.includes(object.groupId));
+      if (!hasSemanticMatch && !hasLegacyMatch) {
+        return false;
+      }
     }
     if (filter.tags?.length) {
       const objectTags = Array.isArray(object.object.properties.tags) ? object.object.properties.tags.filter((entry) => typeof entry === "string") : [];
@@ -4629,6 +6039,7 @@ var WorldOrbit = (() => {
     const imageDefinitions = buildImageDefinitions(visibleObjects);
     const orbitMarkup = layers.orbits ? renderOrbitLayer(scene, visibleObjectIds, layers.structures) : { back: "", front: "" };
     const leaderMarkup = layers.guides ? scene.leaders.filter((leader) => !leader.hidden).filter((leader) => visibleObjectIds.has(leader.objectId)).filter((leader) => layers.structures || !isStructureLike(leader.object)).map((leader) => `<line class="wo-leader wo-leader-${leader.mode}" x1="${leader.x1}" y1="${leader.y1}" x2="${leader.x2}" y2="${leader.y2}" data-render-id="${escapeXml(leader.renderId)}" data-group-id="${escapeAttribute(leader.groupId ?? "")}" />`).join("") : "";
+    const relationMarkup = layers.relations ? scene.relations.filter((relation) => !relation.hidden).filter((relation) => visibleObjectIds.has(relation.fromObjectId) && visibleObjectIds.has(relation.toObjectId)).map((relation) => `<line class="wo-relation" x1="${relation.x1}" y1="${relation.y1}" x2="${relation.x2}" y2="${relation.y2}" data-render-id="${escapeXml(relation.renderId)}" data-relation-id="${escapeAttribute(relation.relationId)}" />`).join("") : "";
     const objectMarkup = layers.objects ? visibleObjects.map((object) => renderSceneObject(object, options.selectedObjectId ?? null, theme)).join("") : "";
     const labelMarkup = layers.labels ? visibleLabels.map((label) => renderSceneLabel(scene, label, options.selectedObjectId ?? null)).join("") : "";
     const metadataMarkup = layers.metadata ? `<text class="wo-title" x="56" y="64">${escapeXml(scene.title)}</text>
@@ -4663,6 +6074,7 @@ var WorldOrbit = (() => {
     .wo-orbit-back { opacity: 0.38; stroke-dasharray: 8 6; }
     .wo-orbit-front { opacity: 0.9; }
     .wo-orbit-band { stroke: ${theme.orbitBand}; stroke-linecap: round; }
+    .wo-relation { stroke: ${theme.relation}; stroke-width: 2; stroke-dasharray: 10 6; }
     .wo-leader { stroke: ${theme.leader}; stroke-width: 1.5; stroke-dasharray: 6 5; }
     .wo-label { fill: ${theme.ink}; font-family: ${theme.fontFamily}; font-weight: 600; letter-spacing: 0.02em; }
     .wo-label-secondary { fill: ${theme.muted}; font-family: ${theme.fontFamily}; font-weight: 500; }
@@ -4696,6 +6108,7 @@ var WorldOrbit = (() => {
       <g data-worldorbit-world-content="true">
         ${layers.orbits ? `<g data-layer-id="orbits-back">${orbitMarkup.back}</g>` : ""}
         ${layers.guides ? `<g data-layer-id="guides">${leaderMarkup}</g>` : ""}
+        ${layers.relations ? `<g data-layer-id="relations">${relationMarkup}</g>` : ""}
         ${layers.objects ? `<g data-layer-id="objects">${objectMarkup}</g>` : ""}
         ${layers.orbits ? `<g data-layer-id="orbits-front">${orbitMarkup.front}</g>` : ""}
         ${layers.labels ? `<g data-layer-id="labels">${labelMarkup}</g>` : ""}
@@ -5267,6 +6680,41 @@ var WorldOrbit = (() => {
       });
     }
     const placement = details.object.placement;
+    if (details.object.groups?.length) {
+      fields.set("groups", {
+        key: "groups",
+        label: "Groups",
+        value: details.object.groups.join(", ")
+      });
+    }
+    if (details.object.epoch) {
+      fields.set("epoch", {
+        key: "epoch",
+        label: "Epoch",
+        value: details.object.epoch
+      });
+    }
+    if (details.object.referencePlane) {
+      fields.set("referencePlane", {
+        key: "referencePlane",
+        label: "Reference Plane",
+        value: details.object.referencePlane
+      });
+    }
+    if (details.object.tidalLock !== void 0) {
+      fields.set("tidalLock", {
+        key: "tidalLock",
+        label: "Tidal Lock",
+        value: details.object.tidalLock ? "true" : "false"
+      });
+    }
+    if (details.object.resonance) {
+      fields.set("resonance", {
+        key: "resonance",
+        label: "Resonance",
+        value: `${details.object.resonance.targetObjectId} ${details.object.resonance.ratio}`
+      });
+    }
     if (placement?.mode === "at") {
       fields.set("placement", {
         key: "placement",
@@ -5941,8 +7389,10 @@ var WorldOrbit = (() => {
         renderObject,
         label: scene.labels.find((label) => label.objectId === renderObject.objectId && !label.hidden) ?? null,
         group: scene.groups.find((group) => group.renderId === renderObject.groupId) ?? null,
+        semanticGroups: scene.semanticGroups.filter((group) => renderObject.semanticGroupIds.includes(group.id)),
         orbit: scene.orbitVisuals.find((orbit) => orbit.objectId === renderObject.objectId && !orbit.hidden) ?? null,
         relatedOrbits: scene.orbitVisuals.filter((orbit) => !orbit.hidden && (orbit.objectId === renderObject.objectId || renderObject.ancestorIds.includes(orbit.objectId) || renderObject.childIds.includes(orbit.objectId))),
+        relations: scene.relations.filter((relation) => !relation.hidden && (relation.fromObjectId === renderObject.objectId || relation.toObjectId === renderObject.objectId)),
         parent: getObjectById(renderObject.parentId),
         children: renderObject.childIds.map((childId) => getObjectById(childId)).filter(Boolean),
         ancestors: renderObject.ancestorIds.map((ancestorId) => getObjectById(ancestorId)).filter(Boolean),
@@ -6567,6 +8017,7 @@ var WorldOrbit = (() => {
     const controls = {
       search: options.controls?.search ?? true,
       typeFilter: options.controls?.typeFilter ?? true,
+      groupFilter: options.controls?.groupFilter ?? true,
       viewpointSelect: options.controls?.viewpointSelect ?? true,
       inspector: options.controls?.inspector ?? true,
       bookmarks: options.controls?.bookmarks ?? true
@@ -6576,6 +8027,7 @@ var WorldOrbit = (() => {
     const toolbar = container.querySelector("[data-atlas-toolbar]");
     const searchInput = container.querySelector("[data-atlas-search]");
     const typeFilterSelect = container.querySelector("[data-atlas-type-filter]");
+    const groupFilterSelect = container.querySelector("[data-atlas-group-filter]");
     const viewpointSelect = container.querySelector("[data-atlas-viewpoint]");
     const bookmarkButton = container.querySelector("[data-atlas-bookmark]");
     const bookmarkList = container.querySelector("[data-atlas-bookmarks]");
@@ -6588,6 +8040,7 @@ var WorldOrbit = (() => {
     const baseFilter = normalizeViewerFilter(options.initialFilter ?? null);
     let searchQuery = options.initialQuery?.trim() ?? baseFilter?.query ?? "";
     let objectTypeFilter = options.initialObjectType ?? (baseFilter?.objectTypes?.length === 1 ? baseFilter.objectTypes[0] : null);
+    let groupFilter = baseFilter?.groupIds?.[0] ?? null;
     let bookmarks = [];
     let viewer;
     viewer = createInteractiveViewer(stage, {
@@ -6635,6 +8088,7 @@ var WorldOrbit = (() => {
     });
     applyCurrentFilter();
     populateViewpoints();
+    populateGroups();
     syncControlsFromFilter(viewer.getFilter());
     renderBookmarks();
     updateSearchResults();
@@ -6645,6 +8099,10 @@ var WorldOrbit = (() => {
     });
     typeFilterSelect?.addEventListener("change", () => {
       objectTypeFilter = typeFilterSelect.value || null;
+      applyCurrentFilter();
+    });
+    groupFilterSelect?.addEventListener("change", () => {
+      groupFilter = groupFilterSelect.value || null;
       applyCurrentFilter();
     });
     viewpointSelect?.addEventListener("change", () => {
@@ -6788,6 +8246,7 @@ var WorldOrbit = (() => {
     return api;
     function refreshAfterInputChange() {
       populateViewpoints();
+      populateGroups();
       applyCurrentFilter();
       renderBookmarks();
       updateSearchResults();
@@ -6804,18 +8263,22 @@ var WorldOrbit = (() => {
         query: searchQuery || void 0,
         objectTypes: objectTypeFilter ? [objectTypeFilter] : void 0,
         tags: baseFilter?.tags,
-        groupIds: baseFilter?.groupIds,
+        groupIds: groupFilter ? [groupFilter] : baseFilter?.groupIds,
         includeAncestors: baseFilter?.includeAncestors ?? true
       });
     }
     function syncControlsFromFilter(filter) {
       searchQuery = filter?.query?.trim() ?? "";
       objectTypeFilter = filter?.objectTypes?.length === 1 ? filter.objectTypes[0] : null;
+      groupFilter = filter?.groupIds?.length === 1 ? filter.groupIds[0] : null;
       if (searchInput && document.activeElement !== searchInput) {
         searchInput.value = searchQuery;
       }
       if (typeFilterSelect) {
         typeFilterSelect.value = objectTypeFilter ?? "";
+      }
+      if (groupFilterSelect) {
+        groupFilterSelect.value = groupFilter ?? "";
       }
     }
     function populateViewpoints() {
@@ -6829,6 +8292,17 @@ var WorldOrbit = (() => {
         ...activeViewer.listViewpoints().map((viewpoint) => `<option value="${escapeHtml2(viewpoint.id)}">${escapeHtml2(viewpoint.label)}</option>`)
       ].join("");
       viewpointSelect.value = active;
+    }
+    function populateGroups() {
+      if (!groupFilterSelect) {
+        return;
+      }
+      const activeViewer = requireViewer();
+      groupFilterSelect.innerHTML = [
+        `<option value="">All groups</option>`,
+        ...activeViewer.getScene().semanticGroups.map((group) => `<option value="${escapeHtml2(group.id)}">${escapeHtml2(group.label)}</option>`)
+      ].join("");
+      groupFilterSelect.value = groupFilter ?? "";
     }
     function syncViewpointControl() {
       if (!viewpointSelect) {
@@ -6863,6 +8337,8 @@ var WorldOrbit = (() => {
           projection: activeViewer.getScene().projection,
           renderPreset: activeViewer.getScene().renderPreset,
           groupCount: activeViewer.getScene().groups.length,
+          semanticGroupCount: activeViewer.getScene().semanticGroups.length,
+          relationCount: activeViewer.getScene().relations.length,
           viewpointCount: activeViewer.getScene().viewpoints.length
         }
       };
@@ -6893,6 +8369,12 @@ var WorldOrbit = (() => {
             <option value="ring">Ring</option>
             <option value="structure">Structure</option>
             <option value="phenomenon">Phenomenon</option>
+          </select>
+        </label>` : "",
+      controls.groupFilter ? `<label class="wo-atlas-field">
+          <span>Group</span>
+          <select data-atlas-group-filter>
+            <option value="">All groups</option>
           </select>
         </label>` : "",
       controls.viewpointSelect ? `<label class="wo-atlas-field">

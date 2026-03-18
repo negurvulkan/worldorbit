@@ -3062,6 +3062,23 @@ function mapDiagnosticFieldToInputNames(
       }
     case "metadata":
       return field === "key" ? ["metadata-key"] : ["metadata-value"];
+    case "group":
+      switch (field) {
+        case "id":
+          return ["group-id"];
+        case "label":
+          return ["group-label"];
+        case "summary":
+          return ["group-summary"];
+        case "color":
+          return ["group-color"];
+        case "tags":
+          return ["group-tags"];
+        case "hidden":
+          return ["group-hidden"];
+        default:
+          return [];
+      }
     case "viewpoint":
       switch (field) {
         case "id":
@@ -3099,6 +3116,29 @@ function mapDiagnosticFieldToInputNames(
           return ["annotation-body"];
         case "tags":
           return ["annotation-tags"];
+        default:
+          return [];
+      }
+    case "relation":
+      switch (field) {
+        case "id":
+          return ["relation-id"];
+        case "from":
+          return ["relation-from"];
+        case "to":
+          return ["relation-to"];
+        case "kind":
+          return ["relation-kind"];
+        case "label":
+          return ["relation-label"];
+        case "summary":
+          return ["relation-summary"];
+        case "tags":
+          return ["relation-tags"];
+        case "color":
+          return ["relation-color"];
+        case "hidden":
+          return ["relation-hidden"];
         default:
           return [];
       }
@@ -3150,12 +3190,16 @@ function describePath(path: AtlasDocumentPath): string {
       return "Defaults";
     case "metadata":
       return `Metadata: ${path.key ?? ""}`;
+    case "group":
+      return `Group: ${path.id ?? ""}`;
     case "object":
       return `Object: ${path.id ?? ""}`;
     case "viewpoint":
       return `Viewpoint: ${path.id ?? ""}`;
     case "annotation":
       return `Annotation: ${path.id ?? ""}`;
+    case "relation":
+      return `Relation: ${path.id ?? ""}`;
   }
 }
 

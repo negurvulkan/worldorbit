@@ -42,7 +42,7 @@ export type Unit =
   | "deg"; // degrees
 
 export type WorldOrbitDocumentVersion = "1.0";
-export type WorldOrbitAtlasDocumentVersion = "2.0";
+export type WorldOrbitAtlasDocumentVersion = "2.0" | "2.1";
 export type WorldOrbitDraftDocumentVersion = "2.0-draft";
 export type WorldOrbitAnyDocumentVersion =
   | WorldOrbitDocumentVersion
@@ -109,15 +109,21 @@ export interface AstInfoEntryNode {
 export interface WorldOrbitDocument {
   format: "worldorbit";
   version: WorldOrbitDocumentVersion;
+  schemaVersion: WorldOrbitAnyDocumentVersion;
   system: WorldOrbitSystem | null;
+  groups: WorldOrbitGroup[];
+  relations: WorldOrbitRelation[];
   objects: WorldOrbitObject[];
 }
 
 export interface WorldOrbitAtlasDocument {
   format: "worldorbit";
   version: WorldOrbitAtlasDocumentVersion;
+  schemaVersion: WorldOrbitAtlasDocumentVersion;
   sourceVersion: WorldOrbitDocumentVersion;
   system: WorldOrbitAtlasSystem | null;
+  groups: WorldOrbitGroup[];
+  relations: WorldOrbitRelation[];
   objects: WorldOrbitObject[];
   diagnostics: WorldOrbitDiagnostic[];
 }
@@ -125,8 +131,11 @@ export interface WorldOrbitAtlasDocument {
 export interface WorldOrbitDraftDocument {
   format: "worldorbit";
   version: WorldOrbitDraftDocumentVersion;
+  schemaVersion: WorldOrbitDraftDocumentVersion;
   sourceVersion: WorldOrbitDocumentVersion;
   system: WorldOrbitAtlasSystem | null;
+  groups: WorldOrbitGroup[];
+  relations: WorldOrbitRelation[];
   objects: WorldOrbitObject[];
   diagnostics: WorldOrbitDiagnostic[];
 }
@@ -134,6 +143,10 @@ export interface WorldOrbitDraftDocument {
 export interface WorldOrbitSystem {
   type: "system";
   id: string;
+  title?: string | null;
+  description?: string | null;
+  epoch?: string | null;
+  referencePlane?: string | null;
   properties: Record<string, NormalizedValue>;
   info: Record<string, string>;
 }
@@ -141,9 +154,71 @@ export interface WorldOrbitSystem {
 export interface WorldOrbitObject {
   type: Exclude<WorldOrbitObjectType, "system">;
   id: string;
+  groups?: string[];
+  epoch?: string | null;
+  referencePlane?: string | null;
+  tidalLock?: boolean;
+  resonance?: WorldOrbitResonance | null;
+  renderHints?: WorldOrbitRenderHints | null;
+  deriveRules?: WorldOrbitDeriveRule[];
+  validationRules?: WorldOrbitValidationRule[];
+  lockedFields?: string[];
+  tolerances?: WorldOrbitToleranceRule[];
+  typedBlocks?: Partial<Record<WorldOrbitTypedBlockName, Record<string, string>>>;
   properties: Record<string, NormalizedValue>;
   placement: Placement | null;
   info: Record<string, string>;
+}
+
+export type WorldOrbitTypedBlockName =
+  | "climate"
+  | "habitability"
+  | "settlement";
+
+export interface WorldOrbitGroup {
+  id: string;
+  label: string;
+  summary: string;
+  color: string | null;
+  tags: string[];
+  hidden: boolean;
+}
+
+export interface WorldOrbitRelation {
+  id: string;
+  from: string;
+  to: string;
+  kind: string;
+  label: string | null;
+  summary: string | null;
+  tags: string[];
+  color: string | null;
+  hidden: boolean;
+}
+
+export interface WorldOrbitResonance {
+  targetObjectId: string;
+  ratio: string;
+}
+
+export interface WorldOrbitRenderHints {
+  renderLabel?: boolean;
+  renderOrbit?: boolean;
+  renderPriority?: number;
+}
+
+export interface WorldOrbitDeriveRule {
+  field: string;
+  strategy: string;
+}
+
+export interface WorldOrbitValidationRule {
+  rule: string;
+}
+
+export interface WorldOrbitToleranceRule {
+  field: string;
+  value: NormalizedValue;
 }
 
 export type NormalizedValue =
@@ -251,6 +326,7 @@ export interface RenderSceneObject {
   ancestorIds: string[];
   childIds: string[];
   groupId: string | null;
+  semanticGroupIds: string[];
   x: number;
   y: number;
   radius: number;
@@ -271,6 +347,7 @@ export interface RenderOrbitVisual {
   object: WorldOrbitObject;
   parentId: string;
   groupId: string | null;
+  semanticGroupIds: string[];
   kind: "circle" | "ellipse";
   cx: number;
   cy: number;
@@ -292,6 +369,7 @@ export interface RenderLeaderLine {
   objectId: string;
   object: WorldOrbitObject;
   groupId: string | null;
+  semanticGroupIds: string[];
   x1: number;
   y1: number;
   x2: number;
@@ -305,6 +383,7 @@ export interface RenderSceneLabel {
   objectId: string;
   object: WorldOrbitObject;
   groupId: string | null;
+  semanticGroupIds: string[];
   label: string;
   secondaryLabel: string;
   x: number;
@@ -320,6 +399,7 @@ export type SceneLayerId =
   | "guides"
   | "orbits-back"
   | "orbits-front"
+  | "relations"
   | "objects"
   | "labels"
   | "metadata";
@@ -362,6 +442,29 @@ export interface RenderSceneGroup {
   contentBounds: RenderBounds;
 }
 
+export interface RenderSceneSemanticGroup {
+  id: string;
+  label: string;
+  summary: string;
+  color: string | null;
+  tags: string[];
+  hidden: boolean;
+  objectIds: string[];
+}
+
+export interface RenderSceneRelation {
+  renderId: string;
+  relationId: string;
+  relation: WorldOrbitRelation;
+  fromObjectId: string;
+  toObjectId: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  hidden: boolean;
+}
+
 export interface RenderScene {
   width: number;
   height: number;
@@ -378,9 +481,11 @@ export interface RenderScene {
   contentBounds: RenderBounds;
   layers: RenderSceneLayer[];
   groups: RenderSceneGroup[];
+  semanticGroups: RenderSceneSemanticGroup[];
   viewpoints: RenderSceneViewpoint[];
   objects: RenderSceneObject[];
   orbitVisuals: RenderOrbitVisual[];
+  relations: RenderSceneRelation[];
   leaders: RenderLeaderLine[];
   labels: RenderSceneLabel[];
 }
@@ -473,6 +578,9 @@ export interface WorldOrbitAtlasSystem {
   type: "system";
   id: string;
   title: string | null;
+  description: string | null;
+  epoch: string | null;
+  referencePlane: string | null;
   defaults: WorldOrbitAtlasDefaults;
   atlasMetadata: Record<string, string>;
   viewpoints: WorldOrbitAtlasViewpoint[];
@@ -483,9 +591,11 @@ export type AtlasDocumentPathKind =
   | "system"
   | "defaults"
   | "metadata"
+  | "group"
   | "object"
   | "viewpoint"
-  | "annotation";
+  | "annotation"
+  | "relation";
 
 export interface AtlasDocumentPath {
   kind: AtlasDocumentPathKind;

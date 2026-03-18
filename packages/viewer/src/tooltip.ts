@@ -103,6 +103,42 @@ function buildTooltipFields(details: ViewerObjectDetails): ViewerTooltipField[] 
   }
 
   const placement = details.object.placement;
+  if (details.object.groups?.length) {
+    fields.set("groups", {
+      key: "groups",
+      label: "Groups",
+      value: details.object.groups.join(", "),
+    });
+  }
+  if (details.object.epoch) {
+    fields.set("epoch", {
+      key: "epoch",
+      label: "Epoch",
+      value: details.object.epoch,
+    });
+  }
+  if (details.object.referencePlane) {
+    fields.set("referencePlane", {
+      key: "referencePlane",
+      label: "Reference Plane",
+      value: details.object.referencePlane,
+    });
+  }
+  if (details.object.tidalLock !== undefined) {
+    fields.set("tidalLock", {
+      key: "tidalLock",
+      label: "Tidal Lock",
+      value: details.object.tidalLock ? "true" : "false",
+    });
+  }
+  if (details.object.resonance) {
+    fields.set("resonance", {
+      key: "resonance",
+      label: "Resonance",
+      value: `${details.object.resonance.targetObjectId} ${details.object.resonance.ratio}`,
+    });
+  }
+
   if (placement?.mode === "at") {
     fields.set("placement", {
       key: "placement",

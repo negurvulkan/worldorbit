@@ -1,10 +1,16 @@
+schema 2.1
+
 system Solara
   title "Solara"
+  epoch "JY-0001.0"
+  referencePlane ecliptic
+
+defaults
   view topdown
   scale balanced
 
-star Solara
+object star Solara
 
-planet Aster
+object planet Aster
   orbit Solara
-  distance 1.0au
+  distance 1au

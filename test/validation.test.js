@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parse } from "@worldorbit/core";
+import { loadWorldOrbitSourceWithDiagnostics, parse, parseWorldOrbitAtlas } from "@worldorbit/core";
 
 test("validation rejects unknown orbit targets", () => {
   const input = `
@@ -123,4 +123,160 @@ moon Leth orbit Naar distance 220000km image https://cdn.example.test/leth.png
 
   assert.equal(planet?.properties.image, "assets/naar-map.png");
   assert.equal(moon?.properties.image, "https://cdn.example.test/leth.png");
+});
+
+test("schema 2.1 parser rejects duplicate group ids", () => {
+  const result = loadWorldOrbitSourceWithDiagnostics(`
+schema 2.1
+
+system Iyath
+  epoch "JY-0001.0"
+
+group inner-system
+  label "Inner System"
+
+group inner-system
+  label "Duplicate Inner System"
+
+object star Iyath
+  mass 1sol
+
+object planet Naar
+  orbit Iyath
+  distance 1au
+`.trim());
+
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.diagnostics.some((diagnostic) => /Duplicate group id "inner-system"/.test(diagnostic.message)),
+  );
+});
+
+test("schema 2.1 validation reports unknown groups and distance conflicts", () => {
+  const result = loadWorldOrbitSourceWithDiagnostics(`
+schema 2.1
+
+system Iyath
+  epoch "JY-0001.0"
+
+group inner-system
+  label "Inner System"
+
+object star Iyath
+  mass 1sol
+
+object planet Naar
+  orbit Iyath
+  distance 1au
+  semiMajor 0.92au
+  period 349.6d
+  groups missing-group
+`.trim());
+
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.diagnostics.some((diagnostic) => /Unknown group "missing-group" on "Naar"/.test(diagnostic.message)),
+  );
+  assert.ok(
+    result.diagnostics.some(
+      (diagnostic) => /cannot declare both "distance" and "semiMajor"/.test(diagnostic.message),
+    ),
+  );
+});
+
+test("schema 2.1 parser rejects invalid resonance ratios", () => {
+  assert.throws(
+    () =>
+      parseWorldOrbitAtlas(`
+schema 2.1
+
+system Iyath
+
+object star Iyath
+
+object planet Naar
+  orbit Iyath
+  semiMajor 1au
+
+object moon Seyra
+  orbit Naar
+  distance 384400km
+
+object moon Orun
+  orbit Naar
+  distance 192200km
+  resonance Seyra two-to-one
+`.trim()),
+    {
+      name: "WorldOrbitError",
+      message: /Invalid resonance ratio "two-to-one"/,
+    },
+  );
+});
+
+test("schema 2.1 validation warns when phase, inclination, and derive lack reference context", () => {
+  const result = loadWorldOrbitSourceWithDiagnostics(`
+schema 2.1
+
+system Iyath
+
+object star Iyath
+
+object planet Naar
+  orbit Iyath
+  semiMajor 1au
+  period 365d
+  phase 25deg
+  inclination 3deg
+  derive period kepler
+  validate kepler
+`.trim());
+
+  assert.equal(result.ok, true);
+  assert.ok(
+    result.diagnostics.some((diagnostic) => /sets "phase" without an object or system epoch/i.test(diagnostic.message)),
+  );
+  assert.ok(
+    result.diagnostics.some(
+      (diagnostic) => /sets "inclination" without an object or system reference plane/i.test(diagnostic.message),
+    ),
+  );
+  assert.ok(
+    result.diagnostics.some(
+      (diagnostic) => /requests "derive period kepler" but lacks enough input data/i.test(diagnostic.message),
+    ),
+  );
+});
+
+test("schema 2.0 input emits compatibility diagnostics for 2.1-only fields", () => {
+  const result = loadWorldOrbitSourceWithDiagnostics(`
+schema 2.0
+
+system Iyath
+  title "Iyath System"
+
+object star Iyath
+
+object planet Naar
+  orbit Iyath
+  semiMajor 1au
+  epoch "JY-0001.0"
+  groups inner-system
+`.trim());
+
+  assert.equal(result.ok, true);
+  assert.ok(
+    result.diagnostics.some(
+      (diagnostic) =>
+        diagnostic.source === "parse" &&
+        /Feature "epoch" requires schema 2\.1/i.test(diagnostic.message),
+    ),
+  );
+  assert.ok(
+    result.diagnostics.some(
+      (diagnostic) =>
+        diagnostic.source === "parse" &&
+        /Feature "groups" requires schema 2\.1/i.test(diagnostic.message),
+    ),
+  );
 });

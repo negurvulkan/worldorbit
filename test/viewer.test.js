@@ -59,6 +59,79 @@ object structure Relay
 
 const legacyDraftSource = atlasSource.replace("schema 2.0", "schema 2.0-draft");
 
+const schema21Source = `
+schema 2.1
+
+system Iyath
+  title "Iyath System"
+  epoch "JY-0001.0"
+  referencePlane ecliptic
+
+defaults
+  view isometric
+  scale presentation
+  preset atlas-card
+
+group inner-system
+  label "Inner System"
+  summary "Naar and nearby infrastructure"
+  color "#d9b37a"
+
+viewpoint inner
+  label "Inner System"
+  projection isometric
+  filter
+    groups inner-system
+
+relation supply-route
+  from Colony
+  to Relay
+  kind logistics
+  label "Supply Route"
+
+object star Iyath
+  mass 1sol
+
+object planet Naar
+  orbit Iyath
+  semiMajor 0.92au
+  period 349.6d
+  groups inner-system
+
+object moon Seyra
+  orbit Naar
+  distance 384400km
+  epoch "JY-0001.0"
+  referencePlane naar-equatorial
+  tidalLock true
+  groups inner-system
+
+  climate
+    meanSurfaceTemperature 291K
+
+object moon Orun
+  orbit Naar
+  distance 192200km
+  resonance Seyra 2:1
+  renderLabel false
+  renderOrbit false
+  groups inner-system
+
+object structure Relay
+  at Naar:L4
+  kind relay
+  groups inner-system
+
+object structure Colony
+  surface Naar
+  kind colony
+  groups inner-system
+
+object belt Outer-Belt
+  orbit Iyath
+  distance 5au
+`.trim();
+
 function installDomGlobals(window) {
   const previous = {
     window: globalThis.window,
@@ -329,6 +402,101 @@ test("atlas viewer exposes built-in atlas controls and inspector state", () => {
 
     atlasViewer.destroy();
     assert.equal(preview.textContent?.trim() ?? "", "");
+  } finally {
+    restoreGlobals();
+    dom.window.close();
+  }
+});
+
+test("interactive viewer loads schema 2.1 semantic groups and relations without dropping details", () => {
+  const dom = new JSDOM(`<div id="preview"></div>`, {
+    pretendToBeVisual: true,
+  });
+  const restoreGlobals = installDomGlobals(dom.window);
+  const preview = dom.window.document.getElementById("preview");
+
+  preview.getBoundingClientRect = () => ({
+    x: 0,
+    y: 0,
+    left: 0,
+    top: 0,
+    right: 960,
+    bottom: 560,
+    width: 960,
+    height: 560,
+    toJSON() {
+      return {};
+    },
+  });
+
+  try {
+    const viewer = createInteractiveViewer(preview, {
+      source: schema21Source,
+      width: 960,
+      height: 560,
+    });
+
+    viewer.setFilter({ groupIds: ["inner-system"] });
+
+    assert.ok(viewer.getScene().semanticGroups.some((group) => group.id === "inner-system"));
+    assert.ok(viewer.getScene().relations.some((relation) => relation.relationId === "supply-route"));
+    assert.equal(viewer.getVisibleObjects().some((object) => object.objectId === "Outer-Belt"), false);
+    assert.equal(viewer.getVisibleObjects().some((object) => object.objectId === "Orun"), true);
+    assert.equal(viewer.getObjectDetails("Seyra")?.object.epoch, "JY-0001.0");
+    assert.equal(viewer.getObjectDetails("Seyra")?.object.referencePlane, "naar-equatorial");
+    assert.equal(viewer.getObjectDetails("Seyra")?.object.tidalLock, true);
+    assert.equal(viewer.getObjectDetails("Seyra")?.object.typedBlocks?.climate?.meanSurfaceTemperature, "291K");
+    assert.equal(viewer.getObjectDetails("Orun")?.object.resonance?.ratio, "2:1");
+    assert.equal(viewer.getObjectDetails("Orun")?.semanticGroups[0]?.id, "inner-system");
+    assert.equal(viewer.getObjectDetails("Orun")?.relations.length, 0);
+    assert.match(viewer.exportSvg(), /data-layer-id="relations"/);
+    assert.match(viewer.exportSvg(), /data-relation-id="supply-route"/);
+
+    viewer.destroy();
+  } finally {
+    restoreGlobals();
+    dom.window.close();
+  }
+});
+
+test("atlas viewer exposes a schema 2.1 group filter and relation-aware inspector snapshot", () => {
+  const dom = new JSDOM(`<div id="preview"></div>`, {
+    pretendToBeVisual: true,
+  });
+  const restoreGlobals = installDomGlobals(dom.window);
+  const preview = dom.window.document.getElementById("preview");
+
+  preview.getBoundingClientRect = () => ({
+    x: 0,
+    y: 0,
+    left: 0,
+    top: 0,
+    right: 960,
+    bottom: 560,
+    width: 960,
+    height: 560,
+    toJSON() {
+      return {};
+    },
+  });
+
+  try {
+    const atlasViewer = createAtlasViewer(preview, {
+      source: schema21Source,
+    });
+    const groupFilter = preview.querySelector("[data-atlas-group-filter]");
+
+    assert.ok(groupFilter);
+    assert.match(groupFilter?.innerHTML ?? "", /inner-system/);
+    assert.ok(atlasViewer.getInspectorSnapshot().scene.semanticGroupCount >= 1);
+    assert.ok(atlasViewer.getInspectorSnapshot().scene.relationCount >= 1);
+
+    groupFilter.value = "inner-system";
+    groupFilter.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+
+    assert.deepEqual(atlasViewer.getAtlasState().filter?.groupIds, ["inner-system"]);
+
+    atlasViewer.destroy();
   } finally {
     restoreGlobals();
     dom.window.close();

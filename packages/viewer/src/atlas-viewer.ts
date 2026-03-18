@@ -32,6 +32,7 @@ export function createAtlasViewer(
   const controls = {
     search: options.controls?.search ?? true,
     typeFilter: options.controls?.typeFilter ?? true,
+    groupFilter: options.controls?.groupFilter ?? true,
     viewpointSelect: options.controls?.viewpointSelect ?? true,
     inspector: options.controls?.inspector ?? true,
     bookmarks: options.controls?.bookmarks ?? true,
@@ -43,6 +44,7 @@ export function createAtlasViewer(
   const toolbar = container.querySelector<HTMLElement>("[data-atlas-toolbar]");
   const searchInput = container.querySelector<HTMLInputElement>("[data-atlas-search]");
   const typeFilterSelect = container.querySelector<HTMLSelectElement>("[data-atlas-type-filter]");
+  const groupFilterSelect = container.querySelector<HTMLSelectElement>("[data-atlas-group-filter]");
   const viewpointSelect = container.querySelector<HTMLSelectElement>("[data-atlas-viewpoint]");
   const bookmarkButton = container.querySelector<HTMLButtonElement>("[data-atlas-bookmark]");
   const bookmarkList = container.querySelector<HTMLElement>("[data-atlas-bookmarks]");
@@ -59,6 +61,7 @@ export function createAtlasViewer(
   let objectTypeFilter =
     options.initialObjectType ??
     (baseFilter?.objectTypes?.length === 1 ? baseFilter.objectTypes[0] : null);
+  let groupFilter = baseFilter?.groupIds?.[0] ?? null;
   let bookmarks: ViewerBookmark[] = [];
 
   let viewer: WorldOrbitViewer | undefined;
@@ -109,6 +112,7 @@ export function createAtlasViewer(
 
   applyCurrentFilter();
   populateViewpoints();
+  populateGroups();
   syncControlsFromFilter(viewer.getFilter());
   renderBookmarks();
   updateSearchResults();
@@ -121,6 +125,11 @@ export function createAtlasViewer(
 
   typeFilterSelect?.addEventListener("change", () => {
     objectTypeFilter = (typeFilterSelect.value || null) as WorldOrbitObject["type"] | null;
+    applyCurrentFilter();
+  });
+
+  groupFilterSelect?.addEventListener("change", () => {
+    groupFilter = groupFilterSelect.value || null;
     applyCurrentFilter();
   });
 
@@ -284,6 +293,7 @@ export function createAtlasViewer(
 
   function refreshAfterInputChange(): void {
     populateViewpoints();
+    populateGroups();
     applyCurrentFilter();
     renderBookmarks();
     updateSearchResults();
@@ -302,7 +312,7 @@ export function createAtlasViewer(
       query: searchQuery || undefined,
       objectTypes: objectTypeFilter ? [objectTypeFilter] : undefined,
       tags: baseFilter?.tags,
-      groupIds: baseFilter?.groupIds,
+      groupIds: groupFilter ? [groupFilter] : baseFilter?.groupIds,
       includeAncestors: baseFilter?.includeAncestors ?? true,
     });
   }
@@ -311,12 +321,16 @@ export function createAtlasViewer(
     searchQuery = filter?.query?.trim() ?? "";
     objectTypeFilter =
       filter?.objectTypes?.length === 1 ? filter.objectTypes[0] : null;
+    groupFilter = filter?.groupIds?.length === 1 ? filter.groupIds[0] : null;
 
     if (searchInput && document.activeElement !== searchInput) {
       searchInput.value = searchQuery;
     }
     if (typeFilterSelect) {
       typeFilterSelect.value = objectTypeFilter ?? "";
+    }
+    if (groupFilterSelect) {
+      groupFilterSelect.value = groupFilter ?? "";
     }
   }
 
@@ -337,6 +351,21 @@ export function createAtlasViewer(
         ),
     ].join("");
     viewpointSelect.value = active;
+  }
+
+  function populateGroups(): void {
+    if (!groupFilterSelect) {
+      return;
+    }
+
+    const activeViewer = requireViewer();
+    groupFilterSelect.innerHTML = [
+      `<option value="">All groups</option>`,
+      ...activeViewer.getScene().semanticGroups.map(
+        (group) => `<option value="${escapeHtml(group.id)}">${escapeHtml(group.label)}</option>`,
+      ),
+    ].join("");
+    groupFilterSelect.value = groupFilter ?? "";
   }
 
   function syncViewpointControl(): void {
@@ -384,6 +413,8 @@ export function createAtlasViewer(
         projection: activeViewer.getScene().projection,
         renderPreset: activeViewer.getScene().renderPreset,
         groupCount: activeViewer.getScene().groups.length,
+        semanticGroupCount: activeViewer.getScene().semanticGroups.length,
+        relationCount: activeViewer.getScene().relations.length,
         viewpointCount: activeViewer.getScene().viewpoints.length,
       },
     };
@@ -406,6 +437,7 @@ export function createAtlasViewer(
 function buildAtlasViewerMarkup(controls: {
   search: boolean;
   typeFilter: boolean;
+  groupFilter: boolean;
   viewpointSelect: boolean;
   inspector: boolean;
   bookmarks: boolean;
@@ -431,6 +463,14 @@ function buildAtlasViewerMarkup(controls: {
             <option value="ring">Ring</option>
             <option value="structure">Structure</option>
             <option value="phenomenon">Phenomenon</option>
+          </select>
+        </label>`
+      : "",
+    controls.groupFilter
+      ? `<label class="wo-atlas-field">
+          <span>Group</span>
+          <select data-atlas-group-filter>
+            <option value="">All groups</option>
           </select>
         </label>`
       : "",

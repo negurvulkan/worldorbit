@@ -25,6 +25,7 @@ export interface WorldOrbitTheme {
   backgroundGlow: string;
   panel: string;
   panelLine: string;
+  relation: string;
   orbit: string;
   orbitBand: string;
   guide: string;
@@ -44,6 +45,7 @@ export interface WorldOrbitTheme {
 export interface ViewerLayerOptions {
   background?: boolean;
   guides?: boolean;
+  relations?: boolean;
   orbits?: boolean;
   objects?: boolean;
   labels?: boolean;
@@ -97,8 +99,10 @@ export interface ViewerObjectDetails {
   renderObject: RenderSceneObject;
   label: RenderSceneLabel | null;
   group: RenderSceneGroup | null;
+  semanticGroups: RenderScene["semanticGroups"];
   orbit: RenderOrbitVisual | null;
   relatedOrbits: RenderOrbitVisual[];
+  relations: RenderScene["relations"];
   parent: RenderSceneObject | null;
   children: RenderSceneObject[];
   ancestors: RenderSceneObject[];
@@ -146,6 +150,7 @@ export interface ViewerBookmark {
 export interface AtlasViewerControls {
   search?: boolean;
   typeFilter?: boolean;
+  groupFilter?: boolean;
   viewpointSelect?: boolean;
   inspector?: boolean;
   bookmarks?: boolean;
@@ -162,6 +167,8 @@ export interface AtlasInspectorSnapshot {
     projection: ViewProjection;
     renderPreset: RenderPresetName | null;
     groupCount: number;
+    semanticGroupCount: number;
+    relationCount: number;
     viewpointCount: number;
   };
 }

@@ -15,21 +15,36 @@ const DEFAULT_SESSION_STATE = {
     sourceHeight: 280,
   },
 };
-const FALLBACK_SOURCE = `schema 2.0
+const FALLBACK_SOURCE = `schema 2.1
 
 system New-Atlas
   title "New Atlas"
+  description "Starter atlas for Schema 2.1 authoring"
+  epoch "JY-0001.0"
+  referencePlane ecliptic
 
 defaults
   view isometric
   scale presentation
   preset atlas-card
 
+group inner-system
+  label "Inner System"
+  summary "Starter worlds and infrastructure"
+  color #d9b37a
+
 viewpoint overview
   label "Overview"
   projection isometric
 
+relation supply-route
+  from Homeworld
+  to Relay
+  kind logistics
+  label "Supply Route"
+
 object star Primary
+  mass 1sol
 
 object planet Homeworld
   orbit Primary
@@ -38,8 +53,21 @@ object planet Homeworld
   phase 36deg
   radius 1re
   atmosphere nitrogen-oxygen
+  groups inner-system
+  renderPriority 3
   info
     description "A fresh starting point for a new worldbuilding atlas."
+
+  climate
+    meanSurfaceTemperature 289K
+
+  habitability
+    inhabited true
+
+object structure Relay
+  at Homeworld:L4
+  kind relay
+  groups inner-system
 `;
 
 export async function createWorldOrbitStudio(root, options = {}) {
@@ -114,7 +142,7 @@ export async function createWorldOrbitStudio(root, options = {}) {
         : deriveFileNameFromUrl(exampleUrl));
     editor.markSaved();
     currentDirty = editor.isDirty();
-    setMessage("Studio ready. Working with canonical schema 2.0 output.", "info");
+    setMessage("Studio ready. Working with schema 2.1 atlases.", "info");
   }
 
   toolbar.addEventListener("click", handleToolbarClick);
@@ -154,7 +182,7 @@ export async function createWorldOrbitStudio(root, options = {}) {
       case "new":
         loadIntoEditor(FALLBACK_SOURCE, DEFAULT_FILE_NAME, {
           markSaved: true,
-          message: "Started a new schema 2.0 atlas.",
+          message: "Started a new schema 2.1 atlas.",
         });
         return;
       case "open":

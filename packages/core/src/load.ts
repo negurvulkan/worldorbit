@@ -14,11 +14,12 @@ import type {
 } from "./types.js";
 import { validateDocument } from "./validate.js";
 
-const ATLAS_SCHEMA_PATTERN = /^schema\s+2(?:\.0)?$/i;
+const ATLAS_SCHEMA_PATTERN = /^schema\s+2(?:\.0|\.1)?$/i;
+const ATLAS_SCHEMA_21_PATTERN = /^schema\s+2\.1$/i;
 const LEGACY_DRAFT_SCHEMA_PATTERN = /^schema\s+2\.0-draft$/i;
 
 export function detectWorldOrbitSchemaVersion(source: string): WorldOrbitAnyDocumentVersion {
-  for (const line of source.split(/\r?\n/)) {
+  for (const line of stripCommentsForSchemaDetection(source).split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed) {
       continue;
@@ -26,6 +27,10 @@ export function detectWorldOrbitSchemaVersion(source: string): WorldOrbitAnyDocu
 
     if (LEGACY_DRAFT_SCHEMA_PATTERN.test(trimmed)) {
       return "2.0-draft";
+    }
+
+    if (ATLAS_SCHEMA_21_PATTERN.test(trimmed)) {
+      return "2.1";
     }
 
     if (ATLAS_SCHEMA_PATTERN.test(trimmed)) {
@@ -36,6 +41,57 @@ export function detectWorldOrbitSchemaVersion(source: string): WorldOrbitAnyDocu
   }
 
   return "1.0";
+}
+
+function stripCommentsForSchemaDetection(source: string): string {
+  const chars = [...source];
+  let inString = false;
+  let inBlockComment = false;
+
+  for (let index = 0; index < chars.length; index++) {
+    const ch = chars[index];
+    const next = chars[index + 1];
+
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        chars[index] = " ";
+        chars[index + 1] = " ";
+        inBlockComment = false;
+        index++;
+        continue;
+      }
+
+      if (ch !== "\n" && ch !== "\r") {
+        chars[index] = " ";
+      }
+      continue;
+    }
+
+    if (!inString && ch === "/" && next === "*") {
+      chars[index] = " ";
+      chars[index + 1] = " ";
+      inBlockComment = true;
+      index++;
+      continue;
+    }
+
+    if (!inString && ch === "#") {
+      chars[index] = " ";
+      let inner = index + 1;
+      while (inner < chars.length && chars[inner] !== "\n" && chars[inner] !== "\r") {
+        chars[inner] = " ";
+        inner++;
+      }
+      index = inner - 1;
+      continue;
+    }
+
+    if (ch === '"' && chars[index - 1] !== "\\") {
+      inString = !inString;
+    }
+  }
+
+  return chars.join("");
 }
 
 export function loadWorldOrbitSource(source: string): LoadedWorldOrbitSource {
@@ -58,7 +114,7 @@ export function loadWorldOrbitSourceWithDiagnostics(
 ): DiagnosticResult<LoadedWorldOrbitSource> {
   const schemaVersion = detectWorldOrbitSchemaVersion(source);
 
-  if (schemaVersion === "2.0" || schemaVersion === "2.0-draft") {
+  if (schemaVersion === "2.0" || schemaVersion === "2.0-draft" || schemaVersion === "2.1") {
     return loadAtlasSourceWithDiagnostics(source, schemaVersion);
   }
 
@@ -110,7 +166,7 @@ export function loadWorldOrbitSourceWithDiagnostics(
 
 function loadAtlasSourceWithDiagnostics(
   source: string,
-  schemaVersion: "2.0" | "2.0-draft",
+  schemaVersion: "2.0" | "2.0-draft" | "2.1",
 ): DiagnosticResult<LoadedWorldOrbitSource> {
   let atlasDocument: WorldOrbitAtlasDocument;
   try {
@@ -120,6 +176,15 @@ function loadAtlasSourceWithDiagnostics(
       ok: false,
       value: null,
       diagnostics: [diagnosticFromError(error, "parse", "load.atlas.failed")],
+    };
+  }
+
+  const atlasDiagnostics = [...atlasDocument.diagnostics];
+  if (atlasDiagnostics.some((diagnostic) => diagnostic.severity === "error")) {
+    return {
+      ok: false,
+      value: null,
+      diagnostics: atlasDiagnostics,
     };
   }
 
@@ -134,28 +199,18 @@ function loadAtlasSourceWithDiagnostics(
     };
   }
 
-  try {
-    validateDocument(document);
-  } catch (error) {
-    return {
-      ok: false,
-      value: null,
-      diagnostics: [diagnosticFromError(error, "validate", "load.atlas.validate.failed")],
-    };
-  }
-
   const loaded: LoadedWorldOrbitSource = {
     schemaVersion,
     ast: null,
     document,
     atlasDocument,
     draftDocument: atlasDocument,
-    diagnostics: [...atlasDocument.diagnostics],
+    diagnostics: atlasDiagnostics,
   };
 
   return {
     ok: true,
     value: loaded,
-    diagnostics: [...atlasDocument.diagnostics],
+    diagnostics: atlasDiagnostics,
   };
 }

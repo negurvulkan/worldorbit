@@ -1,25 +1,35 @@
 import { materializeAtlasDocument } from "./draft.js";
-import { validateDocumentWithDiagnostics } from "./diagnostics.js";
+import { collectAtlasDiagnostics } from "./atlas-validate.js";
 import type {
   AtlasDocumentPath,
   AtlasResolvedDiagnostic,
   WorldOrbitAtlasAnnotation,
   WorldOrbitAtlasDocument,
+  WorldOrbitAtlasDocumentVersion,
   WorldOrbitAtlasSystem,
+  WorldOrbitGroup,
   WorldOrbitAtlasViewpoint,
   WorldOrbitDiagnostic,
+  WorldOrbitRelation,
   WorldOrbitObject,
 } from "./types.js";
 
-export function createEmptyAtlasDocument(systemId = "WorldOrbit"): WorldOrbitAtlasDocument {
+export function createEmptyAtlasDocument(
+  systemId = "WorldOrbit",
+  version: WorldOrbitAtlasDocumentVersion = "2.0",
+): WorldOrbitAtlasDocument {
   return {
     format: "worldorbit",
-    version: "2.0",
+    version,
+    schemaVersion: version,
     sourceVersion: "1.0",
     system: {
       type: "system",
       id: systemId,
       title: systemId,
+      description: null,
+      epoch: null,
+      referencePlane: null,
       defaults: {
         view: "topdown",
         scale: null,
@@ -31,6 +41,8 @@ export function createEmptyAtlasDocument(systemId = "WorldOrbit"): WorldOrbitAtl
       viewpoints: [],
       annotations: [],
     },
+    groups: [],
+    relations: [],
     objects: [],
     diagnostics: [],
   };
@@ -57,6 +69,14 @@ export function listAtlasDocumentPaths(document: WorldOrbitAtlasDocument): Atlas
     }
   }
 
+  for (const group of [...document.groups].sort(compareIdLike)) {
+    paths.push({ kind: "group", id: group.id });
+  }
+
+  for (const relation of [...document.relations].sort(compareIdLike)) {
+    paths.push({ kind: "relation", id: relation.id });
+  }
+
   for (const object of [...document.objects].sort(compareIdLike)) {
     paths.push({ kind: "object", id: object.id });
   }
@@ -75,12 +95,16 @@ export function getAtlasDocumentNode(
       return document.system?.defaults ?? null;
     case "metadata":
       return path.key ? (document.system?.atlasMetadata[path.key] ?? null) : null;
+    case "group":
+      return path.id ? findGroup(document, path.id) : null;
     case "object":
       return path.id ? findObject(document, path.id) : null;
     case "viewpoint":
       return path.id ? findViewpoint(document.system, path.id) : null;
     case "annotation":
       return path.id ? findAnnotation(document.system, path.id) : null;
+    case "relation":
+      return path.id ? findRelation(document, path.id) : null;
   }
 }
 
@@ -112,6 +136,12 @@ export function upsertAtlasDocumentNode(
         system.atlasMetadata[path.key] = String(value);
       }
       return next;
+    case "group":
+      if (!path.id) {
+        throw new Error('Group updates require an "id" value.');
+      }
+      upsertById(next.groups, value as WorldOrbitGroup);
+      return next;
     case "object":
       if (!path.id) {
         throw new Error('Object updates require an "id" value.');
@@ -129,6 +159,12 @@ export function upsertAtlasDocumentNode(
         throw new Error('Annotation updates require an "id" value.');
       }
       upsertById(system.annotations, value as WorldOrbitAtlasAnnotation);
+      return next;
+    case "relation":
+      if (!path.id) {
+        throw new Error('Relation updates require an "id" value.');
+      }
+      upsertById(next.relations, value as WorldOrbitRelation);
       return next;
   }
 }
@@ -159,6 +195,11 @@ export function removeAtlasDocumentNode(
         next.objects = next.objects.filter((object) => object.id !== path.id);
       }
       return next;
+    case "group":
+      if (path.id) {
+        next.groups = next.groups.filter((group) => group.id !== path.id);
+      }
+      return next;
     case "viewpoint":
       if (path.id) {
         system.viewpoints = system.viewpoints.filter((viewpoint) => viewpoint.id !== path.id);
@@ -167,6 +208,11 @@ export function removeAtlasDocumentNode(
     case "annotation":
       if (path.id) {
         system.annotations = system.annotations.filter((annotation) => annotation.id !== path.id);
+      }
+      return next;
+    case "relation":
+      if (path.id) {
+        next.relations = next.relations.filter((relation) => relation.id !== path.id);
       }
       return next;
     default:
@@ -195,6 +241,16 @@ export function resolveAtlasDiagnosticPath(
     };
   }
 
+  if (diagnostic.field?.startsWith("group.")) {
+    const parts = diagnostic.field.split(".");
+    if (parts[1] && findGroup(document, parts[1])) {
+      return {
+        kind: "group",
+        id: parts[1],
+      };
+    }
+  }
+
   if (diagnostic.field?.startsWith("viewpoint.")) {
     const parts = diagnostic.field.split(".");
     if (parts[1] && findViewpoint(document.system, parts[1])) {
@@ -215,6 +271,16 @@ export function resolveAtlasDiagnosticPath(
     }
   }
 
+  if (diagnostic.field?.startsWith("relation.")) {
+    const parts = diagnostic.field.split(".");
+    if (parts[1] && findRelation(document, parts[1])) {
+      return {
+        kind: "relation",
+        id: parts[1],
+      };
+    }
+  }
+
   if (diagnostic.field && diagnostic.field in ensureSystem(document).atlasMetadata) {
     return {
       kind: "metadata",
@@ -228,9 +294,11 @@ export function resolveAtlasDiagnosticPath(
 export function validateAtlasDocumentWithDiagnostics(
   document: WorldOrbitAtlasDocument,
 ): AtlasResolvedDiagnostic[] {
-  const materialized = materializeAtlasDocument(document);
-  const result = validateDocumentWithDiagnostics(materialized);
-  return resolveAtlasDiagnostics(document, result.diagnostics);
+  const diagnostics = [
+    ...document.diagnostics,
+    ...collectAtlasDiagnostics(document, document.version),
+  ];
+  return resolveAtlasDiagnostics(document, diagnostics);
 }
 
 function ensureSystem(document: WorldOrbitAtlasDocument): WorldOrbitAtlasSystem {
@@ -247,6 +315,20 @@ function findObject(
   objectId: string,
 ): WorldOrbitObject | null {
   return document.objects.find((object) => object.id === objectId) ?? null;
+}
+
+function findGroup(
+  document: WorldOrbitAtlasDocument,
+  groupId: string,
+): WorldOrbitGroup | null {
+  return document.groups.find((group) => group.id === groupId) ?? null;
+}
+
+function findRelation(
+  document: WorldOrbitAtlasDocument,
+  relationId: string,
+): WorldOrbitRelation | null {
+  return document.relations.find((relation) => relation.id === relationId) ?? null;
 }
 
 function findViewpoint(

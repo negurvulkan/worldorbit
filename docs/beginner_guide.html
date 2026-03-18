@@ -227,7 +227,7 @@
         <article class="card">
           <span class="pill">1</span>
           <h3>Start with the schema</h3>
-          <p>Use <code>schema 2.0</code> for modern documents. It tells WorldOrbit which syntax version to parse.</p>
+          <p>Use <code>schema 2.1</code> for new documents. <code>schema 2.0</code> still loads, but 2.1 is the clearest default going forward.</p>
         </article>
         <article class="card">
           <span class="pill">2</span>
@@ -262,7 +262,7 @@
           <div>
             <div class="code-box">
               <div class="code-box-header"><span>Source</span><span>minimal</span></div>
-              <pre class="code">schema 2.0
+              <pre class="code">schema 2.1
 
 system Sol
 
@@ -285,7 +285,7 @@ object star Sun</pre>
           <div>
             <div class="code-box">
               <div class="code-box-header"><span>Source</span><span>intermediate</span></div>
-              <pre class="code">schema 2.0
+              <pre class="code">schema 2.1
 
 system Iyath
   title "Iyath System"
@@ -337,7 +337,7 @@ object structure Relay-One
           <div>
             <div class="code-box">
               <div class="code-box-header"><span>Source</span><span>advanced</span></div>
-              <pre class="code">schema 2.0
+              <pre class="code">schema 2.1
 
 system Sol
   title "Solar System"
@@ -474,7 +474,7 @@ object phenomenon Heliosphere
         <div>
           <div class="code-box">
             <div class="code-box-header"><span>Editable source</span><span>live preview</span></div>
-            <textarea id="playground-source" class="code" spellcheck="false">schema 2.0
+            <textarea id="playground-source" class="code" spellcheck="false">schema 2.1
 
 system Demo
   title "Demo System"
@@ -538,7 +538,7 @@ object moon B1
       <div class="tip" style="margin-top:18px;">
         <strong>What beginners usually need first</strong>
         <ul class="checks">
-          <li><code>schema 2.0</code></li>
+          <li><code>schema 2.1</code></li>
           <li><code>system Name</code></li>
           <li><code>object star Name</code></li>
           <li><code>object planet Name</code> with <code>orbit</code> and <code>semiMajor</code></li>
@@ -556,8 +556,8 @@ object moon B1
       </div>
       <div class="faq-list">
         <div class="faq-item">
-          <h3>Do I always need <code>schema 2.0</code>?</h3>
-          <p>For modern documents, yes. It makes the source explicit and predictable.</p>
+          <h3>Do I always need <code>schema 2.1</code>?</h3>
+          <p>For new documents, yes. Older <code>schema 2.0</code> atlases still work, but 2.1 is the recommended explicit header.</p>
         </div>
         <div class="faq-item">
           <h3>Do I have to use every parameter?</h3>
@@ -582,9 +582,9 @@ object moon B1
     </div>
   </footer>
 
-  <script src="https://unpkg.com/worldorbit@2.5.7/dist/unpkg/worldorbit.min.js"></script>
+  <script src="https://unpkg.com/worldorbit@latest/dist/unpkg/worldorbit.min.js"></script>
   <script>
-    const heroSource = `schema 2.0
+    const heroSource = `schema 2.1
 
 system Iyath
 
@@ -604,13 +604,13 @@ object planet Naar
   inclination 24deg
   phase 42deg`;
 
-    const example1Source = `schema 2.0
+    const example1Source = `schema 2.1
 
 system Sol
 
 object star Sun`;
 
-    const example2Source = `schema 2.0
+    const example2Source = `schema 2.1
 
 system Iyath
   title "Iyath System"
@@ -641,7 +641,7 @@ object structure Relay-One
   at Naar:L4
   kind relay`;
 
-    const example3Source = `schema 2.0
+    const example3Source = `schema 2.1
 
 system Sol
   title "Solar System"
@@ -758,7 +758,7 @@ object phenomenon Heliosphere
   kind boundary
   source Sun`;
 
-    const playgroundDefaultSource = `schema 2.0
+    const playgroundDefaultSource = `schema 2.1
 
 system Demo
   title "Demo System"

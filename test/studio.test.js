@@ -10,21 +10,28 @@ import {
   loadSessionState,
 } from "../studio/studio-app.js";
 
-const studioSource = `schema 2.0
+const studioSource = `schema 2.1
 
 system Studio
   title "Studio Test"
+  epoch "JY-0001.0"
+  referencePlane ecliptic
 
 defaults
   view isometric
   preset atlas-card
 
+group inner-system
+  label "Inner System"
+
 object star Primary
+  mass 1sol
 
 object planet Home
   orbit Primary
   semiMajor 1au
   phase 48deg
+  groups inner-system
 `.trim();
 
 function installDomGlobals(window) {
@@ -140,17 +147,20 @@ test("studio mounts, persists session state, warns on unload, and saves canonica
   }
 });
 
-test("studio shells use local package builds and page-specific example urls", () => {
+test("studio shells use UNPKG latest imports and page-specific example urls", () => {
   const studioHtml = readFileSync(new URL("../studio/index.html", import.meta.url), "utf8");
   const docsStudioHtml = readFileSync(new URL("../docs/studio/index.html", import.meta.url), "utf8");
 
-  assert.doesNotMatch(studioHtml, /https:\/\/unpkg\.com/);
-  assert.doesNotMatch(docsStudioHtml, /https:\/\/unpkg\.com/);
-  assert.match(studioHtml, /data-example-url="\.\.\/examples\/iyath\.schema2\.worldorbit"/);
-  assert.match(docsStudioHtml, /data-example-url="\.\.\/\.\.\/examples\/iyath\.schema2\.worldorbit"/);
-  assert.match(studioHtml, /"@worldorbit\/editor": "\.\.\/packages\/editor\/dist\/index\.js"/);
+  assert.match(studioHtml, /https:\/\/unpkg\.com\/@worldorbit\/editor@latest\/dist\/index\.js/);
+  assert.match(docsStudioHtml, /https:\/\/unpkg\.com\/@worldorbit\/editor@latest\/dist\/index\.js/);
+  assert.match(studioHtml, /data-example-url="\.\.\/examples\/iyath\.schema21\.worldorbit"/);
+  assert.match(docsStudioHtml, /data-example-url="\.\.\/\.\.\/examples\/iyath\.schema21\.worldorbit"/);
+  assert.match(
+    studioHtml,
+    /"@worldorbit\/viewer\/viewer-state": "https:\/\/unpkg\.com\/@worldorbit\/viewer@latest\/dist\/viewer-state\.js"/,
+  );
   assert.match(
     docsStudioHtml,
-    /"@worldorbit\/editor": "\.\.\/\.\.\/packages\/editor\/dist\/index\.js"/,
+    /"@worldorbit\/viewer\/viewer-state": "https:\/\/unpkg\.com\/@worldorbit\/viewer@latest\/dist\/viewer-state\.js"/,
   );
 });
