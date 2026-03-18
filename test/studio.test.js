@@ -147,20 +147,20 @@ test("studio mounts, persists session state, warns on unload, and saves canonica
   }
 });
 
-test("studio shells use UNPKG latest imports and page-specific example urls", () => {
+test("studio shells use UNPKG imports and page-specific example urls", () => {
   const studioHtml = readFileSync(new URL("../studio/index.html", import.meta.url), "utf8");
   const docsStudioHtml = readFileSync(new URL("../docs/studio/index.html", import.meta.url), "utf8");
 
-  assert.match(studioHtml, /https:\/\/unpkg\.com\/@worldorbit\/editor@latest\/dist\/index\.js/);
-  assert.match(docsStudioHtml, /https:\/\/unpkg\.com\/@worldorbit\/editor@latest\/dist\/index\.js/);
+  assert.match(studioHtml, /https:\/\/unpkg\.com\/@worldorbit\/editor\/dist\/index\.js/);
+  assert.match(docsStudioHtml, /https:\/\/unpkg\.com\/@worldorbit\/editor\/dist\/index\.js/);
   assert.match(studioHtml, /data-example-url="\.\.\/examples\/iyath\.schema21\.worldorbit"/);
   assert.match(docsStudioHtml, /data-example-url="\.\.\/\.\.\/examples\/iyath\.schema21\.worldorbit"/);
   assert.match(
     studioHtml,
-    /"@worldorbit\/viewer\/viewer-state": "https:\/\/unpkg\.com\/@worldorbit\/viewer@latest\/dist\/viewer-state\.js"/,
+    /"@worldorbit\/viewer\/viewer-state": "https:\/\/unpkg\.com\/@worldorbit\/viewer\/dist\/viewer-state\.js"/,
   );
   assert.match(
     docsStudioHtml,
-    /"@worldorbit\/viewer\/viewer-state": "https:\/\/unpkg\.com\/@worldorbit\/viewer@latest\/dist\/viewer-state\.js"/,
+    /"@worldorbit\/viewer\/viewer-state": "https:\/\/unpkg\.com\/@worldorbit\/viewer\/dist\/viewer-state\.js"/,
   );
 });
