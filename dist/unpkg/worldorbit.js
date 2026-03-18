@@ -1851,8 +1851,9 @@ var WorldOrbit = (() => {
     }
     const orbiting = [...context.orbitChildren.get(object.id) ?? []].sort(compareOrbiting);
     const orbitMetricContext = computeOrbitMetricContext(orbiting, parent.radius, context.spacingFactor, context.scaleModel);
+    const orbitRadiiPx = resolveOrbitRadiiPx(orbiting, orbitMetricContext);
     orbiting.forEach((child, index) => {
-      const orbitGeometry = resolveOrbitGeometry(child, index, orbiting.length, parent, orbitMetricContext, context);
+      const orbitGeometry = resolveOrbitGeometry(child, index, orbiting.length, parent, orbitMetricContext, orbitRadiiPx[index] ?? orbitMetricContext.innerPx, context);
       orbitDrafts.push({
         object: child,
         parentId: object.id,
@@ -1926,7 +1927,8 @@ var WorldOrbit = (() => {
         metricSpread: 0,
         innerPx,
         stepPx,
-        pixelSpread: Math.max(stepPx * Math.max(objects.length - 1, 1), stepPx)
+        pixelSpread: Math.max(stepPx * Math.max(objects.length - 1, 1), stepPx),
+        minimumGapPx: stepPx * 0.42
       };
     }
     const minMetric = Math.min(...presentMetrics);
@@ -1939,10 +1941,11 @@ var WorldOrbit = (() => {
       metricSpread,
       innerPx,
       stepPx,
-      pixelSpread: Math.max(stepPx * Math.max(objects.length - 1, 1), stepPx)
+      pixelSpread: Math.max(stepPx * Math.max(objects.length - 1, 1), stepPx),
+      minimumGapPx: stepPx * 0.42
     };
   }
-  function resolveOrbitGeometry(object, index, count, parent, metricContext, context) {
+  function resolveOrbitGeometry(object, index, count, parent, metricContext, orbitRadiusPx, context) {
     const placement = object.placement;
     const band = object.type === "belt" || object.type === "ring";
     if (!placement || placement.mode !== "orbit") {
@@ -1960,7 +1963,7 @@ var WorldOrbit = (() => {
       };
     }
     const eccentricity = clampNumber(typeof placement.eccentricity === "number" ? placement.eccentricity : 0, 0, 0.92);
-    const semiMajor = resolveOrbitRadiusPx(object, index, metricContext);
+    const semiMajor = orbitRadiusPx;
     const baseMinor = Math.max(semiMajor * Math.sqrt(1 - eccentricity * eccentricity), semiMajor * 0.18);
     const inclinationDeg = unitValueToDegrees(placement.inclination) ?? 0;
     const inclinationScale = context.projection === "isometric" ? Math.max(MIN_ISO_MINOR_SCALE, Math.cos(degreesToRadians(inclinationDeg))) * ISO_FLATTENING : 1;
@@ -1990,21 +1993,28 @@ var WorldOrbit = (() => {
       objectY: objectPoint.y
     };
   }
-  function resolveOrbitRadiusPx(object, index, metricContext) {
-    const metric = orbitMetric(object);
-    if (metric === null) {
-      return metricContext.innerPx + index * metricContext.stepPx;
-    }
-    if (metricContext.metricSpread > 0) {
-      return metricContext.innerPx + (metric - metricContext.minMetric) / metricContext.metricSpread * metricContext.pixelSpread;
-    }
-    return metricContext.innerPx + Math.log10(metric + 1) * metricContext.stepPx;
+  function resolveOrbitRadiusPx(metric, metricContext) {
+    return metricContext.innerPx + metricContext.stepPx * log2(Math.max(metric, 0) + 1);
+  }
+  function resolveOrbitRadiiPx(objects, metricContext) {
+    const radii = [];
+    objects.forEach((object, index) => {
+      const metric = orbitMetric(object);
+      const fallbackRadius = metricContext.innerPx + index * metricContext.stepPx;
+      const baseRadius = metric === null ? fallbackRadius : resolveOrbitRadiusPx(metric, metricContext);
+      const minimumRadius = index === 0 ? metricContext.innerPx : (radii[index - 1] ?? metricContext.innerPx) + metricContext.minimumGapPx;
+      radii.push(Math.max(baseRadius, minimumRadius));
+    });
+    return radii;
   }
   function orbitMetric(object) {
     if (!object.placement || object.placement.mode !== "orbit") {
       return null;
     }
     return toDistanceMetric(object.placement.semiMajor ?? object.placement.distance ?? null);
+  }
+  function log2(value) {
+    return Math.log(value) / Math.log(2);
   }
   function resolveOrbitPhase(phase, index, count) {
     const degreeValue = phase ? unitValueToDegrees(phase) : null;

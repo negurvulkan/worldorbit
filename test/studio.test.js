@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { JSDOM } from "jsdom";
@@ -137,4 +138,19 @@ test("studio mounts, persists session state, warns on unload, and saves canonica
     restoreGlobals();
     dom.window.close();
   }
+});
+
+test("studio shells use local package builds and page-specific example urls", () => {
+  const studioHtml = readFileSync(new URL("../studio/index.html", import.meta.url), "utf8");
+  const docsStudioHtml = readFileSync(new URL("../docs/studio/index.html", import.meta.url), "utf8");
+
+  assert.doesNotMatch(studioHtml, /https:\/\/unpkg\.com/);
+  assert.doesNotMatch(docsStudioHtml, /https:\/\/unpkg\.com/);
+  assert.match(studioHtml, /data-example-url="\.\.\/examples\/iyath\.schema2\.worldorbit"/);
+  assert.match(docsStudioHtml, /data-example-url="\.\.\/\.\.\/examples\/iyath\.schema2\.worldorbit"/);
+  assert.match(studioHtml, /"@worldorbit\/editor": "\.\.\/packages\/editor\/dist\/index\.js"/);
+  assert.match(
+    docsStudioHtml,
+    /"@worldorbit\/editor": "\.\.\/\.\.\/packages\/editor\/dist\/index\.js"/,
+  );
 });

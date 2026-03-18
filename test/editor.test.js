@@ -169,6 +169,31 @@ function getProjectedObjectPoint(root, objectId) {
   };
 }
 
+function getHandlePoint(root, kind) {
+  const handle = root.querySelector(`[data-handle-kind="${kind}"]`);
+  assert.ok(handle, `Expected a ${kind} handle`);
+  return {
+    handle,
+    point: {
+      x: Number.parseFloat(handle.style.left),
+      y: Number.parseFloat(handle.style.top),
+    },
+  };
+}
+
+function getStageOrbitRadius(root, objectId) {
+  const orbit = root.querySelector(
+    `[data-editor-stage] [data-orbit-object-id="${objectId}"]`,
+  );
+  assert.ok(orbit, `Expected a rendered orbit for ${objectId}`);
+  return Number(
+    orbit.getAttribute("r") ??
+      orbit.getAttribute("rx") ??
+      orbit.getAttribute("data-radius") ??
+      0,
+  );
+}
+
 function dragHandle(window, handle, point) {
   handle.dispatchEvent(
     new window.MouseEvent("pointerdown", {
@@ -191,6 +216,33 @@ function dragHandle(window, handle, point) {
       bubbles: true,
       clientX: point.x,
       clientY: point.y,
+      button: 0,
+    }),
+  );
+}
+
+function dragHandleFromTo(window, handle, fromPoint, toPoint) {
+  handle.dispatchEvent(
+    new window.MouseEvent("pointerdown", {
+      bubbles: true,
+      clientX: fromPoint.x,
+      clientY: fromPoint.y,
+      button: 0,
+    }),
+  );
+  window.dispatchEvent(
+    new window.MouseEvent("pointermove", {
+      bubbles: true,
+      clientX: toPoint.x,
+      clientY: toPoint.y,
+      button: 0,
+    }),
+  );
+  window.dispatchEvent(
+    new window.MouseEvent("pointerup", {
+      bubbles: true,
+      clientX: toPoint.x,
+      clientY: toPoint.y,
       button: 0,
     }),
   );
@@ -357,6 +409,91 @@ test("editor stage handles can retarget at and surface placements and update fre
     assert.match(editor.getSource(), /surface Sera/);
     editor.destroy();
   } finally {
+    restoreRects();
+    restoreGlobals();
+    dom.window.close();
+  }
+});
+
+test("editor orbit radius drag keeps moving outward after crossing sibling orbits", () => {
+  const dom = new JSDOM(`<div id="editor"></div>`, {
+    pretendToBeVisual: true,
+  });
+  const restoreGlobals = installDomGlobals(dom.window);
+  const restoreRects = installFixedRects(dom.window, 1120, 680);
+  const root = dom.window.document.getElementById("editor");
+  let editor;
+
+  try {
+    editor = createWorldOrbitEditor(root, {
+      source: dragSource,
+    });
+
+    editor.selectPath({ kind: "object", id: "Naar" });
+
+    const startRadius = getStageOrbitRadius(root, "Naar");
+    const orbitRadii = [];
+    const orbitValues = [];
+
+    for (let index = 0; index < 3; index += 1) {
+      const { handle, point } = getHandlePoint(root, "orbit-radius");
+      dragHandleFromTo(dom.window, handle, point, {
+        x: point.x + 120,
+        y: point.y,
+      });
+      const object = editor.getAtlasDocument().objects.find((entry) => entry.id === "Naar");
+      orbitRadii.push(getStageOrbitRadius(root, "Naar"));
+      orbitValues.push(object?.placement?.distance?.value ?? 0);
+    }
+
+    assert.ok(orbitValues[0] > 1.1, "First drag should increase the orbit distance");
+    assert.ok(orbitValues[1] > orbitValues[0], "Second drag should keep increasing the orbit distance");
+    assert.ok(orbitValues[2] > orbitValues[1], "Third drag should keep increasing the orbit distance");
+    assert.ok(orbitRadii[0] > startRadius, "Orbit radius should increase on the first drag");
+    assert.ok(orbitRadii[1] > orbitRadii[0], "Orbit radius should keep increasing after crossing siblings");
+    assert.ok(orbitRadii[2] > orbitRadii[1], "Orbit radius should still grow on later drags");
+  } finally {
+    editor?.destroy();
+    restoreRects();
+    restoreGlobals();
+    dom.window.close();
+  }
+});
+
+test("editor renders help toggles and preserves collapsed inspector sections across rerenders", () => {
+  const dom = new JSDOM(`<div id="editor"></div>`, {
+    pretendToBeVisual: true,
+  });
+  const restoreGlobals = installDomGlobals(dom.window);
+  const restoreRects = installFixedRects(dom.window, 1120, 680);
+  const root = dom.window.document.getElementById("editor");
+  let editor;
+
+  try {
+    editor = createWorldOrbitEditor(root, {
+      source,
+    });
+
+    editor.selectPath({ kind: "object", id: "Naar" });
+
+    const distanceField = root.querySelector('input[name="placement-distance"]')?.closest(".wo-editor-field");
+    assert.ok(distanceField, "Expected orbit distance field");
+    assert.match(distanceField.textContent ?? "", /Earth-Sun distance/);
+
+    let propertiesSection = root.querySelector('details[data-editor-form-section="properties"]');
+    assert.ok(propertiesSection, "Expected a collapsible properties section");
+    assert.equal(propertiesSection.open, false, "Properties should default to collapsed");
+
+    propertiesSection.open = false;
+    editor.selectPath({ kind: "object", id: "Relay" });
+    editor.selectPath({ kind: "object", id: "Naar" });
+
+    propertiesSection = root.querySelector('details[data-editor-form-section="properties"]');
+    assert.ok(propertiesSection, "Expected properties section after rerender");
+    assert.equal(propertiesSection.open, false, "Collapsed state should persist across rerenders");
+    assert.ok(root.querySelector('details[data-editor-panel-section="preview"]'));
+  } finally {
+    editor?.destroy();
     restoreRects();
     restoreGlobals();
     dom.window.close();

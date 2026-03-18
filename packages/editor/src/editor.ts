@@ -27,7 +27,7 @@ import {
   type ViewerObjectDetails,
   type WorldOrbitViewer,
 } from "@worldorbit/viewer";
-import { invertViewerPoint } from "@worldorbit/viewer/viewer-state";
+import { getViewerVisibleBounds, invertViewerPoint } from "@worldorbit/viewer/viewer-state";
 
 import type {
   WorldOrbitEditor,
@@ -55,11 +55,24 @@ interface DragState {
   pointerId: number;
   startedFrom: HistoryEntry;
   changed: boolean;
+  orbitRadiusContext?: OrbitRadiusDragContext | null;
 }
 
 interface DiagnosticBucket {
   errors: number;
   warnings: number;
+}
+
+interface OrbitRadiusDragContext {
+  innerPx: number;
+  stepPx: number;
+  radiusOffsetPx: number;
+  preferredUnit: UnitValue["unit"];
+}
+
+interface FieldHelpEntry {
+  description: string;
+  references?: string[];
 }
 
 const STYLE_ID = "worldorbit-editor-style";
@@ -121,6 +134,96 @@ const OBJECT_UNIT_FIELDS = [
   "cycle",
 ] as const;
 const OBJECT_NUMBER_FIELDS = ["albedo"] as const;
+const FIELD_HELP: Partial<Record<string, FieldHelpEntry>> = {
+  "defaults-view": {
+    description: "Sets the default camera projection for the atlas.",
+    references: ["Topdown = map-like", "Isometric = angled overview"],
+  },
+  "defaults-scale": {
+    description: "Chooses the overall spacing/style preset used by the renderer.",
+    references: ["diagram = tighter", "presentation = roomier"],
+  },
+  "defaults-units": {
+    description: "Stores a document-wide note about the unit style you want to use.",
+    references: ["Example: metric", "Example: lore-standard"],
+  },
+  "viewpoint-projection": {
+    description: "Overrides the projection for this saved viewpoint.",
+    references: ["Topdown = flat orbital map", "Isometric = angled scene"],
+  },
+  "viewpoint-zoom": {
+    description: "Controls how closely this viewpoint frames the system.",
+    references: ["1 = scene fit", "2+ = close-up"],
+  },
+  "viewpoint-rotation": {
+    description: "Rotates the saved camera angle in degrees.",
+    references: ["90deg = quarter turn", "180deg = flip"],
+  },
+  "placement-target": {
+    description: "Names the body or reference this object is attached to.",
+    references: ["orbit Primary", "surface Homeworld", "at Naar:L4"],
+  },
+  "placement-free": {
+    description: "Stores a free-placement offset or a descriptive label for loose placement.",
+    references: ["8au = far from the star", '"outer system" = descriptive note'],
+  },
+  "placement-distance": {
+    description: "Mean orbit distance from the target body.",
+    references: ["1 au = Earth-Sun distance", "384400km = Earth-Moon distance"],
+  },
+  "placement-semiMajor": {
+    description: "Semi-major axis of an orbit, used for elliptical orbits.",
+    references: ["1 au = Earth-Sun distance", "Use this instead of distance when orbit shape matters"],
+  },
+  "placement-eccentricity": {
+    description: "Controls how stretched the orbit is. Lower is rounder.",
+    references: ["0 = circular orbit", "0.1 = mildly elliptical"],
+  },
+  "placement-period": {
+    description: "How long one orbit takes.",
+    references: ["1 y = one Earth year", "27.3d = Moon around Earth"],
+  },
+  "placement-angle": {
+    description: "Rotates the orbit ellipse within the scene.",
+    references: ["0deg = default orientation", "90deg = quarter turn"],
+  },
+  "placement-inclination": {
+    description: "Tilts the orbit relative to the main orbital plane.",
+    references: ["0deg = same plane", "5deg = slight tilt"],
+  },
+  "placement-phase": {
+    description: "Starting position of the object along its orbit.",
+    references: ["0deg = start position", "180deg = opposite side"],
+  },
+  "prop-radius": {
+    description: "Visual body size or real-world-inspired radius value.",
+    references: ["1re = Earth radius", "1sol = Sun radius"],
+  },
+  "prop-mass": {
+    description: "Optional mass value for the body.",
+    references: ["1me = Earth mass", "1sol = Sun mass"],
+  },
+  "prop-gravity": {
+    description: "Surface gravity or a custom gravity marker.",
+    references: ["1g = Earth-like gravity", "0.16g = Moon-like gravity"],
+  },
+  "prop-temperature": {
+    description: "Typical temperature or narrative temperature marker.",
+    references: ["288K = Earth-like average", "1200K = very hot world"],
+  },
+  "prop-atmosphere": {
+    description: "Short atmosphere descriptor for the object.",
+    references: ['"nitrogen-oxygen"', '"methane haze"'],
+  },
+  "prop-inner": {
+    description: "Inner edge for a belt, ring, or broad phenomenon.",
+    references: ["120000km = ring inner edge", "2au = belt starts here"],
+  },
+  "prop-outer": {
+    description: "Outer edge for a belt, ring, or broad phenomenon.",
+    references: ["190000km = ring outer edge", "3au = belt ends here"],
+  },
+};
 
 export function createWorldOrbitEditor(
   container: HTMLElement,
@@ -148,6 +251,7 @@ export function createWorldOrbitEditor(
   let previewTimer: number | null = null;
   let lastPreviewSvg = "";
   let lastPreviewMarkup = "";
+  const inspectorSectionState = new Map<string, boolean>();
 
   const showTextPane = options.showTextPane ?? true;
   const showInspector = options.showInspector ?? true;
@@ -773,6 +877,8 @@ export function createWorldOrbitEditor(
       return;
     }
 
+    captureInspectorSectionState(inspector, inspectorSectionState);
+
     const formState: WorldOrbitEditorFormState = {
       selection: selection ? { path: { ...selection } } : null,
       system: atlasDocument.system,
@@ -790,26 +896,32 @@ export function createWorldOrbitEditor(
     switch (selection.kind) {
       case "system":
         inspector.innerHTML = diagnosticSummary + renderSystemInspector(formState);
+        applyInspectorSectionState(inspector, inspectorSectionState);
         decorateInspectorDiagnostics(selection, diagnostics);
         return;
       case "defaults":
         inspector.innerHTML = diagnosticSummary + renderDefaultsInspector(formState);
+        applyInspectorSectionState(inspector, inspectorSectionState);
         decorateInspectorDiagnostics(selection, diagnostics);
         return;
       case "metadata":
         inspector.innerHTML = diagnosticSummary + renderMetadataInspector(formState, selection.key ?? "");
+        applyInspectorSectionState(inspector, inspectorSectionState);
         decorateInspectorDiagnostics(selection, diagnostics);
         return;
       case "viewpoint":
         inspector.innerHTML = diagnosticSummary + renderViewpointInspector(formState, selection.id ?? "");
+        applyInspectorSectionState(inspector, inspectorSectionState);
         decorateInspectorDiagnostics(selection, diagnostics);
         return;
       case "annotation":
         inspector.innerHTML = diagnosticSummary + renderAnnotationInspector(formState, selection.id ?? "");
+        applyInspectorSectionState(inspector, inspectorSectionState);
         decorateInspectorDiagnostics(selection, diagnostics);
         return;
       case "object":
         inspector.innerHTML = diagnosticSummary + renderObjectInspector(formState, selection.id ?? "");
+        applyInspectorSectionState(inspector, inspectorSectionState);
         decorateInspectorDiagnostics(selection, diagnostics);
         return;
     }
@@ -1162,12 +1274,17 @@ export function createWorldOrbitEditor(
         return;
       }
     }
+    const details = viewer?.getObjectDetails(objectId) ?? null;
     dragState = {
       kind,
       objectId,
       pointerId: event.pointerId,
       startedFrom: createHistoryEntry(),
       changed: false,
+      orbitRadiusContext:
+        kind === "orbit-radius" && details
+          ? createOrbitRadiusDragContext(atlasDocument, viewer!.getScene(), details)
+          : null,
     };
     handle.setPointerCapture?.(event.pointerId);
     event.preventDefault();
@@ -1199,7 +1316,13 @@ export function createWorldOrbitEditor(
         break;
       case "orbit-radius":
         if (details.object.placement?.mode === "orbit" && details.orbit) {
-          nextDocument = updateOrbitRadius(atlasDocument, dragState.objectId, details, pointer);
+          nextDocument = updateOrbitRadius(
+            atlasDocument,
+            dragState.objectId,
+            details,
+            pointer,
+            dragState.orbitRadiusContext ?? null,
+          );
         }
         break;
       case "at-reference":
@@ -1249,6 +1372,8 @@ export function createWorldOrbitEditor(
       return;
     }
 
+    const completedDrag = dragState;
+
     if (!dragState.changed) {
       dragState = null;
       return;
@@ -1260,6 +1385,9 @@ export function createWorldOrbitEditor(
     sourceText = canonicalSource;
     dragState = null;
     renderAll();
+    if (completedDrag.kind === "orbit-radius") {
+      maybeFitOrbitResizeInView(completedDrag.objectId);
+    }
     updateDirtyState();
     emitSnapshot();
   }
@@ -1530,6 +1658,30 @@ export function createWorldOrbitEditor(
     }
   }
 
+  function maybeFitOrbitResizeInView(objectId: string): void {
+    if (!viewer) {
+      return;
+    }
+
+    const details = viewer.getObjectDetails(objectId);
+    if (!details) {
+      return;
+    }
+
+    const visibleBounds = getViewerVisibleBounds(viewer.getScene(), viewer.getState());
+    const margin = 36 / Math.max(viewer.getState().scale, 0.001);
+    const point = details.renderObject;
+
+    if (
+      point.x < visibleBounds.minX + margin ||
+      point.x > visibleBounds.maxX - margin ||
+      point.y < visibleBounds.minY + margin ||
+      point.y > visibleBounds.maxY - margin
+    ) {
+      viewer.fitToSystem();
+    }
+  }
+
   function shouldIgnoreShortcutEvent(event: KeyboardEvent): boolean {
     const target = event.target as HTMLElement | null;
     if (!target) {
@@ -1674,55 +1826,153 @@ function resolveInitialEditorState(
 }
 
 function buildEditorMarkup(): string {
+  const previewOpen = shouldPreviewSectionBeOpenByDefault();
   return `<section class="wo-editor-shell">
     <div class="wo-editor-toolbar" data-editor-toolbar></div>
     <div class="wo-editor-status" data-editor-status role="status" aria-live="polite"></div>
     <div class="wo-editor-main">
       <aside class="wo-editor-sidebar" data-editor-pane="sidebar">
-        <div class="wo-editor-panel">
-          <h2>Atlas</h2>
-          <div class="wo-editor-outline" data-editor-outline></div>
-        </div>
-        <div class="wo-editor-panel">
-          <h2>Diagnostics</h2>
-          <div class="wo-editor-diagnostics" data-editor-diagnostics></div>
-        </div>
+        <div class="wo-editor-panel">${renderPanelSection("Atlas", "atlas", `<div class="wo-editor-outline" data-editor-outline></div>`)}</div>
+        <div class="wo-editor-panel">${renderPanelSection("Diagnostics", "diagnostics", `<div class="wo-editor-diagnostics" data-editor-diagnostics></div>`)}</div>
       </aside>
       <div class="wo-editor-stage-panel">
         <div class="wo-editor-stage-shell" data-editor-stage-shell>
           <div class="wo-editor-stage" data-editor-stage></div>
           <div class="wo-editor-overlay" data-editor-overlay></div>
         </div>
-        <div class="wo-editor-preview" data-editor-pane="preview">
-          <div class="wo-editor-panel">
-            <h2>Static SVG</h2>
-            <div class="wo-editor-preview-visual" data-editor-preview-visual></div>
-          </div>
-          <div class="wo-editor-panel">
-            <h2>Embed Markup</h2>
-            <pre class="wo-editor-preview-markup" data-editor-preview-markup></pre>
-          </div>
+        <div class="wo-editor-panel" data-editor-pane="preview">
+          ${renderPanelSection(
+            "Preview",
+            "preview",
+            `<div class="wo-editor-preview">
+              <div class="wo-editor-preview-card">
+                <h3>Static SVG</h3>
+                <div class="wo-editor-preview-visual" data-editor-preview-visual></div>
+              </div>
+              <div class="wo-editor-preview-card">
+                <h3>Embed Markup</h3>
+                <pre class="wo-editor-preview-markup" data-editor-preview-markup></pre>
+              </div>
+            </div>`,
+            previewOpen,
+          )}
         </div>
       </div>
-      <aside class="wo-editor-panel wo-editor-inspector" data-editor-pane="inspector" data-editor-inspector></aside>
+      <aside class="wo-editor-panel wo-editor-inspector" data-editor-pane="inspector">
+        ${renderPanelSection("Inspector", "inspector", `<div data-editor-inspector></div>`)}
+      </aside>
     </div>
     <div class="wo-editor-panel wo-editor-text-panel" data-editor-pane="text">
-      <h2>Source</h2>
-      <textarea
-        class="wo-editor-source"
-        data-editor-source
-        spellcheck="false"
-        aria-describedby="worldorbit-editor-source-diagnostics"
-      ></textarea>
-      <div
-        class="wo-editor-source-diagnostics"
-        id="worldorbit-editor-source-diagnostics"
-        data-editor-source-diagnostics
-        aria-live="polite"
-      ></div>
+      ${renderPanelSection(
+        "Source",
+        "source",
+        `<textarea
+          class="wo-editor-source"
+          data-editor-source
+          spellcheck="false"
+          aria-describedby="worldorbit-editor-source-diagnostics"
+        ></textarea>
+        <div
+          class="wo-editor-source-diagnostics"
+          id="worldorbit-editor-source-diagnostics"
+          data-editor-source-diagnostics
+          aria-live="polite"
+        ></div>`,
+      )}
     </div>
     <div class="wo-editor-live-region" data-editor-live aria-live="polite" aria-atomic="true"></div>
   </section>`;
+}
+
+function renderPanelSection(
+  title: string,
+  sectionId: string,
+  content: string,
+  open = true,
+): string {
+  return `<details class="wo-editor-panel-section" data-editor-panel-section="${escapeHtml(sectionId)}"${open ? " open" : ""}>
+    <summary><span>${escapeHtml(title)}</span></summary>
+    <div class="wo-editor-panel-section-body">${content}</div>
+  </details>`;
+}
+
+function renderInspectorSection(
+  formId: string,
+  sectionId: string,
+  title: string,
+  content: string,
+  open = false,
+): string {
+  const stateKey = inspectorSectionStateKey(formId, sectionId);
+  return `<details class="wo-editor-inspector-section" data-editor-form-section="${escapeHtml(sectionId)}" data-editor-form-id="${escapeHtml(formId)}" data-editor-section-state="${escapeHtml(stateKey)}"${open ? " open" : ""}>
+    <summary><span>${escapeHtml(title)}</span></summary>
+    <div class="wo-editor-inspector-section-body">${content}</div>
+  </details>`;
+}
+
+function renderFieldLabel(label: string, name: string): string {
+  return `<span class="wo-editor-field-label">${escapeHtml(label)}${renderFieldHelp(name)}</span>`;
+}
+
+function renderFieldHelp(name: string): string {
+  const help = FIELD_HELP[name];
+  if (!help) {
+    return "";
+  }
+
+  return `<details class="wo-editor-field-help">
+    <summary aria-label="Explain ${escapeAttribute(name)}">?</summary>
+    <div class="wo-editor-field-help-card">
+      <p>${escapeHtml(help.description)}</p>
+      ${(help.references?.length ?? 0) > 0
+        ? `<div class="wo-editor-field-help-chips">${(help.references ?? [])
+            .map((entry) => `<span>${escapeHtml(entry)}</span>`)
+            .join("")}</div>`
+        : ""}
+    </div>
+  </details>`;
+}
+
+function captureInspectorSectionState(
+  container: HTMLElement,
+  state: Map<string, boolean>,
+): void {
+  for (const section of container.querySelectorAll<HTMLDetailsElement>("[data-editor-section-state]")) {
+    const key = section.dataset.editorSectionState;
+    if (!key) {
+      continue;
+    }
+    state.set(key, section.open);
+  }
+}
+
+function applyInspectorSectionState(
+  container: HTMLElement,
+  state: Map<string, boolean>,
+): void {
+  for (const section of container.querySelectorAll<HTMLDetailsElement>("[data-editor-section-state]")) {
+    const key = section.dataset.editorSectionState;
+    if (!key || !state.has(key)) {
+      continue;
+    }
+    section.open = state.get(key) === true;
+  }
+}
+
+function inspectorSectionStateKey(formId: string, sectionId: string): string {
+  return `${formId}:${sectionId}`;
+}
+
+function shouldPreviewSectionBeOpenByDefault(): boolean {
+  if (typeof window === "undefined") {
+    return true;
+  }
+
+  if (typeof window.matchMedia === "function") {
+    return !window.matchMedia("(max-width: 1280px)").matches;
+  }
+
+  return window.innerWidth > 1280;
 }
 
 function renderOutlineButton(
@@ -1743,8 +1993,14 @@ function renderOutlineButton(
 function renderSystemInspector(formState: WorldOrbitEditorFormState): string {
   return `<form class="wo-editor-form" data-editor-form="system">
     <h2>System</h2>
-    ${renderTextField("System ID", "system-id", formState.system?.id ?? "")}
-    ${renderTextField("Title", "system-title", formState.system?.title ?? "")}
+    ${renderInspectorSection(
+      "system",
+      "basics",
+      "Basics",
+      `${renderTextField("System ID", "system-id", formState.system?.id ?? "")}
+      ${renderTextField("Title", "system-title", formState.system?.title ?? "")}`,
+      true,
+    )}
   </form>`;
 }
 
@@ -1752,20 +2008,26 @@ function renderDefaultsInspector(formState: WorldOrbitEditorFormState): string {
   const defaults = formState.system?.defaults;
   return `<form class="wo-editor-form" data-editor-form="defaults">
     <h2>Defaults</h2>
-    ${renderSelectField("Projection", "defaults-view", [
-      ["topdown", "Topdown"],
-      ["isometric", "Isometric"],
-    ], defaults?.view ?? "topdown")}
-    ${renderTextField("Scale preset", "defaults-scale", defaults?.scale ?? "")}
-    ${renderTextField("Units", "defaults-units", defaults?.units ?? "")}
-    ${renderSelectField("Render preset", "defaults-preset", [
-      ["", "Document default"],
-      ["diagram", "Diagram"],
-      ["presentation", "Presentation"],
-      ["atlas-card", "Atlas Card"],
-      ["markdown", "Markdown"],
-    ], defaults?.preset ?? "")}
-    ${renderTextField("Theme", "defaults-theme", defaults?.theme ?? "")}
+    ${renderInspectorSection(
+      "defaults",
+      "basics",
+      "Basics",
+      `${renderSelectField("Projection", "defaults-view", [
+        ["topdown", "Topdown"],
+        ["isometric", "Isometric"],
+      ], defaults?.view ?? "topdown")}
+      ${renderTextField("Scale preset", "defaults-scale", defaults?.scale ?? "")}
+      ${renderTextField("Units", "defaults-units", defaults?.units ?? "")}
+      ${renderSelectField("Render preset", "defaults-preset", [
+        ["", "Document default"],
+        ["diagram", "Diagram"],
+        ["presentation", "Presentation"],
+        ["atlas-card", "Atlas Card"],
+        ["markdown", "Markdown"],
+      ], defaults?.preset ?? "")}
+      ${renderTextField("Theme", "defaults-theme", defaults?.theme ?? "")}`,
+      true,
+    )}
   </form>`;
 }
 
@@ -1776,8 +2038,14 @@ function renderMetadataInspector(
   const value = formState.system?.atlasMetadata[key] ?? "";
   return `<form class="wo-editor-form" data-editor-form="metadata">
     <h2>Metadata</h2>
-    ${renderTextField("Key", "metadata-key", key)}
-    ${renderTextAreaField("Value", "metadata-value", value)}
+    ${renderInspectorSection(
+      "metadata",
+      "entry",
+      "Entry",
+      `${renderTextField("Key", "metadata-key", key)}
+      ${renderTextAreaField("Value", "metadata-value", value)}`,
+      true,
+    )}
   </form>`;
 }
 
@@ -1792,38 +2060,54 @@ function renderViewpointInspector(
 
   return `<form class="wo-editor-form" data-editor-form="viewpoint">
     <h2>Viewpoint</h2>
-    ${renderTextField("ID", "viewpoint-id", viewpoint.id)}
-    ${renderTextField("Label", "viewpoint-label", viewpoint.label)}
-    ${renderTextAreaField("Summary", "viewpoint-summary", viewpoint.summary)}
-    ${renderTextField("Focus object", "viewpoint-focus", viewpoint.focusObjectId ?? "")}
-    ${renderTextField("Selected object", "viewpoint-select", viewpoint.selectedObjectId ?? "")}
-    ${renderSelectField("Projection", "viewpoint-projection", [
-      ["topdown", "Topdown"],
-      ["isometric", "Isometric"],
-    ], viewpoint.projection)}
-    ${renderSelectField("Preset", "viewpoint-preset", [
-      ["", "Document default"],
-      ["diagram", "Diagram"],
-      ["presentation", "Presentation"],
-      ["atlas-card", "Atlas Card"],
-      ["markdown", "Markdown"],
-    ], viewpoint.preset ?? "")}
-    ${renderTextField("Zoom", "viewpoint-zoom", viewpoint.zoom === null ? "" : String(viewpoint.zoom))}
-    ${renderTextField("Rotation", "viewpoint-rotation", String(viewpoint.rotationDeg))}
-    <fieldset class="wo-editor-fieldset">
-      <legend>Layers</legend>
-      ${renderCheckboxField("Background", "layer-background", viewpoint.layers.background !== false)}
-      ${renderCheckboxField("Guides", "layer-guides", viewpoint.layers.guides !== false)}
-      ${renderCheckboxField("Orbits back", "layer-orbits-back", viewpoint.layers["orbits-back"] !== false)}
-      ${renderCheckboxField("Orbits front", "layer-orbits-front", viewpoint.layers["orbits-front"] !== false)}
-      ${renderCheckboxField("Objects", "layer-objects", viewpoint.layers.objects !== false)}
-      ${renderCheckboxField("Labels", "layer-labels", viewpoint.layers.labels !== false)}
-      ${renderCheckboxField("Metadata", "layer-metadata", viewpoint.layers.metadata !== false)}
-    </fieldset>
-    ${renderTextField("Filter query", "filter-query", viewpoint.filter?.query ?? "")}
-    ${renderTextField("Filter object types", "filter-object-types", viewpoint.filter?.objectTypes.join(" ") ?? "")}
-    ${renderTextField("Filter tags", "filter-tags", viewpoint.filter?.tags.join(" ") ?? "")}
-    ${renderTextField("Filter groups", "filter-groups", viewpoint.filter?.groupIds.join(" ") ?? "")}
+    ${renderInspectorSection(
+      "viewpoint",
+      "basics",
+      "Basics",
+      `${renderTextField("ID", "viewpoint-id", viewpoint.id)}
+      ${renderTextField("Label", "viewpoint-label", viewpoint.label)}
+      ${renderTextAreaField("Summary", "viewpoint-summary", viewpoint.summary)}
+      ${renderTextField("Focus object", "viewpoint-focus", viewpoint.focusObjectId ?? "")}
+      ${renderTextField("Selected object", "viewpoint-select", viewpoint.selectedObjectId ?? "")}
+      ${renderSelectField("Projection", "viewpoint-projection", [
+        ["topdown", "Topdown"],
+        ["isometric", "Isometric"],
+      ], viewpoint.projection)}
+      ${renderSelectField("Preset", "viewpoint-preset", [
+        ["", "Document default"],
+        ["diagram", "Diagram"],
+        ["presentation", "Presentation"],
+        ["atlas-card", "Atlas Card"],
+        ["markdown", "Markdown"],
+      ], viewpoint.preset ?? "")}
+      ${renderTextField("Zoom", "viewpoint-zoom", viewpoint.zoom === null ? "" : String(viewpoint.zoom))}
+      ${renderTextField("Rotation", "viewpoint-rotation", String(viewpoint.rotationDeg))}`,
+      true,
+    )}
+    ${renderInspectorSection(
+      "viewpoint",
+      "layers",
+      "Layers",
+      `<fieldset class="wo-editor-fieldset">
+        <legend>Layers</legend>
+        ${renderCheckboxField("Background", "layer-background", viewpoint.layers.background !== false)}
+        ${renderCheckboxField("Guides", "layer-guides", viewpoint.layers.guides !== false)}
+        ${renderCheckboxField("Orbits back", "layer-orbits-back", viewpoint.layers["orbits-back"] !== false)}
+        ${renderCheckboxField("Orbits front", "layer-orbits-front", viewpoint.layers["orbits-front"] !== false)}
+        ${renderCheckboxField("Objects", "layer-objects", viewpoint.layers.objects !== false)}
+        ${renderCheckboxField("Labels", "layer-labels", viewpoint.layers.labels !== false)}
+        ${renderCheckboxField("Metadata", "layer-metadata", viewpoint.layers.metadata !== false)}
+      </fieldset>`,
+    )}
+    ${renderInspectorSection(
+      "viewpoint",
+      "filter",
+      "Filter",
+      `${renderTextField("Filter query", "filter-query", viewpoint.filter?.query ?? "")}
+      ${renderTextField("Filter object types", "filter-object-types", viewpoint.filter?.objectTypes.join(" ") ?? "")}
+      ${renderTextField("Filter tags", "filter-tags", viewpoint.filter?.tags.join(" ") ?? "")}
+      ${renderTextField("Filter groups", "filter-groups", viewpoint.filter?.groupIds.join(" ") ?? "")}`,
+    )}
   </form>`;
 }
 
@@ -1838,12 +2122,18 @@ function renderAnnotationInspector(
 
   return `<form class="wo-editor-form" data-editor-form="annotation">
     <h2>Annotation</h2>
-    ${renderTextField("ID", "annotation-id", annotation.id)}
-    ${renderTextField("Label", "annotation-label", annotation.label)}
-    ${renderTextField("Target object", "annotation-target", annotation.targetObjectId ?? "")}
-    ${renderTextField("Source object", "annotation-source", annotation.sourceObjectId ?? "")}
-    ${renderTextAreaField("Body", "annotation-body", annotation.body)}
-    ${renderTextField("Tags", "annotation-tags", annotation.tags.join(" "))}
+    ${renderInspectorSection(
+      "annotation",
+      "entry",
+      "Entry",
+      `${renderTextField("ID", "annotation-id", annotation.id)}
+      ${renderTextField("Label", "annotation-label", annotation.label)}
+      ${renderTextField("Target object", "annotation-target", annotation.targetObjectId ?? "")}
+      ${renderTextField("Source object", "annotation-source", annotation.sourceObjectId ?? "")}
+      ${renderTextAreaField("Body", "annotation-body", annotation.body)}
+      ${renderTextField("Tags", "annotation-tags", annotation.tags.join(" "))}`,
+      true,
+    )}
   </form>`;
 }
 
@@ -1870,56 +2160,78 @@ function renderObjectInspector(
 
   return `<form class="wo-editor-form" data-editor-form="object">
     <h2>Object</h2>
-    ${renderTextField("ID", "object-id", object.id)}
-    ${renderSelectField("Type", "object-type", OBJECT_TYPES.map((type) => [type, humanizeIdentifier(type)]), object.type)}
-    ${renderSelectField("Placement mode", "placement-mode", [
-      ["", "None"],
-      ["orbit", "Orbit"],
-      ["at", "At"],
-      ["surface", "Surface"],
-      ["free", "Free"],
-    ], placementMode)}
-    ${renderTextField("Placement target", "placement-target", placementTarget)}
-    ${renderTextField("Free value", "placement-free", freeValue)}
-    ${renderTextField("Distance", "placement-distance", object.placement?.mode === "orbit" && object.placement.distance ? formatUnitValue(object.placement.distance) : "")}
-    ${renderTextField("Semi-major", "placement-semiMajor", object.placement?.mode === "orbit" && object.placement.semiMajor ? formatUnitValue(object.placement.semiMajor) : "")}
-    ${renderTextField("Eccentricity", "placement-eccentricity", object.placement?.mode === "orbit" && object.placement.eccentricity !== undefined ? String(object.placement.eccentricity) : "")}
-    ${renderTextField("Period", "placement-period", object.placement?.mode === "orbit" && object.placement.period ? formatUnitValue(object.placement.period) : "")}
-    ${renderTextField("Angle", "placement-angle", object.placement?.mode === "orbit" && object.placement.angle ? formatUnitValue(object.placement.angle) : "")}
-    ${renderTextField("Inclination", "placement-inclination", object.placement?.mode === "orbit" && object.placement.inclination ? formatUnitValue(object.placement.inclination) : "")}
-    ${renderTextField("Phase", "placement-phase", object.placement?.mode === "orbit" && object.placement.phase ? formatUnitValue(object.placement.phase) : "")}
-    <fieldset class="wo-editor-fieldset">
-      <legend>Properties</legend>
-      ${renderTextField("Kind", "prop-kind", readStringProperty(object.properties.kind))}
-      ${renderTextField("Class", "prop-class", readStringProperty(object.properties.class))}
-      ${renderTextField("Culture", "prop-culture", readStringProperty(object.properties.culture))}
-      ${renderTextField("Tags", "prop-tags", readTagsProperty(object.properties.tags))}
-      ${renderTextField("Color", "prop-color", readStringProperty(object.properties.color))}
-      ${renderTextField("Image", "prop-image", readStringProperty(object.properties.image))}
-      ${renderCheckboxField("Hidden", "prop-hidden", object.properties.hidden === true)}
-      ${renderTextField("Radius", "prop-radius", readUnitProperty(object.properties.radius))}
-      ${renderTextField("Mass", "prop-mass", readUnitProperty(object.properties.mass))}
-      ${renderTextField("Density", "prop-density", readUnitProperty(object.properties.density))}
-      ${renderTextField("Gravity", "prop-gravity", readUnitProperty(object.properties.gravity))}
-      ${renderTextField("Temperature", "prop-temperature", readUnitProperty(object.properties.temperature))}
-      ${renderTextField("Albedo", "prop-albedo", readNumberProperty(object.properties.albedo))}
-      ${renderTextField("Atmosphere", "prop-atmosphere", readStringProperty(object.properties.atmosphere))}
-      ${renderTextField("Inner", "prop-inner", readUnitProperty(object.properties.inner))}
-      ${renderTextField("Outer", "prop-outer", readUnitProperty(object.properties.outer))}
-      ${renderTextField("On", "prop-on", readStringProperty(object.properties.on))}
-      ${renderTextField("Source", "prop-source", readStringProperty(object.properties.source))}
-      ${renderTextField("Cycle", "prop-cycle", readUnitProperty(object.properties.cycle))}
-    </fieldset>
-    ${renderTextAreaField("Description", "info-description", object.info.description ?? "")}
+    ${renderInspectorSection(
+      "object",
+      "identity",
+      "Identity",
+      `${renderTextField("ID", "object-id", object.id)}
+      ${renderSelectField("Type", "object-type", OBJECT_TYPES.map((type) => [type, humanizeIdentifier(type)]), object.type)}`,
+      true,
+    )}
+    ${renderInspectorSection(
+      "object",
+      "placement",
+      "Placement",
+      `${renderSelectField("Placement mode", "placement-mode", [
+        ["", "None"],
+        ["orbit", "Orbit"],
+        ["at", "At"],
+        ["surface", "Surface"],
+        ["free", "Free"],
+      ], placementMode)}
+      ${renderTextField("Placement target", "placement-target", placementTarget)}
+      ${renderTextField("Free value", "placement-free", freeValue)}
+      ${renderTextField("Distance", "placement-distance", object.placement?.mode === "orbit" && object.placement.distance ? formatUnitValue(object.placement.distance) : "")}
+      ${renderTextField("Semi-major", "placement-semiMajor", object.placement?.mode === "orbit" && object.placement.semiMajor ? formatUnitValue(object.placement.semiMajor) : "")}
+      ${renderTextField("Eccentricity", "placement-eccentricity", object.placement?.mode === "orbit" && object.placement.eccentricity !== undefined ? String(object.placement.eccentricity) : "")}
+      ${renderTextField("Period", "placement-period", object.placement?.mode === "orbit" && object.placement.period ? formatUnitValue(object.placement.period) : "")}
+      ${renderTextField("Angle", "placement-angle", object.placement?.mode === "orbit" && object.placement.angle ? formatUnitValue(object.placement.angle) : "")}
+      ${renderTextField("Inclination", "placement-inclination", object.placement?.mode === "orbit" && object.placement.inclination ? formatUnitValue(object.placement.inclination) : "")}
+      ${renderTextField("Phase", "placement-phase", object.placement?.mode === "orbit" && object.placement.phase ? formatUnitValue(object.placement.phase) : "")}`,
+      true,
+    )}
+    ${renderInspectorSection(
+      "object",
+      "properties",
+      "Properties",
+      `<fieldset class="wo-editor-fieldset">
+        <legend>Properties</legend>
+        ${renderTextField("Kind", "prop-kind", readStringProperty(object.properties.kind))}
+        ${renderTextField("Class", "prop-class", readStringProperty(object.properties.class))}
+        ${renderTextField("Culture", "prop-culture", readStringProperty(object.properties.culture))}
+        ${renderTextField("Tags", "prop-tags", readTagsProperty(object.properties.tags))}
+        ${renderTextField("Color", "prop-color", readStringProperty(object.properties.color))}
+        ${renderTextField("Image", "prop-image", readStringProperty(object.properties.image))}
+        ${renderCheckboxField("Hidden", "prop-hidden", object.properties.hidden === true)}
+        ${renderTextField("Radius", "prop-radius", readUnitProperty(object.properties.radius))}
+        ${renderTextField("Mass", "prop-mass", readUnitProperty(object.properties.mass))}
+        ${renderTextField("Density", "prop-density", readUnitProperty(object.properties.density))}
+        ${renderTextField("Gravity", "prop-gravity", readUnitProperty(object.properties.gravity))}
+        ${renderTextField("Temperature", "prop-temperature", readUnitProperty(object.properties.temperature))}
+        ${renderTextField("Albedo", "prop-albedo", readNumberProperty(object.properties.albedo))}
+        ${renderTextField("Atmosphere", "prop-atmosphere", readStringProperty(object.properties.atmosphere))}
+        ${renderTextField("Inner", "prop-inner", readUnitProperty(object.properties.inner))}
+        ${renderTextField("Outer", "prop-outer", readUnitProperty(object.properties.outer))}
+        ${renderTextField("On", "prop-on", readStringProperty(object.properties.on))}
+        ${renderTextField("Source", "prop-source", readStringProperty(object.properties.source))}
+        ${renderTextField("Cycle", "prop-cycle", readUnitProperty(object.properties.cycle))}
+      </fieldset>`,
+    )}
+    ${renderInspectorSection(
+      "object",
+      "info",
+      "Info",
+      `${renderTextAreaField("Description", "info-description", object.info.description ?? "")}`,
+    )}
   </form>`;
 }
 
 function renderTextField(label: string, name: string, value: string): string {
-  return `<label class="wo-editor-field"><span>${escapeHtml(label)}</span><input name="${escapeHtml(name)}" value="${escapeAttribute(value)}" /></label>`;
+  return `<label class="wo-editor-field">${renderFieldLabel(label, name)}<input name="${escapeHtml(name)}" value="${escapeAttribute(value)}" /></label>`;
 }
 
 function renderTextAreaField(label: string, name: string, value: string): string {
-  return `<label class="wo-editor-field"><span>${escapeHtml(label)}</span><textarea name="${escapeHtml(name)}">${escapeHtml(value)}</textarea></label>`;
+  return `<label class="wo-editor-field">${renderFieldLabel(label, name)}<textarea name="${escapeHtml(name)}">${escapeHtml(value)}</textarea></label>`;
 }
 
 function renderSelectField(
@@ -1928,7 +2240,7 @@ function renderSelectField(
   options: Array<[string, string]>,
   selectedValue: string,
 ): string {
-  return `<label class="wo-editor-field"><span>${escapeHtml(label)}</span><select name="${escapeHtml(name)}">${options
+  return `<label class="wo-editor-field">${renderFieldLabel(label, name)}<select name="${escapeHtml(name)}">${options
     .map(
       ([value, optionLabel]) =>
         `<option value="${escapeHtml(value)}"${value === selectedValue ? " selected" : ""}>${escapeHtml(optionLabel)}</option>`,
@@ -1937,7 +2249,7 @@ function renderSelectField(
 }
 
 function renderCheckboxField(label: string, name: string, checked: boolean): string {
-  return `<label class="wo-editor-checkbox"><input type="checkbox" name="${escapeHtml(name)}"${checked ? " checked" : ""} /><span>${escapeHtml(label)}</span></label>`;
+  return `<label class="wo-editor-checkbox"><input type="checkbox" name="${escapeHtml(name)}"${checked ? " checked" : ""} />${renderFieldLabel(label, name)}</label>`;
 }
 
 function createHandleElement(
@@ -2280,16 +2592,24 @@ function updateOrbitRadius(
   objectId: string,
   details: ViewerObjectDetails,
   pointer: CoordinatePoint,
+  dragContext: OrbitRadiusDragContext | null,
 ): WorldOrbitAtlasDocument {
   const orbit = details.orbit;
-  if (!orbit || details.object.placement?.mode !== "orbit") {
+  if (!orbit || details.object.placement?.mode !== "orbit" || !dragContext) {
     return document;
   }
 
   const unrotated = rotatePoint(pointer, { x: orbit.cx, y: orbit.cy }, -orbit.rotationDeg);
-  const currentRadius = orbit.kind === "circle" ? orbit.radius ?? 1 : orbit.rx ?? 1;
-  const nextRadius = Math.max(Math.abs(unrotated.x - orbit.cx), 24);
-  const ratio = nextRadius / Math.max(currentRadius, 1);
+  const nextDisplayedRadius = Math.max(Math.abs(unrotated.x - orbit.cx), 24);
+  const nextBaseRadius = Math.max(
+    nextDisplayedRadius - dragContext.radiusOffsetPx,
+    dragContext.innerPx,
+  );
+  const nextMetric = orbitRadiusPxToMetric(
+    nextBaseRadius,
+    dragContext.innerPx,
+    dragContext.stepPx,
+  );
   const next = cloneAtlasDocument(document);
   const object = next.objects.find((entry) => entry.id === objectId);
   if (!object || object.placement?.mode !== "orbit") {
@@ -2302,10 +2622,10 @@ function updateOrbitRadius(
       value: 1,
       unit: "au" as const,
     };
-  const scaled: UnitValue = {
-    value: roundNumber(currentValue.value * ratio, 3),
-    unit: currentValue.unit,
-  };
+  const scaled = distanceMetricToUnitValue(
+    Math.max(nextMetric, 0),
+    dragContext.preferredUnit ?? currentValue.unit,
+  );
   if (object.placement.semiMajor) {
     object.placement.semiMajor = scaled;
   } else {
@@ -2357,6 +2677,45 @@ function updateSurfaceTarget(
 
   object.placement.target = target.objectId;
   return next;
+}
+
+function createOrbitRadiusDragContext(
+  document: WorldOrbitAtlasDocument,
+  scene: RenderScene,
+  details: ViewerObjectDetails,
+): OrbitRadiusDragContext | null {
+  if (details.object.placement?.mode !== "orbit" || !details.orbit || !details.parent) {
+    return null;
+  }
+
+  const targetId = details.object.placement.target;
+  const siblingCount = document.objects.filter(
+    (entry) =>
+      entry.placement?.mode === "orbit" &&
+      entry.placement.target === targetId,
+  ).length;
+  const spacingFactor = layoutPresetSpacingForScene(scene.layoutPreset);
+  const stepPx =
+    (siblingCount > 2 ? 54 : 64) * spacingFactor * scene.scaleModel.orbitDistanceMultiplier;
+  const innerPx =
+    details.parent.radius +
+    56 * spacingFactor * scene.scaleModel.orbitDistanceMultiplier;
+  const currentValue = details.object.placement.semiMajor ?? details.object.placement.distance ?? null;
+  const currentMetric = unitValueToDistanceMetric(currentValue);
+  const displayedRadius =
+    details.orbit.kind === "circle" ? details.orbit.radius ?? 1 : details.orbit.rx ?? 1;
+  const baseRadius = orbitMetricToRadiusPx(
+    currentMetric ?? 0,
+    innerPx,
+    stepPx,
+  );
+
+  return {
+    innerPx,
+    stepPx,
+    radiusOffsetPx: displayedRadius - baseRadius,
+    preferredUnit: currentValue?.unit ?? null,
+  };
 }
 
 function updateFreeDistance(
@@ -2890,6 +3249,25 @@ function normalizeFreeDistanceUnit(unit: UnitValue["unit"]): UnitValue["unit"] {
   }
 }
 
+function unitValueToDistanceMetric(value: UnitValue | null): number | null {
+  if (!value) {
+    return null;
+  }
+
+  switch (value.unit) {
+    case "au":
+      return value.value;
+    case "km":
+      return value.value / AU_IN_KM;
+    case "re":
+      return (value.value * EARTH_RADIUS_IN_KM) / AU_IN_KM;
+    case "sol":
+      return (value.value * SOLAR_RADIUS_IN_KM) / AU_IN_KM;
+    default:
+      return value.value;
+  }
+}
+
 function distanceMetricToUnitValue(metric: number, unit: UnitValue["unit"]): UnitValue {
   switch (unit) {
     case "km":
@@ -2903,6 +3281,33 @@ function distanceMetricToUnitValue(metric: number, unit: UnitValue["unit"]): Uni
     default:
       return { value: roundNumber(metric, 2), unit: null };
   }
+}
+
+function orbitMetricToRadiusPx(metric: number, innerPx: number, stepPx: number): number {
+  return innerPx + stepPx * log2(Math.max(metric, 0) + 1);
+}
+
+function orbitRadiusPxToMetric(radiusPx: number, innerPx: number, stepPx: number): number {
+  if (radiusPx <= innerPx) {
+    return 0;
+  }
+
+  return Math.pow(2, (radiusPx - innerPx) / Math.max(stepPx, 0.0001)) - 1;
+}
+
+function layoutPresetSpacingForScene(layoutPreset: RenderScene["layoutPreset"]): number {
+  switch (layoutPreset) {
+    case "compact":
+      return 0.84;
+    case "presentation":
+      return 1.2;
+    default:
+      return 1;
+  }
+}
+
+function log2(value: number): number {
+  return Math.log(value) / Math.log(2);
 }
 
 function escapeHtml(value: string): string {
@@ -3009,6 +3414,62 @@ function installEditorStyles(): void {
       font: 700 14px/1.2 "Segoe UI Variable Display", "Segoe UI", sans-serif;
       text-transform: uppercase;
       letter-spacing: 0.08em;
+    }
+    .wo-editor-panel h3 {
+      margin: 0 0 12px;
+      color: rgba(237, 246, 255, 0.82);
+      font: 700 12px/1.2 "Segoe UI Variable", "Segoe UI", sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .wo-editor-panel-section,
+    .wo-editor-inspector-section {
+      min-width: 0;
+    }
+    .wo-editor-panel-section > summary,
+    .wo-editor-inspector-section > summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      cursor: pointer;
+      list-style: none;
+      color: #edf6ff;
+      font: 700 14px/1.2 "Segoe UI Variable Display", "Segoe UI", sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .wo-editor-inspector-section > summary {
+      font: 700 12px/1.2 "Segoe UI Variable", "Segoe UI", sans-serif;
+      color: rgba(237, 246, 255, 0.9);
+    }
+    .wo-editor-panel-section > summary::-webkit-details-marker,
+    .wo-editor-inspector-section > summary::-webkit-details-marker,
+    .wo-editor-field-help > summary::-webkit-details-marker {
+      display: none;
+    }
+    .wo-editor-panel-section > summary::after,
+    .wo-editor-inspector-section > summary::after {
+      content: "▾";
+      color: rgba(240, 180, 100, 0.86);
+      font-size: 12px;
+      transition: transform 0.18s ease;
+    }
+    .wo-editor-panel-section:not([open]) > summary::after,
+    .wo-editor-inspector-section:not([open]) > summary::after {
+      transform: rotate(-90deg);
+    }
+    .wo-editor-panel-section-body {
+      display: grid;
+      gap: 16px;
+      margin-top: 14px;
+      min-width: 0;
+    }
+    .wo-editor-inspector-section-body {
+      display: grid;
+      gap: 12px;
+      margin-top: 12px;
+      min-width: 0;
     }
     .wo-editor[data-wo-show-inspector="false"] [data-editor-pane="inspector"] { display: none; }
     .wo-editor[data-wo-show-text-pane="false"] [data-editor-pane="text"] { display: none; }
@@ -3138,8 +3599,23 @@ function installEditorStyles(): void {
       margin-bottom: 14px;
     }
     .wo-editor-form { display: grid; gap: 12px; min-width: 0; }
+    .wo-editor-inspector-section {
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 18px;
+      padding: 14px;
+      background: rgba(255,255,255,0.02);
+    }
     .wo-editor-field { display: grid; gap: 6px; }
-    .wo-editor-field span, .wo-editor-fieldset legend {
+    .wo-editor-field-label,
+    .wo-editor-fieldset legend {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .wo-editor-field-label,
+    .wo-editor-checkbox .wo-editor-field-label,
+    .wo-editor-fieldset legend {
       color: rgba(237,246,255,0.72);
       font: 600 11px/1.2 "Segoe UI Variable", "Segoe UI", sans-serif;
       text-transform: uppercase;
@@ -3192,11 +3668,69 @@ function installEditorStyles(): void {
     .wo-editor-checkbox {
       display: flex;
       gap: 10px;
-      align-items: center;
+      align-items: flex-start;
       color: #edf6ff;
       font: 500 13px/1.4 "Segoe UI Variable", "Segoe UI", sans-serif;
     }
+    .wo-editor-checkbox input {
+      margin-top: 2px;
+    }
+    .wo-editor-field-help {
+      position: relative;
+      flex: 0 0 auto;
+    }
+    .wo-editor-field-help > summary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border-radius: 999px;
+      border: 1px solid rgba(240, 180, 100, 0.28);
+      background: rgba(240, 180, 100, 0.12);
+      color: #ffdda9;
+      cursor: pointer;
+      font: 700 11px/1 "Segoe UI Variable", "Segoe UI", sans-serif;
+      list-style: none;
+    }
+    .wo-editor-field-help-card {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(240, 180, 100, 0.2);
+      background: rgba(12, 26, 39, 0.92);
+      color: rgba(237, 246, 255, 0.86);
+      text-transform: none;
+      letter-spacing: normal;
+      font: 500 12px/1.45 "Segoe UI Variable", "Segoe UI", sans-serif;
+    }
+    .wo-editor-field-help-card p {
+      margin: 0;
+    }
+    .wo-editor-field-help-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .wo-editor-field-help-chips span {
+      border-radius: 999px;
+      padding: 4px 8px;
+      background: rgba(255,255,255,0.06);
+      color: #edf6ff;
+      font: 600 11px/1.3 "Segoe UI Variable", "Segoe UI", sans-serif;
+      text-transform: none;
+      letter-spacing: normal;
+    }
     .wo-editor-preview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .wo-editor-preview-card {
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03);
+      padding: 14px;
+      min-width: 0;
+    }
     .wo-editor-preview-visual {
       min-height: 240px;
       overflow: auto;

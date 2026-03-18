@@ -198,15 +198,13 @@ test("hidden objects are excluded from visible content bounds", () => {
   const hiddenSource = `
 system Iyath
 star Iyath
-planet Naar orbit Iyath distance 1.18au
-structure HiddenFarGate kind gate hidden true free 8.4au
+structure HiddenFarGate kind gate hidden true free 80au
 `.trim();
 
   const visibleSource = `
 system Iyath
 star Iyath
-planet Naar orbit Iyath distance 1.18au
-structure HiddenFarGate kind gate free 8.4au
+structure HiddenFarGate kind gate free 80au
 `.trim();
 
   const hiddenScene = renderDocumentToScene(parse(hiddenSource).document, {
@@ -222,6 +220,52 @@ structure HiddenFarGate kind gate free 8.4au
     visibleScene.contentBounds.minX < hiddenScene.contentBounds.minX,
     "hidden free objects should not expand visible content bounds",
   );
+});
+
+test("orbit visuals keep spreading for large metrics and preserve a readable minimum gap", () => {
+  const scene = renderDocumentToScene(
+    parse(`
+system Spread
+  title "Spread"
+  view topdown
+  scale presentation
+
+star Primary
+
+planet Near
+  orbit Primary
+  distance 1au
+
+planet NearB
+  orbit Primary
+  distance 1.05au
+
+planet Mid
+  orbit Primary
+  distance 2au
+
+planet Far
+  orbit Primary
+  distance 10au
+`.trim()).document,
+  );
+
+  const near = scene.orbitVisuals.find((entry) => entry.objectId === "Near");
+  const nearB = scene.orbitVisuals.find((entry) => entry.objectId === "NearB");
+  const mid = scene.orbitVisuals.find((entry) => entry.objectId === "Mid");
+  const far = scene.orbitVisuals.find((entry) => entry.objectId === "Far");
+  const nearRadius = near?.radius ?? near?.rx ?? 0;
+  const nearBRadius = nearB?.radius ?? nearB?.rx ?? 0;
+  const midRadius = mid?.radius ?? mid?.rx ?? 0;
+  const farRadius = far?.radius ?? far?.rx ?? 0;
+
+  assert.ok(nearRadius > 0);
+  assert.ok(nearBRadius > nearRadius);
+  assert.ok(midRadius > nearBRadius);
+  assert.ok(farRadius > midRadius);
+  assert.ok(nearBRadius - nearRadius >= 20, "Close orbit values should keep a readable gap");
+  assert.ok(midRadius - nearRadius >= 40, "2au should render noticeably farther than 1au");
+  assert.ok(farRadius - midRadius >= 80, "10au should continue spreading instead of pinning");
 });
 
 test("scene svg keeps a dedicated transformable world layer, image clips, and configurable layers", () => {

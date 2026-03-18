@@ -75,6 +75,7 @@ interface OrbitMetricContext {
   innerPx: number;
   stepPx: number;
   pixelSpread: number;
+  minimumGapPx: number;
 }
 
 interface SceneRelationshipContext {
@@ -1254,6 +1255,7 @@ function placeOrbitingChildren(
     context.spacingFactor,
     context.scaleModel,
   );
+  const orbitRadiiPx = resolveOrbitRadiiPx(orbiting, orbitMetricContext);
 
   orbiting.forEach((child, index) => {
     const orbitGeometry = resolveOrbitGeometry(
@@ -1262,6 +1264,7 @@ function placeOrbitingChildren(
       orbiting.length,
       parent,
       orbitMetricContext,
+      orbitRadiiPx[index] ?? orbitMetricContext.innerPx,
       context,
     );
 
@@ -1372,6 +1375,7 @@ function computeOrbitMetricContext(
       innerPx,
       stepPx,
       pixelSpread: Math.max(stepPx * Math.max(objects.length - 1, 1), stepPx),
+      minimumGapPx: stepPx * 0.42,
     };
   }
 
@@ -1387,6 +1391,7 @@ function computeOrbitMetricContext(
     innerPx,
     stepPx,
     pixelSpread: Math.max(stepPx * Math.max(objects.length - 1, 1), stepPx),
+    minimumGapPx: stepPx * 0.42,
   };
 }
 
@@ -1396,6 +1401,7 @@ function resolveOrbitGeometry(
   count: number,
   parent: PositionedObject,
   metricContext: OrbitMetricContext,
+  orbitRadiusPx: number,
   context: PlacementContext,
 ): {
   kind: "circle" | "ellipse";
@@ -1436,7 +1442,7 @@ function resolveOrbitGeometry(
     0,
     0.92,
   );
-  const semiMajor = resolveOrbitRadiusPx(object, index, metricContext);
+  const semiMajor = orbitRadiusPx;
   const baseMinor = Math.max(
     semiMajor * Math.sqrt(1 - eccentricity * eccentricity),
     semiMajor * 0.18,
@@ -1487,24 +1493,34 @@ function resolveOrbitGeometry(
 }
 
 function resolveOrbitRadiusPx(
-  object: WorldOrbitObject,
-  index: number,
+  metric: number,
   metricContext: OrbitMetricContext,
 ): number {
-  const metric = orbitMetric(object);
-  if (metric === null) {
-    return metricContext.innerPx + index * metricContext.stepPx;
-  }
+  return metricContext.innerPx + metricContext.stepPx * log2(Math.max(metric, 0) + 1);
+}
 
-  if (metricContext.metricSpread > 0) {
-    return (
-      metricContext.innerPx +
-      ((metric - metricContext.minMetric) / metricContext.metricSpread) *
-        metricContext.pixelSpread
-    );
-  }
+function resolveOrbitRadiiPx(
+  objects: WorldOrbitObject[],
+  metricContext: OrbitMetricContext,
+): number[] {
+  const radii: number[] = [];
 
-  return metricContext.innerPx + Math.log10(metric + 1) * metricContext.stepPx;
+  objects.forEach((object, index) => {
+    const metric = orbitMetric(object);
+    const fallbackRadius = metricContext.innerPx + index * metricContext.stepPx;
+    const baseRadius =
+      metric === null
+        ? fallbackRadius
+        : resolveOrbitRadiusPx(metric, metricContext);
+    const minimumRadius =
+      index === 0
+        ? metricContext.innerPx
+        : (radii[index - 1] ?? metricContext.innerPx) + metricContext.minimumGapPx;
+
+    radii.push(Math.max(baseRadius, minimumRadius));
+  });
+
+  return radii;
 }
 
 function orbitMetric(object: WorldOrbitObject): number | null {
@@ -1513,6 +1529,10 @@ function orbitMetric(object: WorldOrbitObject): number | null {
   }
 
   return toDistanceMetric(object.placement.semiMajor ?? object.placement.distance ?? null);
+}
+
+function log2(value: number): number {
+  return Math.log(value) / Math.log(2);
 }
 
 function resolveOrbitPhase(

@@ -1,6 +1,5 @@
 import { createWorldOrbitEditor } from "@worldorbit/editor";
 
-const EXAMPLE_URL = "../examples/iyath.schema2.worldorbit";
 const RECOVERY_STORAGE_KEY = "worldorbit.studio.recovery.v2.5";
 const SESSION_STORAGE_KEY = "worldorbit.studio.session.v2.5";
 const DEFAULT_FILE_NAME = "untitled.worldorbit";
@@ -48,8 +47,10 @@ export async function createWorldOrbitStudio(root, options = {}) {
 
   const sessionState = loadSessionState();
   const recoveryDraft = loadRecoveryDraft();
+  const exampleUrl = resolveConfiguredExampleUrl(root, options);
   const baseSource =
-    options.initialSource ?? (await loadExampleSource(options.exampleUrl ?? EXAMPLE_URL));
+    options.initialSource ??
+    (exampleUrl ? await loadExampleSource(exampleUrl) : FALLBACK_SOURCE);
 
   root.innerHTML = buildStudioMarkup();
 
@@ -108,7 +109,9 @@ export async function createWorldOrbitStudio(root, options = {}) {
   } else {
     currentFileName =
       options.fileName ??
-      (options.initialSource ? currentFileName : deriveFileNameFromUrl(options.exampleUrl ?? EXAMPLE_URL));
+      (options.initialSource || !exampleUrl
+        ? currentFileName
+        : deriveFileNameFromUrl(exampleUrl));
     editor.markSaved();
     currentDirty = editor.isDirty();
     setMessage("Studio ready. Working with canonical schema 2.0 output.", "info");
@@ -240,11 +243,13 @@ export async function createWorldOrbitStudio(root, options = {}) {
   }
 
   async function loadExampleIntoEditor() {
-    const source = await loadExampleSource(options.exampleUrl ?? EXAMPLE_URL);
-    currentFileName = deriveFileNameFromUrl(options.exampleUrl ?? EXAMPLE_URL);
+    const source = exampleUrl ? await loadExampleSource(exampleUrl) : FALLBACK_SOURCE;
+    currentFileName = exampleUrl ? deriveFileNameFromUrl(exampleUrl) : DEFAULT_FILE_NAME;
     loadIntoEditor(source, currentFileName, {
       markSaved: true,
-      message: `Loaded example ${currentFileName}.`,
+      message: exampleUrl
+        ? `Loaded example ${currentFileName}.`
+        : "Loaded the built-in starter atlas.",
     });
   }
 
@@ -449,6 +454,11 @@ function query(root, selector) {
   return element;
 }
 
+function resolveConfiguredExampleUrl(root, options = {}) {
+  const configured = options.exampleUrl ?? root.dataset.exampleUrl ?? "";
+  return configured.trim() || null;
+}
+
 function hasBlockingErrors(diagnostics) {
   return diagnostics.some((entry) => entry.diagnostic.severity === "error");
 }
@@ -577,5 +587,6 @@ export {
   loadSessionState,
   persistRecoveryDraft,
   persistSessionState,
+  resolveConfiguredExampleUrl,
   replaceExtension,
 };
