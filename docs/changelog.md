@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v2.5.16
 
 - added backward-compatible Schema 2.1 atlas support with comments, `group`, `relation`, object-level reference metadata, resonance declarations, typed lore blocks, and light validation/derive rules
 - updated the viewer, atlas controls, and Studio to preserve Schema 2.1 semantic groups, relation overlays, render hints, and object detail metadata instead of assuming Schema 2.0-only authoring
