@@ -1,10 +1,16 @@
 # Changelog
 
 ## v2.5.17
+<<<<<<< HEAD
 
 - added backward-compatible Schema 2.1 event support with declarative `event` sections, viewpoint-linked `events`, `layers events`, and per-event `positions` snapshots with reusable `pose` placement syntax
 - updated the parser, formatter, validator, renderer, viewer, and atlas model so event targets, participants, pose overrides, event overlays, and active event scenes load cleanly without breaking existing `schema 2.0` or `schema 2.0-draft` documents
 - expanded the editor, Studio, and regression coverage to support creating, inspecting, formatting, navigating, and directly dragging event poses while preserving base object placements and Schema 2.1 source fidelity
+=======
+- added backward-compatible Schema 2.1 event support with declarative event sections, viewpoint-linked events, layers events, and per-event positions snapshots with reusable pose placement syntax
+- updated the parser, formatter, validator, renderer, viewer, and atlas model so event targets, participants, pose overrides, event overlays, and active event scenes load cleanly without breaking existing schema 2.0 or schema 2.0-draft documents
+- expanded the editor and regression coverage to fully support creating, inspecting, formatting, navigating, and directly dragging event poses in Studio while preserving base object placements and Schema 2.1 source fidelity
+>>>>>>> ab2b176aa23b873f12f5163429f6a9f476e4431c
 
 ## v2.5.16
 
