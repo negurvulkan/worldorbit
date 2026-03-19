@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>WorldOrbit Studio v2.5.15</title>
+  <title>WorldOrbit Studio v2.5.16</title>
   <style>
     :root {
       color-scheme: dark;
@@ -178,12 +178,11 @@
 <body>
   <main>
     <section class="hero">
-      <strong>WorldOrbit Studio v2.5.15</strong>
+      <strong>WorldOrbit Studio v2.5.16</strong>
       <h1>WorldOrbit Visual Editor</h1>
       <p>
-        This reference app loads published WorldOrbit runtime packages from UNPKG and keeps the
-        editor on the local repo build so Studio still works even though the published root package
-        does not currently ship the editor entry on UNPKG.
+        This reference app loads version-pinned WorldOrbit runtime packages from UNPKG so the
+        browser always resolves a concrete published build instead of a floating package endpoint.
       </p>
     </section>
 
@@ -193,11 +192,11 @@
   <script type="importmap">
       {
         "imports": {
-          "@worldorbit/core": "https://unpkg.com/worldorbit/packages/core/dist/index.js",
-          "@worldorbit/viewer": "https://unpkg.com/worldorbit/packages/viewer/dist/index.js",
-          "@worldorbit/viewer/viewer-state": "https://unpkg.com/worldorbit/packages/viewer/dist/viewer-state.js",
-          "@worldorbit/markdown": "https://unpkg.com/worldorbit/packages/markdown/dist/index.js",
-          "@worldorbit/editor": "https://unpkg.com/worldorbit/packages/packages/editor/dist/index.js"
+          "@worldorbit/core": "https://unpkg.com/worldorbit@2.5.16/packages/core/dist/index.js",
+          "@worldorbit/viewer": "https://unpkg.com/worldorbit@2.5.16/packages/viewer/dist/index.js",
+          "@worldorbit/viewer/viewer-state": "https://unpkg.com/worldorbit@2.5.16/packages/viewer/dist/viewer-state.js",
+          "@worldorbit/markdown": "https://unpkg.com/worldorbit@2.5.16/packages/markdown/dist/index.js",
+          "@worldorbit/editor": "https://unpkg.com/worldorbit@2.5.16/packages/editor/dist/index.js"
         }
       }
       </script>

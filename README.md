@@ -99,7 +99,7 @@ For direct browser usage, use the browser bundle:
 <html>
   <head>
     <meta charset="utf-8" />
-    <script src="https://unpkg.com/worldorbit/dist/unpkg/worldorbit.min.js"></script>
+<script src="https://unpkg.com/worldorbit@2.5.16/dist/unpkg/worldorbit.min.js"></script>
     <style>
       html, body {
         margin: 0;
