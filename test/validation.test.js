@@ -248,6 +248,92 @@ object planet Naar
   );
 });
 
+test("schema 2.1 validation reports unknown events, invalid event targets, and missing event positions", () => {
+  const result = loadWorldOrbitSourceWithDiagnostics(`
+schema 2.1
+
+system Iyath
+
+viewpoint eclipse
+  label "Eclipse"
+  layers background events objects
+  events missing-event
+
+object star Iyath
+  mass 1sol
+
+object planet Naar
+  orbit Iyath
+  semiMajor 1au
+
+object moon Seyra
+  orbit Naar
+  distance 384400km
+
+event bad-eclipse
+  kind solar-eclipse
+  target Missing
+  participants Iyath Missing
+`.trim());
+
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.diagnostics.some(
+      (diagnostic) => /Unknown event "missing-event" in viewpoint "eclipse"/i.test(diagnostic.message),
+    ),
+  );
+  assert.ok(
+    result.diagnostics.some(
+      (diagnostic) => /Unknown event target "Missing" on "bad-eclipse"/i.test(diagnostic.message),
+    ),
+  );
+  assert.ok(
+    result.diagnostics.some((diagnostic) => /has no positions block/i.test(diagnostic.message)),
+  );
+});
+
+test("schema 2.1 validation rejects duplicate pose objects and pose placement conflicts", () => {
+  const result = loadWorldOrbitSourceWithDiagnostics(`
+schema 2.1
+
+system Iyath
+
+object star Iyath
+  mass 1sol
+
+object planet Naar
+  orbit Iyath
+  semiMajor 1au
+
+event bad-eclipse
+  kind solar-eclipse
+  target Naar
+  participants Iyath Naar
+
+  positions
+    pose Naar
+      orbit Iyath
+      distance 1au
+      semiMajor 1.1au
+
+    pose Naar
+      orbit Iyath
+      distance 1au
+`.trim());
+
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.diagnostics.some(
+      (diagnostic) => /cannot declare both "distance" and "semiMajor"/i.test(diagnostic.message),
+    ),
+  );
+  assert.ok(
+    result.diagnostics.some(
+      (diagnostic) => /defines "Naar" more than once in positions/i.test(diagnostic.message),
+    ),
+  );
+});
+
 test("schema 2.0 input emits compatibility diagnostics for 2.1-only fields", () => {
   const result = loadWorldOrbitSourceWithDiagnostics(`
 schema 2.0

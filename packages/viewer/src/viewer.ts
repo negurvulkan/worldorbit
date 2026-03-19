@@ -472,6 +472,12 @@ export function createInteractiveViewer(
       emitAtlasStateChange();
       return true;
     },
+    getActiveEventId(): string | null {
+      return renderOptions.activeEventId ?? null;
+    },
+    setActiveEvent(id: string | null): void {
+      api.setRenderOptions({ activeEventId: id });
+    },
     search(query: string, limit = 12): ViewerSearchResult[] {
       return searchSceneObjects(scene, query, limit);
     },
@@ -831,6 +837,12 @@ export function createInteractiveViewer(
           !relation.hidden &&
           (relation.fromObjectId === renderObject.objectId ||
             relation.toObjectId === renderObject.objectId),
+      ),
+      relatedEvents: scene.events.filter(
+        (event) =>
+          !event.hidden &&
+          (event.targetObjectId === renderObject.objectId ||
+            event.objectIds.includes(renderObject.objectId)),
       ),
       parent: getObjectById(renderObject.parentId),
       children: renderObject.childIds.map((childId) => getObjectById(childId)).filter(Boolean) as RenderSceneObject[],
@@ -1287,6 +1299,7 @@ function cloneRenderOptions(renderOptions: ViewerRenderOptions): ViewerRenderOpt
       renderOptions.theme && typeof renderOptions.theme === "object"
         ? { ...renderOptions.theme }
         : renderOptions.theme,
+    activeEventId: renderOptions.activeEventId ?? null,
   };
 }
 
@@ -1333,7 +1346,8 @@ function hasSceneAffectingRenderOptions(options: Partial<ViewerRenderOptions>): 
     options.padding !== undefined ||
     options.preset !== undefined ||
     options.projection !== undefined ||
-    options.scaleModel !== undefined
+    options.scaleModel !== undefined ||
+    options.activeEventId !== undefined
   );
 }
 

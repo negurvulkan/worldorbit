@@ -138,6 +138,15 @@ function buildTooltipFields(details: ViewerObjectDetails): ViewerTooltipField[] 
       value: `${details.object.resonance.targetObjectId} ${details.object.resonance.ratio}`,
     });
   }
+  if (details.relatedEvents.length > 0) {
+    fields.set("events", {
+      key: "events",
+      label: "Events",
+      value: details.relatedEvents
+        .map((event) => event.event.label || event.event.id)
+        .join(", "),
+    });
+  }
 
   if (placement?.mode === "at") {
     fields.set("placement", {

@@ -18,6 +18,8 @@ import {
   type UnitValue,
   type WorldOrbitAtlasAnnotation,
   type WorldOrbitAtlasDocument,
+  type WorldOrbitEvent,
+  type WorldOrbitEventPose,
   type WorldOrbitAtlasViewpoint,
   type WorldOrbitObject,
 } from "@worldorbit/core";
@@ -53,6 +55,7 @@ interface DragState {
   kind: "orbit-phase" | "orbit-radius" | "at-reference" | "surface-target" | "free-distance";
   objectId: string;
   pointerId: number;
+  path: AtlasDocumentPath;
   startedFrom: HistoryEntry;
   changed: boolean;
   orbitRadiusContext?: OrbitRadiusDragContext | null;
@@ -158,6 +161,34 @@ const FIELD_HELP: Partial<Record<string, FieldHelpEntry>> = {
   "viewpoint-rotation": {
     description: "Rotates the saved camera angle in degrees.",
     references: ["90deg = quarter turn", "180deg = flip"],
+  },
+  "viewpoint-events": {
+    description: "Lists event IDs that this viewpoint should feature in its detail panel.",
+    references: ["solar-eclipse-naar", "transit-window conjunction"],
+  },
+  "event-kind": {
+    description: "Short semantic event type for tooling and viewer overlays.",
+    references: ["solar-eclipse", "lunar-eclipse", "transit"],
+  },
+  "event-target": {
+    description: "Primary object this event is centered on.",
+    references: ["Naar", "Seyra"],
+  },
+  "event-participants": {
+    description: "Objects that participate in the event snapshot or description.",
+    references: ["Iyath Naar Seyra", "Naar Seyra Orun"],
+  },
+  "event-timing": {
+    description: "Free-text timing note for the event.",
+    references: ['"Every late bloom season"', '"At local midyear"'],
+  },
+  "event-visibility": {
+    description: "Notes where or how the event is visible.",
+    references: ['"Visible from Naar"', '"Southern hemisphere only"'],
+  },
+  "event-viewpoints": {
+    description: "Viewpoint IDs that should list this event prominently.",
+    references: ["naar-system", "overview inner-system"],
   },
   "placement-target": {
     description: "Names the body or reference this object is attached to.",
@@ -288,10 +319,22 @@ export function createWorldOrbitEditor(
     minimap: true,
     tooltipMode: "hover",
     onSelectionChange(selectedObject) {
+      const activeEventId = selection ? selectionEventId(selection) : null;
       if (ignoreViewerSelection || !selectedObject) {
-        if (!ignoreViewerSelection && selection?.kind === "object") {
-          setSelection(null, false, true);
+        if (!ignoreViewerSelection) {
+          if (selection?.kind === "event-pose" && selection.id) {
+            setSelection({ kind: "event", id: selection.id }, false, true);
+          } else if (selection?.kind === "object") {
+            setSelection(activeEventId ? { kind: "event", id: activeEventId } : null, false, true);
+          } else if (selection?.kind === "event" && selection.id) {
+            setSelection({ kind: "event", id: selection.id }, false, true);
+          }
         }
+        return;
+      }
+
+      if (activeEventId && findEventPose(atlasDocument, activeEventId, selectedObject.objectId)) {
+        setSelection({ kind: "event-pose", id: activeEventId, key: selectedObject.objectId }, false, true);
         return;
       }
 
@@ -305,6 +348,7 @@ export function createWorldOrbitEditor(
   toolbar.addEventListener("click", handleToolbarClick);
   outline.addEventListener("click", handleOutlineClick);
   overlay.addEventListener("pointerdown", handleOverlayPointerDown);
+  inspector?.addEventListener("click", handleInspectorClick);
   inspector?.addEventListener("input", handleInspectorInput);
   inspector?.addEventListener("change", handleInspectorChange);
   sourcePane?.addEventListener("input", handleSourceInput);
@@ -382,6 +426,31 @@ export function createWorldOrbitEditor(
       replaceAtlasDocument(nextDocument, true, { kind: "object", id });
       return id;
     },
+    addEvent(): string {
+      const id = createUniqueId(
+        "event",
+        atlasDocument.events.map((event) => event.id),
+      );
+      const created: WorldOrbitEvent = {
+        id,
+        kind: "",
+        label: humanizeIdentifier(id),
+        summary: null,
+        targetObjectId: null,
+        participantObjectIds: [],
+        timing: null,
+        visibility: null,
+        tags: [],
+        color: null,
+        hidden: false,
+        positions: [],
+      };
+      const nextDocument = cloneAtlasDocument(atlasDocument);
+      nextDocument.events.push(created);
+      nextDocument.events.sort(compareEvents);
+      replaceAtlasDocument(nextDocument, true, { kind: "event", id });
+      return id;
+    },
     addViewpoint(): string {
       const id = createUniqueId(
         "viewpoint",
@@ -393,6 +462,7 @@ export function createWorldOrbitEditor(
         summary: "",
         focusObjectId: null,
         selectedObjectId: null,
+        events: [],
         projection: atlasDocument.system?.defaults.view ?? "topdown",
         preset: atlasDocument.system?.defaults.preset ?? null,
         zoom: null,
@@ -459,6 +529,7 @@ export function createWorldOrbitEditor(
       toolbar.removeEventListener("click", handleToolbarClick);
       outline.removeEventListener("click", handleOutlineClick);
       overlay.removeEventListener("pointerdown", handleOverlayPointerDown);
+      inspector?.removeEventListener("click", handleInspectorClick);
       inspector?.removeEventListener("input", handleInspectorInput);
       inspector?.removeEventListener("change", handleInspectorChange);
       sourcePane?.removeEventListener("input", handleSourceInput);
@@ -510,7 +581,7 @@ export function createWorldOrbitEditor(
 
   function getCurrentSourceForExport(): string {
     if (dragState?.changed) {
-      return formatDocument(atlasDocument, { schema: "2.0" });
+      return formatAtlasSource(atlasDocument);
     }
     return canonicalSource;
   }
@@ -561,7 +632,7 @@ export function createWorldOrbitEditor(
 
     clearSourceInputTimer();
     atlasDocument = cloneAtlasDocument(nextDocument);
-    canonicalSource = formatDocument(atlasDocument, { schema: "2.0" });
+    canonicalSource = formatAtlasSource(atlasDocument);
     if (!preserveSourceText) {
       sourceText = canonicalSource;
     }
@@ -607,11 +678,11 @@ export function createWorldOrbitEditor(
     if (commitHistory) {
       history.push(createHistoryEntry());
       future.length = 0;
-      sourceText = formatDocument(nextDocument, { schema: "2.0" });
+      sourceText = formatAtlasSource(nextDocument);
     }
 
     atlasDocument = cloneAtlasDocument(nextDocument);
-    canonicalSource = formatDocument(atlasDocument, { schema: "2.0" });
+    canonicalSource = formatAtlasSource(atlasDocument);
     diagnostics = mergeDiagnostics(loadedDiagnostics, collectDocumentDiagnostics(atlasDocument));
     selection = normalizeSelection(selection);
     syncViewer({
@@ -635,12 +706,18 @@ export function createWorldOrbitEditor(
     const previousState = viewer.getState();
     const currentRenderOptions = viewer.getRenderOptions();
     const nextPreset = atlasDocument.system?.defaults.preset ?? "atlas-card";
+    const nextActiveEventId = selection ? selectionEventId(selection) : null;
 
     ignoreViewerSelection = true;
-    if (currentRenderOptions.preset !== nextPreset || currentRenderOptions.projection !== "document") {
+    if (
+      currentRenderOptions.preset !== nextPreset ||
+      currentRenderOptions.projection !== "document" ||
+      (currentRenderOptions.activeEventId ?? null) !== nextActiveEventId
+    ) {
       viewer.setRenderOptions({
         preset: nextPreset,
         projection: "document",
+        activeEventId: nextActiveEventId,
       });
     }
     viewer.setDocument(materializeAtlasDocument(atlasDocument));
@@ -650,10 +727,17 @@ export function createWorldOrbitEditor(
     } else if (options.preserveCamera !== false) {
       viewer.setState({
         ...previousState,
-        selectedObjectId: selection?.kind === "object" ? selection.id ?? null : null,
+        selectedObjectId:
+          selection?.kind === "object"
+            ? selection.id ?? null
+            : selection?.kind === "event-pose"
+              ? selection.key ?? null
+              : null,
       });
     } else if (selection?.kind === "object" && selection.id) {
       viewer.focusObject(selection.id);
+    } else if (selection?.kind === "event-pose" && selection.key) {
+      viewer.focusObject(selection.key);
     }
 
     ignoreViewerSelection = false;
@@ -681,8 +765,11 @@ export function createWorldOrbitEditor(
 
     if (syncViewerSelection) {
       ignoreViewerSelection = true;
+      viewer!.setRenderOptions({ activeEventId: selection ? selectionEventId(selection) : null });
       if (selection?.kind === "object" && selection.id) {
         viewer!.focusObject(selection.id);
+      } else if (selection?.kind === "event-pose" && selection.key) {
+        viewer!.focusObject(selection.key);
       } else if (selection?.kind === "viewpoint" && selection.id) {
         viewer!.goToViewpoint(selection.id);
       }
@@ -747,6 +834,7 @@ export function createWorldOrbitEditor(
           ).join("")}
         </select>
         <button type="button" data-editor-action="add-object">Add object</button>
+        <button type="button" data-editor-action="add-event">Add event</button>
         <button type="button" data-editor-action="add-viewpoint">Add viewpoint</button>
         <button type="button" data-editor-action="add-annotation">Add annotation</button>
         <button type="button" data-editor-action="add-metadata">Add metadata</button>
@@ -819,6 +907,16 @@ export function createWorldOrbitEditor(
         }
       </div>
       <div class="wo-editor-outline-section">
+        <h3>Events</h3>
+        ${
+          atlasDocument.events.length > 0
+            ? atlasDocument.events
+                .map((eventEntry) => renderEventOutlineItems(eventEntry, activeKey, diagnosticBuckets))
+                .join("")
+            : `<p class="wo-editor-empty">No events yet.</p>`
+        }
+      </div>
+      <div class="wo-editor-outline-section">
         <h3>Objects</h3>
         ${
           atlasDocument.objects.length > 0
@@ -883,6 +981,7 @@ export function createWorldOrbitEditor(
       selection: selection ? { path: { ...selection } } : null,
       system: atlasDocument.system,
       viewpoints: atlasDocument.system?.viewpoints ?? [],
+      events: atlasDocument.events,
       objects: atlasDocument.objects,
     };
 
@@ -911,6 +1010,17 @@ export function createWorldOrbitEditor(
         return;
       case "viewpoint":
         inspector.innerHTML = diagnosticSummary + renderViewpointInspector(formState, selection.id ?? "");
+        applyInspectorSectionState(inspector, inspectorSectionState);
+        decorateInspectorDiagnostics(selection, diagnostics);
+        return;
+      case "event":
+        inspector.innerHTML = diagnosticSummary + renderEventInspector(formState, selection.id ?? "");
+        applyInspectorSectionState(inspector, inspectorSectionState);
+        decorateInspectorDiagnostics(selection, diagnostics);
+        return;
+      case "event-pose":
+        inspector.innerHTML =
+          diagnosticSummary + renderEventPoseInspector(formState, selection.id ?? "", selection.key ?? "");
         applyInspectorSectionState(inspector, inspectorSectionState);
         decorateInspectorDiagnostics(selection, diagnostics);
         return;
@@ -951,11 +1061,17 @@ export function createWorldOrbitEditor(
       return;
     }
     overlay.innerHTML = "";
-    if (selection?.kind !== "object" || !selection.id) {
+    const selectedObjectId =
+      selection?.kind === "object"
+        ? selection.id ?? null
+        : selection?.kind === "event-pose"
+          ? selection.key ?? null
+          : null;
+    if (!selectedObjectId) {
       return;
     }
 
-    const details = viewer.getObjectDetails(selection.id);
+    const details = viewer.getObjectDetails(selectedObjectId);
     if (!details) {
       return;
     }
@@ -1127,6 +1243,9 @@ export function createWorldOrbitEditor(
       case "add-viewpoint":
         api.addViewpoint();
         return;
+      case "add-event":
+        api.addEvent();
+        return;
       case "add-annotation":
         api.addAnnotation();
         return;
@@ -1168,6 +1287,47 @@ export function createWorldOrbitEditor(
     );
   }
 
+  function handleInspectorClick(event: MouseEvent): void {
+    const pathButton = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>("[data-path-kind]");
+    if (pathButton) {
+      setSelection(
+        {
+          kind: pathButton.dataset.pathKind as AtlasDocumentPath["kind"],
+          id: pathButton.dataset.pathId || undefined,
+          key: pathButton.dataset.pathKey || undefined,
+        },
+        true,
+        true,
+      );
+      return;
+    }
+
+    const actionButton = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>("[data-editor-action]");
+    if (!actionButton) {
+      return;
+    }
+
+    if (actionButton.dataset.editorAction === "add-event-pose") {
+      const eventId =
+        actionButton.dataset.editorEventId ||
+        (selection?.kind === "event" || selection?.kind === "event-pose" ? selection.id ?? "" : "");
+      if (!eventId) {
+        return;
+      }
+      const nextDocument = addEventPose(atlasDocument, eventId);
+      const createdEvent = nextDocument.events.find((entry) => entry.id === eventId);
+      const createdPose = createdEvent?.positions.at(-1) ?? createdEvent?.positions[0];
+      replaceAtlasDocument(
+        nextDocument,
+        true,
+        createdPose
+          ? { kind: "event-pose", id: eventId, key: createdPose.objectId }
+          : { kind: "event", id: eventId },
+      );
+      return;
+    }
+  }
+
   function handleInspectorInput(): void {
     applyInspectorState(false);
   }
@@ -1193,6 +1353,17 @@ export function createWorldOrbitEditor(
         return;
       case "viewpoint":
         replaceAtlasDocument(buildViewpointDocumentFromInspector(selection.id ?? ""), commitHistory, selection, false);
+        return;
+      case "event":
+        replaceAtlasDocument(buildEventDocumentFromInspector(selection.id ?? ""), commitHistory, selection, false);
+        return;
+      case "event-pose":
+        replaceAtlasDocument(
+          buildEventPoseDocumentFromInspector(selection.id ?? "", selection.key ?? ""),
+          commitHistory,
+          selection,
+          false,
+        );
         return;
       case "annotation":
         replaceAtlasDocument(buildAnnotationDocumentFromInspector(selection.id ?? ""), commitHistory, selection, false);
@@ -1279,6 +1450,7 @@ export function createWorldOrbitEditor(
       kind,
       objectId,
       pointerId: event.pointerId,
+      path: selection ? { ...selection } : { kind: "object", id: objectId },
       startedFrom: createHistoryEntry(),
       changed: false,
       orbitRadiusContext:
@@ -1294,8 +1466,8 @@ export function createWorldOrbitEditor(
     if (
       !dragState ||
       dragState.pointerId !== event.pointerId ||
-      selection?.kind !== "object" ||
-      selection.id !== dragState.objectId
+      !selection ||
+      selectionKey(selection) !== selectionKey(dragState.path)
     ) {
       return;
     }
@@ -1311,13 +1483,14 @@ export function createWorldOrbitEditor(
     switch (dragState.kind) {
       case "orbit-phase":
         if (details.object.placement?.mode === "orbit" && details.orbit) {
-          nextDocument = updateOrbitPhase(atlasDocument, dragState.objectId, details, pointer);
+          nextDocument = updateOrbitPhase(atlasDocument, dragState.path, dragState.objectId, details, pointer);
         }
         break;
       case "orbit-radius":
         if (details.object.placement?.mode === "orbit" && details.orbit) {
           nextDocument = updateOrbitRadius(
             atlasDocument,
+            dragState.path,
             dragState.objectId,
             details,
             pointer,
@@ -1327,18 +1500,31 @@ export function createWorldOrbitEditor(
         break;
       case "at-reference":
         if (details.object.placement?.mode === "at") {
-          nextDocument = updateAtReference(atlasDocument, dragState.objectId, viewer!.getScene(), pointer);
+          nextDocument = updateAtReference(
+            atlasDocument,
+            dragState.path,
+            dragState.objectId,
+            viewer!.getScene(),
+            pointer,
+          );
         }
         break;
       case "surface-target":
         if (details.object.placement?.mode === "surface") {
-          nextDocument = updateSurfaceTarget(atlasDocument, dragState.objectId, viewer!.getScene(), pointer);
+          nextDocument = updateSurfaceTarget(
+            atlasDocument,
+            dragState.path,
+            dragState.objectId,
+            viewer!.getScene(),
+            pointer,
+          );
         }
         break;
       case "free-distance":
         if (details.object.placement?.mode === "free") {
           nextDocument = updateFreeDistance(
             atlasDocument,
+            dragState.path,
             dragState.objectId,
             viewer!.getScene(),
             details,
@@ -1381,7 +1567,7 @@ export function createWorldOrbitEditor(
 
     history.push(dragState.startedFrom);
     future.length = 0;
-    canonicalSource = formatDocument(atlasDocument, { schema: "2.0" });
+    canonicalSource = formatAtlasSource(atlasDocument);
     sourceText = canonicalSource;
     dragState = null;
     renderAll();
@@ -1505,10 +1691,12 @@ export function createWorldOrbitEditor(
         guides: readCheckbox(form, "layer-guides"),
         "orbits-back": readCheckbox(form, "layer-orbits-back"),
         "orbits-front": readCheckbox(form, "layer-orbits-front"),
+        events: readCheckbox(form, "layer-events"),
         objects: readCheckbox(form, "layer-objects"),
         labels: readCheckbox(form, "layer-labels"),
         metadata: readCheckbox(form, "layer-metadata"),
       },
+      events: splitTokens(readOptionalTextInput(form, "viewpoint-events")),
       filter: {
         query: readOptionalTextInput(form, "filter-query"),
         objectTypes: parseObjectTypes(readOptionalTextInput(form, "filter-object-types")),
@@ -1523,6 +1711,93 @@ export function createWorldOrbitEditor(
       .sort((left, right) => left.id.localeCompare(right.id));
     if (current.id !== replacement.id) {
       selection = { kind: "viewpoint", id: replacement.id };
+    }
+    return nextDocument;
+  }
+
+  function buildEventDocumentFromInspector(currentId: string): WorldOrbitAtlasDocument {
+    const nextDocument = cloneAtlasDocument(atlasDocument);
+    const form = inspector?.querySelector("form[data-editor-form='event']") as HTMLFormElement | null;
+    const current = nextDocument.events.find((entry) => entry.id === currentId);
+    if (!form || !current) {
+      return nextDocument;
+    }
+
+    const nextId = readTextInput(form, "event-id") || current.id;
+    const replacement: WorldOrbitEvent = {
+      ...current,
+      id: nextId,
+      kind: readTextInput(form, "event-kind"),
+      label: readTextInput(form, "event-label") || current.label,
+      summary: readOptionalTextInput(form, "event-summary"),
+      targetObjectId: readOptionalTextInput(form, "event-target"),
+      participantObjectIds: splitTokens(readOptionalTextInput(form, "event-participants")),
+      timing: readOptionalTextInput(form, "event-timing"),
+      visibility: readOptionalTextInput(form, "event-visibility"),
+      tags: splitTokens(readOptionalTextInput(form, "event-tags")),
+      color: readOptionalTextInput(form, "event-color"),
+      hidden: readCheckbox(form, "event-hidden"),
+    };
+
+    nextDocument.events = nextDocument.events
+      .filter((entry) => entry.id !== current.id)
+      .concat(replacement)
+      .sort(compareEvents);
+
+    syncEventViewpointReferences(
+      nextDocument,
+      current.id,
+      replacement.id,
+      splitTokens(readOptionalTextInput(form, "event-viewpoints")),
+    );
+
+    if (current.id !== replacement.id) {
+      selection = { kind: "event", id: replacement.id };
+    }
+    return nextDocument;
+  }
+
+  function buildEventPoseDocumentFromInspector(
+    eventId: string,
+    objectId: string,
+  ): WorldOrbitAtlasDocument {
+    const nextDocument = cloneAtlasDocument(atlasDocument);
+    const form = inspector?.querySelector("form[data-editor-form='event-pose']") as HTMLFormElement | null;
+    const eventEntry = nextDocument.events.find((entry) => entry.id === eventId);
+    const currentPose = eventEntry?.positions.find((entry) => entry.objectId === objectId);
+    if (!form || !eventEntry || !currentPose) {
+      return nextDocument;
+    }
+
+    const nextObjectId = readTextInput(form, "pose-object-id") || currentPose.objectId;
+    const replacement: WorldOrbitEventPose = {
+      objectId: nextObjectId,
+      placement: buildPlacementFromPoseForm(form, currentPose),
+    };
+    const inner = parseOptionalUnit(readOptionalTextInput(form, "prop-inner"));
+    const outer = parseOptionalUnit(readOptionalTextInput(form, "prop-outer"));
+    if (inner) {
+      replacement.inner = inner;
+    }
+    if (outer) {
+      replacement.outer = outer;
+    }
+
+    eventEntry.positions = eventEntry.positions
+      .filter((entry) => entry.objectId !== currentPose.objectId)
+      .concat(replacement)
+      .sort(compareEventPoses);
+
+    if (
+      eventEntry.targetObjectId !== replacement.objectId &&
+      !eventEntry.participantObjectIds.includes(replacement.objectId)
+    ) {
+      eventEntry.participantObjectIds.push(replacement.objectId);
+      eventEntry.participantObjectIds.sort((left, right) => left.localeCompare(right));
+    }
+
+    if (currentPose.objectId !== replacement.objectId) {
+      selection = { kind: "event-pose", id: eventId, key: replacement.objectId };
     }
     return nextDocument;
   }
@@ -1794,11 +2069,11 @@ function resolveInitialEditorState(
 ): LoadedEditorState {
   if (options.atlasDocument) {
     const atlasDocument = cloneAtlasDocument(options.atlasDocument);
-    return {
-      atlasDocument,
-      source: formatDocument(atlasDocument, { schema: "2.0" }),
-      diagnostics: collectDocumentDiagnostics(atlasDocument),
-    };
+      return {
+        atlasDocument,
+        source: formatAtlasSource(atlasDocument),
+        diagnostics: collectDocumentDiagnostics(atlasDocument),
+      };
   }
 
   if (options.source) {
@@ -1808,7 +2083,7 @@ function resolveInitialEditorState(
         loaded.value.atlasDocument ?? upgradeDocumentToV2(loaded.value.document);
       return {
         atlasDocument,
-        source: formatDocument(atlasDocument, { schema: "2.0" }),
+        source: formatAtlasSource(atlasDocument),
         diagnostics: mergeDiagnostics(
           resolveAtlasDiagnostics(atlasDocument, loaded.diagnostics),
           collectDocumentDiagnostics(atlasDocument),
@@ -1820,9 +2095,13 @@ function resolveInitialEditorState(
   const atlasDocument = createEmptyAtlasDocument("WorldOrbit");
   return {
     atlasDocument,
-    source: formatDocument(atlasDocument, { schema: "2.0" }),
+    source: formatAtlasSource(atlasDocument),
     diagnostics: collectDocumentDiagnostics(atlasDocument),
   };
+}
+
+function formatAtlasSource(document: WorldOrbitAtlasDocument): string {
+  return formatDocument(document, { schema: document.version });
 }
 
 function buildEditorMarkup(): string {
@@ -1990,6 +2269,36 @@ function renderOutlineButton(
   return `<button type="button" class="wo-editor-outline-item${key === activeKey ? " is-active" : ""}" data-path-kind="${escapeHtml(path.kind)}"${path.id ? ` data-path-id="${escapeHtml(path.id)}"` : ""}${path.key ? ` data-path-key="${escapeHtml(path.key)}"` : ""}><span>${escapeHtml(label)}</span>${badge}</button>`;
 }
 
+function renderEventOutlineItems(
+  eventEntry: WorldOrbitEvent,
+  activeKey: string | null,
+  diagnosticBuckets: Map<string, DiagnosticBucket>,
+): string {
+  return `<div class="wo-editor-outline-group">
+    ${renderOutlineButton(
+      { kind: "event", id: eventEntry.id },
+      eventEntry.label || eventEntry.id,
+      activeKey,
+      diagnosticBuckets,
+    )}
+    ${
+      eventEntry.positions.length > 0
+        ? `<div class="wo-editor-outline-children">${[...eventEntry.positions]
+            .sort(compareEventPoses)
+            .map((pose) =>
+              renderOutlineButton(
+                { kind: "event-pose", id: eventEntry.id, key: pose.objectId },
+                pose.objectId,
+                activeKey,
+                diagnosticBuckets,
+              ),
+            )
+            .join("")}</div>`
+        : ""
+    }
+  </div>`;
+}
+
 function renderSystemInspector(formState: WorldOrbitEditorFormState): string {
   return `<form class="wo-editor-form" data-editor-form="system">
     <h2>System</h2>
@@ -2094,6 +2403,7 @@ function renderViewpointInspector(
         ${renderCheckboxField("Guides", "layer-guides", viewpoint.layers.guides !== false)}
         ${renderCheckboxField("Orbits back", "layer-orbits-back", viewpoint.layers["orbits-back"] !== false)}
         ${renderCheckboxField("Orbits front", "layer-orbits-front", viewpoint.layers["orbits-front"] !== false)}
+        ${renderCheckboxField("Events", "layer-events", viewpoint.layers.events !== false)}
         ${renderCheckboxField("Objects", "layer-objects", viewpoint.layers.objects !== false)}
         ${renderCheckboxField("Labels", "layer-labels", viewpoint.layers.labels !== false)}
         ${renderCheckboxField("Metadata", "layer-metadata", viewpoint.layers.metadata !== false)}
@@ -2106,7 +2416,134 @@ function renderViewpointInspector(
       `${renderTextField("Filter query", "filter-query", viewpoint.filter?.query ?? "")}
       ${renderTextField("Filter object types", "filter-object-types", viewpoint.filter?.objectTypes.join(" ") ?? "")}
       ${renderTextField("Filter tags", "filter-tags", viewpoint.filter?.tags.join(" ") ?? "")}
-      ${renderTextField("Filter groups", "filter-groups", viewpoint.filter?.groupIds.join(" ") ?? "")}`,
+      ${renderTextField("Filter groups", "filter-groups", viewpoint.filter?.groupIds.join(" ") ?? "")}
+      ${renderTextField("Events", "viewpoint-events", viewpoint.events.join(" "))}`,
+      )}
+  </form>`;
+}
+
+function renderEventInspector(
+  formState: WorldOrbitEditorFormState,
+  id: string,
+): string {
+  const eventEntry = formState.events.find((entry) => entry.id === id);
+  if (!eventEntry) {
+    return `<p class="wo-editor-empty">Event not found.</p>`;
+  }
+
+  const linkedViewpoints = formState.viewpoints
+    .filter((viewpoint) => viewpoint.events.includes(eventEntry.id))
+    .map((viewpoint) => viewpoint.id)
+    .join(" ");
+
+  return `<form class="wo-editor-form" data-editor-form="event">
+    <h2>Event</h2>
+    ${renderInspectorSection(
+      "event",
+      "basics",
+      "Basics",
+      `${renderTextField("ID", "event-id", eventEntry.id)}
+      ${renderTextField("Kind", "event-kind", eventEntry.kind)}
+      ${renderTextField("Label", "event-label", eventEntry.label)}
+      ${renderTextAreaField("Summary", "event-summary", eventEntry.summary ?? "")}
+      ${renderTextField("Target object", "event-target", eventEntry.targetObjectId ?? "")}
+      ${renderTextField("Participants", "event-participants", eventEntry.participantObjectIds.join(" "))}
+      ${renderTextField("Timing", "event-timing", eventEntry.timing ?? "")}
+      ${renderTextField("Visibility", "event-visibility", eventEntry.visibility ?? "")}
+      ${renderTextField("Tags", "event-tags", eventEntry.tags.join(" "))}
+      ${renderTextField("Color", "event-color", eventEntry.color ?? "")}
+      ${renderCheckboxField("Hidden", "event-hidden", eventEntry.hidden === true)}`,
+      true,
+    )}
+    ${renderInspectorSection(
+      "event",
+      "viewpoints",
+      "Viewpoints",
+      `${renderTextField("Viewpoints", "event-viewpoints", linkedViewpoints)}`,
+    )}
+    ${renderInspectorSection(
+      "event",
+      "positions",
+      "Positions",
+      `${eventEntry.positions.length > 0
+        ? `<div class="wo-editor-inline-list">${eventEntry.positions
+            .map(
+              (pose) =>
+                renderOutlineButton(
+                  { kind: "event-pose", id: eventEntry.id, key: pose.objectId },
+                  pose.objectId,
+                  null,
+                  new Map(),
+                ),
+            )
+            .join("")}</div>`
+        : `<p class="wo-editor-empty">No event poses yet.</p>`}
+      <div class="wo-editor-inline-actions">
+        <button type="button" data-editor-action="add-event-pose" data-editor-event-id="${escapeHtml(eventEntry.id)}">Add pose</button>
+      </div>`,
+    )}
+  </form>`;
+}
+
+function renderEventPoseInspector(
+  formState: WorldOrbitEditorFormState,
+  eventId: string,
+  objectId: string,
+): string {
+  const eventEntry = formState.events.find((entry) => entry.id === eventId);
+  const pose = eventEntry?.positions.find((entry) => entry.objectId === objectId);
+  if (!eventEntry || !pose) {
+    return `<p class="wo-editor-empty">Event pose not found.</p>`;
+  }
+
+  const placementMode = pose.placement?.mode ?? "";
+  const placementTarget =
+    pose.placement?.mode === "orbit" || pose.placement?.mode === "surface" || pose.placement?.mode === "at"
+      ? pose.placement.target
+      : "";
+  const freeValue =
+    pose.placement?.mode === "free"
+      ? pose.placement.distance
+        ? formatUnitValue(pose.placement.distance)
+        : pose.placement.descriptor ?? ""
+      : "";
+
+  return `<form class="wo-editor-form" data-editor-form="event-pose">
+    <h2>Event Pose</h2>
+    <p class="wo-editor-inline-note">Event <strong>${escapeHtml(eventEntry.label || eventEntry.id)}</strong></p>
+    ${renderInspectorSection(
+      "event-pose",
+      "identity",
+      "Identity",
+      `${renderTextField("Object", "pose-object-id", pose.objectId)}
+      <div class="wo-editor-inline-actions">
+        <button type="button" data-path-kind="event" data-path-id="${escapeHtml(eventEntry.id)}">Select event</button>
+      </div>`,
+      true,
+    )}
+    ${renderInspectorSection(
+      "event-pose",
+      "placement",
+      "Placement",
+      `${renderSelectField("Placement mode", "placement-mode", [
+        ["", "None"],
+        ["orbit", "Orbit"],
+        ["at", "At"],
+        ["surface", "Surface"],
+        ["free", "Free"],
+      ], placementMode)}
+      ${renderTextField("Placement target", "placement-target", placementTarget)}
+      ${renderTextField("Free value", "placement-free", freeValue)}
+      ${renderTextField("Distance", "placement-distance", pose.placement?.mode === "orbit" && pose.placement.distance ? formatUnitValue(pose.placement.distance) : "")}
+      ${renderTextField("Semi-major", "placement-semiMajor", pose.placement?.mode === "orbit" && pose.placement.semiMajor ? formatUnitValue(pose.placement.semiMajor) : "")}
+      ${renderTextField("Eccentricity", "placement-eccentricity", pose.placement?.mode === "orbit" && pose.placement.eccentricity !== undefined ? String(pose.placement.eccentricity) : "")}
+      ${renderTextField("Period", "placement-period", pose.placement?.mode === "orbit" && pose.placement.period ? formatUnitValue(pose.placement.period) : "")}
+      ${renderTextField("Angle", "placement-angle", pose.placement?.mode === "orbit" && pose.placement.angle ? formatUnitValue(pose.placement.angle) : "")}
+      ${renderTextField("Inclination", "placement-inclination", pose.placement?.mode === "orbit" && pose.placement.inclination ? formatUnitValue(pose.placement.inclination) : "")}
+      ${renderTextField("Phase", "placement-phase", pose.placement?.mode === "orbit" && pose.placement.phase ? formatUnitValue(pose.placement.phase) : "")}
+      ${renderTextField("Inner", "prop-inner", pose.inner ? formatUnitValue(pose.inner) : "")}
+      ${renderTextField("Outer", "prop-outer", pose.outer ? formatUnitValue(pose.outer) : "")}`,
+      true,
     )}
   </form>`;
 }
@@ -2286,6 +2723,21 @@ function buildPlacementFromForm(
   form: HTMLFormElement,
   current: WorldOrbitObject,
 ): WorldOrbitObject["placement"] {
+  return buildPlacementFromValues(form, current.placement, current.id);
+}
+
+function buildPlacementFromPoseForm(
+  form: HTMLFormElement,
+  current: WorldOrbitEventPose,
+): WorldOrbitEventPose["placement"] {
+  return buildPlacementFromValues(form, current.placement, current.objectId);
+}
+
+function buildPlacementFromValues(
+  form: HTMLFormElement,
+  currentPlacement: WorldOrbitObject["placement"],
+  fallbackTarget: string,
+): WorldOrbitObject["placement"] {
   const mode = readTextInput(form, "placement-mode");
   const target = readOptionalTextInput(form, "placement-target");
 
@@ -2295,9 +2747,9 @@ function buildPlacementFromForm(
         mode,
         target:
           target ??
-          (current.placement?.mode === "orbit"
-            ? current.placement.target
-            : current.id),
+          (currentPlacement?.mode === "orbit"
+            ? currentPlacement.target
+            : fallbackTarget),
         distance: parseOptionalUnit(readOptionalTextInput(form, "placement-distance")),
         semiMajor: parseOptionalUnit(readOptionalTextInput(form, "placement-semiMajor")),
         eccentricity: parseNullableNumber(readOptionalTextInput(form, "placement-eccentricity")) ?? undefined,
@@ -2309,13 +2761,13 @@ function buildPlacementFromForm(
     case "at":
       return {
         mode,
-        target: target ?? current.id,
-        reference: parseAtReferenceString(target ?? current.id),
+        target: target ?? fallbackTarget,
+        reference: parseAtReferenceString(target ?? fallbackTarget),
       };
     case "surface":
       return {
         mode,
-        target: target ?? current.id,
+        target: target ?? fallbackTarget,
       };
     case "free": {
       const freeValue = readOptionalTextInput(form, "placement-free");
@@ -2503,6 +2955,42 @@ function renameObjectReferences(
       annotation.sourceObjectId = toId;
     }
   }
+
+  for (const eventEntry of document.events) {
+    if (eventEntry.targetObjectId === fromId) {
+      eventEntry.targetObjectId = toId;
+    }
+    eventEntry.participantObjectIds = eventEntry.participantObjectIds.map((entry) =>
+      entry === fromId ? toId : entry,
+    );
+    for (const pose of eventEntry.positions) {
+      if (pose.objectId === fromId) {
+        pose.objectId = toId;
+      }
+      if (pose.placement?.mode === "orbit" && pose.placement.target === fromId) {
+        pose.placement.target = toId;
+      }
+      if (pose.placement?.mode === "surface" && pose.placement.target === fromId) {
+        pose.placement.target = toId;
+      }
+      if (pose.placement?.mode === "at") {
+        const reference = pose.placement.reference;
+        if (reference.kind === "anchor" && reference.objectId === fromId) {
+          reference.objectId = toId;
+        }
+        if (reference.kind === "lagrange") {
+          if (reference.primary === fromId) {
+            reference.primary = toId;
+          }
+          if (reference.secondary === fromId) {
+            reference.secondary = toId;
+          }
+        }
+        pose.placement.target = formatAtReference(reference);
+      }
+    }
+    eventEntry.positions.sort(compareEventPoses);
+  }
 }
 
 function removeSelectedNode(
@@ -2510,6 +2998,13 @@ function removeSelectedNode(
   selection: AtlasDocumentPath,
 ): WorldOrbitAtlasDocument {
   const next = removeAtlasDocumentNode(document, selection);
+
+  if (selection.kind === "event" && selection.id) {
+    for (const viewpoint of next.system?.viewpoints ?? []) {
+      viewpoint.events = viewpoint.events.filter((eventId) => eventId !== selection.id);
+    }
+    return next;
+  }
 
   if (selection.kind !== "object" || !selection.id) {
     return next;
@@ -2552,11 +3047,58 @@ function removeSelectedNode(
     }
   }
 
+  for (const eventEntry of next.events) {
+    if (eventEntry.targetObjectId === selection.id) {
+      eventEntry.targetObjectId = null;
+    }
+    eventEntry.participantObjectIds = eventEntry.participantObjectIds.filter((entry) => entry !== selection.id);
+    eventEntry.positions = eventEntry.positions.filter((entry) => entry.objectId !== selection.id);
+    for (const pose of eventEntry.positions) {
+      if (pose.placement?.mode === "orbit" && pose.placement.target === selection.id) {
+        pose.placement = null;
+      }
+      if (pose.placement?.mode === "surface" && pose.placement.target === selection.id) {
+        pose.placement = null;
+      }
+      if (pose.placement?.mode === "at") {
+        const reference = pose.placement.reference;
+        const touchesSelection =
+          (reference.kind === "anchor" && reference.objectId === selection.id) ||
+          (reference.kind === "lagrange" &&
+            (reference.primary === selection.id || reference.secondary === selection.id));
+        if (touchesSelection) {
+          pose.placement = null;
+        }
+      }
+    }
+  }
+
   return next;
+}
+
+function findEditablePlacementOwner(
+  document: WorldOrbitAtlasDocument,
+  path: AtlasDocumentPath,
+  objectId: string,
+): { placement: NonNullable<WorldOrbitObject["placement"]> | NonNullable<WorldOrbitEventPose["placement"]> } | null {
+  if (path.kind === "event-pose" && path.id && path.key) {
+    const pose = findEventPose(document, path.id, path.key);
+    if (pose?.placement) {
+      return { placement: pose.placement };
+    }
+    return null;
+  }
+
+  const object = findObject(document, objectId);
+  if (object?.placement) {
+    return { placement: object.placement };
+  }
+  return null;
 }
 
 function updateOrbitPhase(
   document: WorldOrbitAtlasDocument,
+  path: AtlasDocumentPath,
   objectId: string,
   details: ViewerObjectDetails,
   pointer: CoordinatePoint,
@@ -2575,12 +3117,12 @@ function updateOrbitPhase(
   );
   const phaseDeg = normalizeDegrees((radians * 180) / Math.PI);
   const next = cloneAtlasDocument(document);
-  const object = next.objects.find((entry) => entry.id === objectId);
-  if (!object || object.placement?.mode !== "orbit") {
+  const placementOwner = findEditablePlacementOwner(next, path, objectId);
+  if (!placementOwner || placementOwner.placement.mode !== "orbit") {
     return document;
   }
 
-  object.placement.phase = {
+  placementOwner.placement.phase = {
     value: roundNumber(phaseDeg, 2),
     unit: "deg",
   };
@@ -2589,6 +3131,7 @@ function updateOrbitPhase(
 
 function updateOrbitRadius(
   document: WorldOrbitAtlasDocument,
+  path: AtlasDocumentPath,
   objectId: string,
   details: ViewerObjectDetails,
   pointer: CoordinatePoint,
@@ -2611,14 +3154,14 @@ function updateOrbitRadius(
     dragContext.stepPx,
   );
   const next = cloneAtlasDocument(document);
-  const object = next.objects.find((entry) => entry.id === objectId);
-  if (!object || object.placement?.mode !== "orbit") {
+  const placementOwner = findEditablePlacementOwner(next, path, objectId);
+  if (!placementOwner || placementOwner.placement.mode !== "orbit") {
     return document;
   }
 
   const currentValue =
-    object.placement.semiMajor ??
-    object.placement.distance ?? {
+    placementOwner.placement.semiMajor ??
+    placementOwner.placement.distance ?? {
       value: 1,
       unit: "au" as const,
     };
@@ -2626,16 +3169,17 @@ function updateOrbitRadius(
     Math.max(nextMetric, 0),
     dragContext.preferredUnit ?? currentValue.unit,
   );
-  if (object.placement.semiMajor) {
-    object.placement.semiMajor = scaled;
+  if (placementOwner.placement.semiMajor) {
+    placementOwner.placement.semiMajor = scaled;
   } else {
-    object.placement.distance = scaled;
+    placementOwner.placement.distance = scaled;
   }
   return next;
 }
 
 function updateAtReference(
   document: WorldOrbitAtlasDocument,
+  path: AtlasDocumentPath,
   objectId: string,
   scene: RenderScene,
   pointer: CoordinatePoint,
@@ -2646,18 +3190,19 @@ function updateAtReference(
   }
 
   const next = cloneAtlasDocument(document);
-  const object = next.objects.find((entry) => entry.id === objectId);
-  if (!object || object.placement?.mode !== "at") {
+  const placementOwner = findEditablePlacementOwner(next, path, objectId);
+  if (!placementOwner || placementOwner.placement.mode !== "at") {
     return document;
   }
 
-  object.placement.reference = candidate.reference;
-  object.placement.target = formatAtReference(candidate.reference);
+  placementOwner.placement.reference = candidate.reference;
+  placementOwner.placement.target = formatAtReference(candidate.reference);
   return next;
 }
 
 function updateSurfaceTarget(
   document: WorldOrbitAtlasDocument,
+  path: AtlasDocumentPath,
   objectId: string,
   scene: RenderScene,
   pointer: CoordinatePoint,
@@ -2670,12 +3215,12 @@ function updateSurfaceTarget(
   }
 
   const next = cloneAtlasDocument(document);
-  const object = next.objects.find((entry) => entry.id === objectId);
-  if (!object || object.placement?.mode !== "surface") {
+  const placementOwner = findEditablePlacementOwner(next, path, objectId);
+  if (!placementOwner || placementOwner.placement.mode !== "surface") {
     return document;
   }
 
-  object.placement.target = target.objectId;
+  placementOwner.placement.target = target.objectId;
   return next;
 }
 
@@ -2689,10 +3234,11 @@ function createOrbitRadiusDragContext(
   }
 
   const targetId = details.object.placement.target;
-  const siblingCount = document.objects.filter(
+  const siblingCount = scene.objects.filter(
     (entry) =>
-      entry.placement?.mode === "orbit" &&
-      entry.placement.target === targetId,
+      entry.object.placement?.mode === "orbit" &&
+      entry.object.placement.target === targetId &&
+      !entry.hidden,
   ).length;
   const spacingFactor = layoutPresetSpacingForScene(scene.layoutPreset);
   const stepPx =
@@ -2720,6 +3266,7 @@ function createOrbitRadiusDragContext(
 
 function updateFreeDistance(
   document: WorldOrbitAtlasDocument,
+  path: AtlasDocumentPath,
   objectId: string,
   scene: RenderScene,
   details: ViewerObjectDetails,
@@ -2732,23 +3279,23 @@ function updateFreeDistance(
   const railX = scene.width - scene.padding - 140;
   const offsetPx = Math.max(0, railX - pointer.x);
   const next = cloneAtlasDocument(document);
-  const object = next.objects.find((entry) => entry.id === objectId);
-  if (!object || object.placement?.mode !== "free") {
+  const placementOwner = findEditablePlacementOwner(next, path, objectId);
+  if (!placementOwner || placementOwner.placement.mode !== "free") {
     return document;
   }
 
-  const preferredUnit = normalizeFreeDistanceUnit(object.placement.distance?.unit ?? null);
+  const preferredUnit = normalizeFreeDistanceUnit(placementOwner.placement.distance?.unit ?? null);
   const metric = offsetPx / Math.max(FREE_DISTANCE_PIXEL_FACTOR * scene.scaleModel.freePlacementMultiplier, 1);
   if (metric < 0.01) {
-    object.placement.distance = undefined;
-    if (!object.placement.descriptor) {
-      delete object.placement.descriptor;
+    placementOwner.placement.distance = undefined;
+    if (!placementOwner.placement.descriptor) {
+      delete placementOwner.placement.descriptor;
     }
     return next;
   }
 
-  object.placement.distance = distanceMetricToUnitValue(metric, preferredUnit);
-  delete object.placement.descriptor;
+  placementOwner.placement.distance = distanceMetricToUnitValue(metric, preferredUnit);
+  delete placementOwner.placement.descriptor;
   return next;
 }
 
@@ -3099,9 +3646,60 @@ function mapDiagnosticFieldToInputNames(
           return ["viewpoint-zoom"];
         case "rotationDeg":
           return ["viewpoint-rotation"];
+        case "events":
+          return ["viewpoint-events"];
         default:
           return [];
       }
+    case "event":
+      switch (field) {
+        case "id":
+          return ["event-id"];
+        case "kind":
+          return ["event-kind"];
+        case "label":
+          return ["event-label"];
+        case "summary":
+          return ["event-summary"];
+        case "targetObjectId":
+        case "target":
+          return ["event-target"];
+        case "participantObjectIds":
+        case "participants":
+          return ["event-participants"];
+        case "timing":
+          return ["event-timing"];
+        case "visibility":
+          return ["event-visibility"];
+        case "tags":
+          return ["event-tags"];
+        case "color":
+          return ["event-color"];
+        case "hidden":
+          return ["event-hidden"];
+        default:
+          return [];
+      }
+    case "event-pose":
+      if (field === "objectId") {
+        return ["pose-object-id"];
+      }
+      if (field === "placement") {
+        return ["placement-mode"];
+      }
+      if (field === "reference" || field === "target") {
+        return ["placement-target"];
+      }
+      if (field === "descriptor") {
+        return ["placement-free"];
+      }
+      if (PLACEMENT_DIAGNOSTIC_FIELDS.has(field)) {
+        return [`placement-${field}`];
+      }
+      if (field === "inner" || field === "outer") {
+        return [`prop-${field}`];
+      }
+      return [];
     case "annotation":
       switch (field) {
         case "id":
@@ -3192,6 +3790,10 @@ function describePath(path: AtlasDocumentPath): string {
       return `Metadata: ${path.key ?? ""}`;
     case "group":
       return `Group: ${path.id ?? ""}`;
+    case "event":
+      return `Event: ${path.id ?? ""}`;
+    case "event-pose":
+      return `Event Pose: ${path.id ?? ""} / ${path.key ?? ""}`;
     case "object":
       return `Object: ${path.id ?? ""}`;
     case "viewpoint":
@@ -3204,11 +3806,102 @@ function describePath(path: AtlasDocumentPath): string {
 }
 
 function selectionKey(path: AtlasDocumentPath | null): string | null {
-  return path ? `${path.kind}:${path.id ?? path.key ?? ""}` : null;
+  return path ? `${path.kind}:${path.id ?? ""}:${path.key ?? ""}` : null;
+}
+
+function selectionEventId(path: AtlasDocumentPath | null): string | null {
+  if (!path) {
+    return null;
+  }
+
+  return path.kind === "event" || path.kind === "event-pose" ? path.id ?? null : null;
 }
 
 function compareObjects(left: WorldOrbitObject, right: WorldOrbitObject): number {
   return left.id.localeCompare(right.id);
+}
+
+function compareEvents(left: WorldOrbitEvent, right: WorldOrbitEvent): number {
+  return left.id.localeCompare(right.id);
+}
+
+function compareEventPoses(left: WorldOrbitEventPose, right: WorldOrbitEventPose): number {
+  return left.objectId.localeCompare(right.objectId);
+}
+
+function findEvent(
+  document: WorldOrbitAtlasDocument,
+  eventId: string,
+): WorldOrbitEvent | null {
+  return document.events.find((entry) => entry.id === eventId) ?? null;
+}
+
+function findEventPose(
+  document: WorldOrbitAtlasDocument,
+  eventId: string,
+  objectId: string,
+): WorldOrbitEventPose | null {
+  return findEvent(document, eventId)?.positions.find((entry) => entry.objectId === objectId) ?? null;
+}
+
+function findObject(document: WorldOrbitAtlasDocument, objectId: string): WorldOrbitObject | null {
+  return document.objects.find((entry) => entry.id === objectId) ?? null;
+}
+
+function addEventPose(
+  document: WorldOrbitAtlasDocument,
+  eventId: string,
+): WorldOrbitAtlasDocument {
+  const next = cloneAtlasDocument(document);
+  const eventEntry = next.events.find((entry) => entry.id === eventId);
+  if (!eventEntry) {
+    return document;
+  }
+
+  const baseObject =
+    next.objects.find((object) => !eventEntry.positions.some((pose) => pose.objectId === object.id)) ??
+    next.objects[0];
+  if (!baseObject) {
+    return document;
+  }
+
+  if (
+    eventEntry.targetObjectId !== baseObject.id &&
+    !eventEntry.participantObjectIds.includes(baseObject.id)
+  ) {
+    eventEntry.participantObjectIds.push(baseObject.id);
+    eventEntry.participantObjectIds.sort((left, right) => left.localeCompare(right));
+  }
+  eventEntry.positions.push(createEventPoseFromObject(baseObject));
+  eventEntry.positions.sort(compareEventPoses);
+  return next;
+}
+
+function createEventPoseFromObject(object: WorldOrbitObject): WorldOrbitEventPose {
+  return {
+    objectId: object.id,
+    placement: object.placement ? structuredClone(object.placement) : null,
+    inner: readUnitValue(object.properties.inner),
+    outer: readUnitValue(object.properties.outer),
+  };
+}
+
+function syncEventViewpointReferences(
+  document: WorldOrbitAtlasDocument,
+  previousEventId: string,
+  nextEventId: string,
+  viewpointIds: string[],
+): void {
+  const desired = new Set(viewpointIds);
+  for (const viewpoint of document.system?.viewpoints ?? []) {
+    const currentIds = new Set(viewpoint.events);
+    currentIds.delete(previousEventId);
+    currentIds.delete(nextEventId);
+    if (desired.has(viewpoint.id)) {
+      currentIds.add(nextEventId);
+    }
+    viewpoint.events = [...currentIds].sort((left, right) => left.localeCompare(right));
+  }
 }
 
 function createUniqueId(prefix: string, existing: string[]): string {
@@ -3253,6 +3946,10 @@ function readUnitProperty(value: NormalizedValue | undefined): string {
   return value && typeof value === "object" && "value" in value
     ? formatUnitValue(value)
     : "";
+}
+
+function readUnitValue(value: NormalizedValue | undefined): UnitValue | undefined {
+  return value && typeof value === "object" && "value" in value ? value : undefined;
 }
 
 function readNumberProperty(value: NormalizedValue | undefined): string {
@@ -3584,6 +4281,12 @@ function installEditorStyles(): void {
     .wo-editor-overlay-diagnostic-warning { border: 1px solid rgba(240, 180, 100, 0.24); }
     .wo-editor-outline { display: grid; gap: 14px; }
     .wo-editor-outline-section { display: grid; gap: 8px; }
+    .wo-editor-outline-group { display: grid; gap: 6px; }
+    .wo-editor-outline-children {
+      display: grid;
+      gap: 6px;
+      padding-left: 16px;
+    }
     .wo-editor-outline-section h3 {
       margin: 0;
       color: rgba(237,246,255,0.68);
@@ -3622,6 +4325,27 @@ function installEditorStyles(): void {
     .wo-editor-outline-badge.is-error {
       background: rgba(255, 120, 120, 0.18);
       color: #ffb2b2;
+    }
+    .wo-editor-inline-list { display: grid; gap: 8px; }
+    .wo-editor-inline-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .wo-editor-inline-actions button {
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+      color: #edf6ff;
+      cursor: pointer;
+      font: 600 12px/1.2 "Segoe UI Variable", "Segoe UI", sans-serif;
+      padding: 8px 12px;
+    }
+    .wo-editor-inline-note {
+      margin: 0 0 12px;
+      color: rgba(237,246,255,0.72);
+      font: 500 12px/1.5 "Segoe UI Variable", "Segoe UI", sans-serif;
     }
     .wo-editor-diagnostics { display: grid; gap: 10px; }
     .wo-editor-diagnostic {

@@ -2,6 +2,7 @@ import type {
   CoordinatePoint,
   RenderOrbitVisual,
   RenderPresetName,
+  RenderSceneEvent,
   RenderSceneGroup,
   RenderSceneLabel,
   RenderScaleModel,
@@ -46,6 +47,7 @@ export interface ViewerLayerOptions {
   background?: boolean;
   guides?: boolean;
   relations?: boolean;
+  events?: boolean;
   orbits?: boolean;
   objects?: boolean;
   labels?: boolean;
@@ -103,6 +105,7 @@ export interface ViewerObjectDetails {
   orbit: RenderOrbitVisual | null;
   relatedOrbits: RenderOrbitVisual[];
   relations: RenderScene["relations"];
+  relatedEvents: RenderSceneEvent[];
   parent: RenderSceneObject | null;
   children: RenderSceneObject[];
   ancestors: RenderSceneObject[];
@@ -131,12 +134,14 @@ export interface ViewerTooltipDetails {
 export interface ViewerAtlasState {
   version: "2.0";
   viewpointId: string | null;
+  activeEventId?: string | null;
   viewerState: ViewerState;
   renderOptions: {
     preset?: RenderPresetName;
     projection?: "document" | ViewProjection;
     layers?: ViewerLayerOptions;
     scaleModel?: Partial<RenderScaleModel>;
+    activeEventId?: string | null;
   };
   filter: ViewerFilter | null;
 }
@@ -169,6 +174,7 @@ export interface AtlasInspectorSnapshot {
     groupCount: number;
     semanticGroupCount: number;
     relationCount: number;
+    eventCount: number;
     viewpointCount: number;
   };
 }
@@ -226,6 +232,8 @@ export interface WorldOrbitViewer {
   listViewpoints(): RenderSceneViewpoint[];
   getActiveViewpoint(): RenderSceneViewpoint | null;
   goToViewpoint(id: string): boolean;
+  getActiveEventId(): string | null;
+  setActiveEvent(id: string | null): void;
   search(query: string, limit?: number): ViewerSearchResult[];
   getFilter(): ViewerFilter | null;
   setFilter(filter: ViewerFilter | null): void;

@@ -6,6 +6,8 @@ import type {
   UnitValue,
   WorldOrbitAtlasAnnotation,
   WorldOrbitAtlasDocument,
+  WorldOrbitEvent,
+  WorldOrbitEventPose,
   WorldOrbitGroup,
   WorldOrbitRelation,
   WorldOrbitAtlasSystem,
@@ -136,6 +138,11 @@ export function formatAtlasDocument(document: WorldOrbitAtlasDocument): string {
     lines.push(...formatAtlasRelation(relation));
   }
 
+  for (const event of [...document.events].sort(compareIdLike)) {
+    lines.push("");
+    lines.push(...formatAtlasEvent(event));
+  }
+
   const sortedObjects = [...document.objects].sort(compareObjects);
   if (sortedObjects.length > 0 && lines.at(-1) !== "") {
     lines.push("");
@@ -176,6 +183,11 @@ export function formatDraftDocument(
   for (const relation of [...legacy.relations].sort(compareIdLike)) {
     lines.push("");
     lines.push(...formatAtlasRelation(relation));
+  }
+
+  for (const event of [...legacy.events].sort(compareIdLike)) {
+    lines.push("");
+    lines.push(...formatAtlasEvent(event));
   }
 
   const sortedObjects = [...legacy.objects].sort(compareObjects);
@@ -434,6 +446,9 @@ function formatAtlasViewpoint(viewpoint: WorldOrbitAtlasViewpoint): string[] {
   if (layerTokens.length > 0) {
     lines.push(`  layers ${layerTokens.join(" ")}`);
   }
+  if (viewpoint.events.length > 0) {
+    lines.push(`  events ${viewpoint.events.join(" ")}`);
+  }
 
   if (viewpoint.filter) {
     lines.push("  filter");
@@ -514,6 +529,58 @@ function formatAtlasRelation(relation: WorldOrbitRelation): string[] {
   return lines;
 }
 
+function formatAtlasEvent(event: WorldOrbitEvent): string[] {
+  const lines = [`event ${event.id}`, `  kind ${quoteIfNeeded(event.kind)}`];
+
+  if (event.label) {
+    lines.push(`  label ${quoteIfNeeded(event.label)}`);
+  }
+  if (event.summary) {
+    lines.push(`  summary ${quoteIfNeeded(event.summary)}`);
+  }
+  if (event.targetObjectId) {
+    lines.push(`  target ${event.targetObjectId}`);
+  }
+  if (event.participantObjectIds.length > 0) {
+    lines.push(`  participants ${event.participantObjectIds.join(" ")}`);
+  }
+  if (event.timing) {
+    lines.push(`  timing ${quoteIfNeeded(event.timing)}`);
+  }
+  if (event.visibility) {
+    lines.push(`  visibility ${quoteIfNeeded(event.visibility)}`);
+  }
+  if (event.tags.length > 0) {
+    lines.push(`  tags ${event.tags.map(quoteIfNeeded).join(" ")}`);
+  }
+  if (event.color) {
+    lines.push(`  color ${quoteIfNeeded(event.color)}`);
+  }
+  if (event.hidden) {
+    lines.push("  hidden true");
+  }
+  if (event.positions.length > 0) {
+    lines.push("");
+    lines.push("  positions");
+    for (const pose of [...event.positions].sort(comparePoseObjectId)) {
+      lines.push(`    pose ${pose.objectId}`);
+      for (const fieldLine of formatEventPoseFields(pose)) {
+        lines.push(`      ${fieldLine}`);
+      }
+    }
+  }
+
+  return lines;
+}
+
+function formatEventPoseFields(pose: WorldOrbitEventPose): string[] {
+  return [
+    ...formatPlacement(pose.placement),
+    ...formatOptionalUnit("inner", pose.inner),
+    ...formatOptionalUnit("outer", pose.outer),
+  ];
+}
+
 function formatValue(value: NormalizedValue): string {
   if (Array.isArray(value)) {
     return value.map((item) => quoteIfNeeded(item)).join(" ");
@@ -570,7 +637,7 @@ function formatDraftLayers(
     );
   }
 
-  for (const key of ["background", "guides", "relations", "objects", "labels", "metadata"] as const) {
+  for (const key of ["background", "guides", "relations", "events", "objects", "labels", "metadata"] as const) {
     if (layers[key] !== undefined) {
       tokens.push(layers[key] ? key : `-${key}`);
     }
@@ -598,6 +665,13 @@ function compareObjects(left: WorldOrbitObject, right: WorldOrbitObject): number
 
 function compareIdLike(left: { id: string }, right: { id: string }): number {
   return left.id.localeCompare(right.id);
+}
+
+function comparePoseObjectId(
+  left: WorldOrbitEventPose,
+  right: WorldOrbitEventPose,
+): number {
+  return left.objectId.localeCompare(right.objectId);
 }
 
 function objectTypeIndex(objectType: WorldOrbitObject["type"]): number {

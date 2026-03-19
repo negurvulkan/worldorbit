@@ -541,6 +541,7 @@
       system,
       groups: [],
       relations: [],
+      events: [],
       objects
     };
   }
@@ -924,8 +925,10 @@
     const scaleModel = resolveScaleModel(layoutPreset, options.scaleModel);
     const spacingFactor = layoutPresetSpacing(layoutPreset);
     const systemId = document2.system?.id ?? null;
-    const objectMap = new Map(document2.objects.map((object) => [object.id, object]));
-    const relationships = buildSceneRelationships(document2.objects, objectMap);
+    const activeEventId = options.activeEventId ?? null;
+    const effectiveObjects = createEffectiveObjects(document2.objects, document2.events ?? [], activeEventId);
+    const objectMap = new Map(effectiveObjects.map((object) => [object.id, object]));
+    const relationships = buildSceneRelationships(effectiveObjects, objectMap);
     const positions = /* @__PURE__ */ new Map();
     const orbitDrafts = [];
     const leaderDrafts = [];
@@ -934,7 +937,7 @@
     const atObjects = [];
     const surfaceChildren = /* @__PURE__ */ new Map();
     const orbitChildren = /* @__PURE__ */ new Map();
-    for (const object of document2.objects) {
+    for (const object of effectiveObjects) {
       const placement = object.placement;
       if (!placement) {
         rootObjects.push(object);
@@ -1029,13 +1032,14 @@
     const objects = [...positions.values()].map((position) => createSceneObject(position, scaleModel, relationships));
     const orbitVisuals = orbitDrafts.map((draft) => createOrbitVisual(draft, relationships.groupIds.get(draft.object.id) ?? null));
     const leaders = leaderDrafts.map((draft) => createLeaderLine(draft));
-    const labels = createSceneLabels(objects, height, scaleModel.labelMultiplier);
+    const labels = createSceneLabels(objects, width, height, scaleModel.labelMultiplier);
     const relations = createSceneRelations(document2, objects);
-    const layers = createSceneLayers(orbitVisuals, relations, leaders, objects, labels);
-    const groups = createSceneGroups(objects, orbitVisuals, leaders, labels, relationships);
+    const events = createSceneEvents(document2.events ?? [], objects, activeEventId);
+    const layers = createSceneLayers(orbitVisuals, relations, events, leaders, objects, labels);
+    const groups = createSceneGroups(objects, orbitVisuals, leaders, labels, relationships, scaleModel.labelMultiplier);
     const semanticGroups = createSceneSemanticGroups(document2, objects);
     const viewpoints = createSceneViewpoints(document2, projection, frame.preset, relationships, objectMap);
-    const contentBounds = calculateContentBounds(width, height, objects, orbitVisuals, leaders, labels);
+    const contentBounds = calculateContentBounds(width, height, objects, orbitVisuals, leaders, labels, scaleModel.labelMultiplier);
     return {
       width,
       height,
@@ -1061,12 +1065,43 @@
       groups,
       semanticGroups,
       viewpoints,
+      events,
+      activeEventId,
       objects,
       orbitVisuals,
       relations,
       leaders,
       labels
     };
+  }
+  function createEffectiveObjects(objects, events, activeEventId) {
+    const cloned = objects.map((object) => structuredClone(object));
+    if (!activeEventId) {
+      return cloned;
+    }
+    const activeEvent = events.find((event) => event.id === activeEventId);
+    if (!activeEvent) {
+      return cloned;
+    }
+    const objectMap = new Map(cloned.map((object) => [object.id, object]));
+    for (const pose of activeEvent.positions) {
+      const object = objectMap.get(pose.objectId);
+      if (!object) {
+        continue;
+      }
+      object.placement = pose.placement ? structuredClone(pose.placement) : null;
+      if (pose.inner) {
+        object.properties.inner = { ...pose.inner };
+      } else {
+        delete object.properties.inner;
+      }
+      if (pose.outer) {
+        object.properties.outer = { ...pose.outer };
+      } else {
+        delete object.properties.outer;
+      }
+    }
+    return cloned;
   }
   function resolveLayoutPreset(document2) {
     const rawScale = String(document2.system?.properties.scale ?? "balanced").toLowerCase();
@@ -1223,24 +1258,14 @@
       hidden: draft.object.properties.hidden === true
     };
   }
-  function createSceneLabels(objects, sceneHeight, labelMultiplier) {
+  function createSceneLabels(objects, sceneWidth, sceneHeight, labelMultiplier) {
     const labels = [];
     const occupied = [];
-    const visibleObjects = [...objects].filter((object) => !object.hidden && object.object.renderHints?.renderLabel !== false).sort((left, right) => left.sortKey - right.sortKey);
+    const objectMap = new Map(objects.map((object) => [object.objectId, object]));
+    const visibleObjects = [...objects].filter((object) => !object.hidden && object.object.renderHints?.renderLabel !== false).sort(compareLabelPlacementOrder);
     for (const object of visibleObjects) {
-      const direction = object.y > sceneHeight * 0.62 ? -1 : 1;
-      const labelHalfWidth = estimateLabelHalfWidth(object, labelMultiplier);
-      let labelY = object.y + direction * (object.radius + 18 * labelMultiplier);
-      let secondaryY = labelY + direction * (16 * labelMultiplier);
-      let bounds = createLabelRect(object.x, labelY, secondaryY, labelHalfWidth, direction);
-      let attempts = 0;
-      while (occupied.some((entry) => rectsOverlap(entry, bounds)) && attempts < 10) {
-        labelY += direction * 14 * labelMultiplier;
-        secondaryY += direction * 14 * labelMultiplier;
-        bounds = createLabelRect(object.x, labelY, secondaryY, labelHalfWidth, direction);
-        attempts += 1;
-      }
-      occupied.push(bounds);
+      const placement = selectLabelPlacement(object, objectMap, occupied, sceneWidth, sceneHeight, labelMultiplier) ?? createLabelPlacement(object, defaultVerticalDirection(object, objectMap.get(object.parentId ?? "") ?? null, sceneHeight), 0, labelMultiplier);
+      occupied.push(createLabelRect(object, placement, labelMultiplier));
       labels.push({
         renderId: `${object.renderId}-label`,
         objectId: object.objectId,
@@ -1249,17 +1274,128 @@
         semanticGroupIds: [...object.semanticGroupIds],
         label: object.label,
         secondaryLabel: object.secondaryLabel,
-        x: object.x,
-        y: labelY,
-        secondaryY,
-        textAnchor: "middle",
-        direction: direction < 0 ? "above" : "below",
+        x: placement.x,
+        y: placement.labelY,
+        secondaryY: placement.secondaryY,
+        textAnchor: placement.textAnchor,
+        direction: placement.direction,
         hidden: object.hidden
       });
     }
     return labels;
   }
-  function createSceneLayers(orbitVisuals, relations, leaders, objects, labels) {
+  function compareLabelPlacementOrder(left, right) {
+    const priorityDiff = labelPlacementPriority(left) - labelPlacementPriority(right);
+    if (priorityDiff !== 0) {
+      return priorityDiff;
+    }
+    const renderPriorityDiff = (right.object.renderHints?.renderPriority ?? 0) - (left.object.renderHints?.renderPriority ?? 0);
+    if (renderPriorityDiff !== 0) {
+      return renderPriorityDiff;
+    }
+    return left.sortKey - right.sortKey;
+  }
+  function labelPlacementPriority(object) {
+    switch (object.object.type) {
+      case "star":
+        return 0;
+      case "planet":
+        return 1;
+      case "moon":
+        return 2;
+      case "belt":
+      case "ring":
+        return 3;
+      case "asteroid":
+      case "comet":
+        return 4;
+      case "structure":
+      case "phenomenon":
+        return 5;
+    }
+  }
+  function selectLabelPlacement(object, objectMap, occupied, sceneWidth, sceneHeight, labelMultiplier) {
+    for (const direction of preferredLabelDirections(object, objectMap, sceneWidth, sceneHeight)) {
+      const maxAttempts = direction === "left" || direction === "right" ? 4 : 6;
+      for (let attempt = 0; attempt <= maxAttempts; attempt += 1) {
+        const placement = createLabelPlacement(object, direction, attempt, labelMultiplier);
+        const rect = createLabelRect(object, placement, labelMultiplier);
+        if (!occupied.some((entry) => rectsOverlap(entry, rect))) {
+          return placement;
+        }
+      }
+    }
+    return null;
+  }
+  function preferredLabelDirections(object, objectMap, sceneWidth, sceneHeight) {
+    const parent = object.parentId ? objectMap.get(object.parentId) ?? null : null;
+    const vertical = defaultVerticalDirection(object, parent, sceneHeight);
+    const oppositeVertical = vertical === "below" ? "above" : "below";
+    const horizontal = defaultHorizontalDirection(object, parent, sceneWidth);
+    const oppositeHorizontal = horizontal === "right" ? "left" : "right";
+    const preferHorizontal = object.object.type === "structure" || object.object.type === "phenomenon" || object.object.placement?.mode === "at" || object.object.placement?.mode === "surface" || object.object.placement?.mode === "free";
+    return preferHorizontal ? [horizontal, vertical, oppositeHorizontal, oppositeVertical] : [vertical, horizontal, oppositeVertical, oppositeHorizontal];
+  }
+  function defaultVerticalDirection(object, parent, sceneHeight) {
+    if (parent && Math.abs(object.y - parent.y) > 6) {
+      return object.y >= parent.y ? "below" : "above";
+    }
+    return object.y > sceneHeight * 0.62 ? "above" : "below";
+  }
+  function defaultHorizontalDirection(object, parent, sceneWidth) {
+    if (parent && Math.abs(object.x - parent.x) > 6) {
+      return object.x >= parent.x ? "right" : "left";
+    }
+    return object.x >= sceneWidth / 2 ? "right" : "left";
+  }
+  function createLabelPlacement(object, direction, attempt, labelMultiplier) {
+    const step = 14 * labelMultiplier;
+    switch (direction) {
+      case "above": {
+        const labelY = object.y - (object.radius + 18 * labelMultiplier + attempt * step);
+        return {
+          x: object.x,
+          labelY,
+          secondaryY: labelY - 16 * labelMultiplier,
+          textAnchor: "middle",
+          direction
+        };
+      }
+      case "below": {
+        const labelY = object.y + object.radius + 18 * labelMultiplier + attempt * step;
+        return {
+          x: object.x,
+          labelY,
+          secondaryY: labelY + 16 * labelMultiplier,
+          textAnchor: "middle",
+          direction
+        };
+      }
+      case "left": {
+        const x = object.x - (object.visualRadius + 16 * labelMultiplier + attempt * step);
+        const labelY = object.y - 4 * labelMultiplier;
+        return {
+          x,
+          labelY,
+          secondaryY: labelY + 16 * labelMultiplier,
+          textAnchor: "end",
+          direction
+        };
+      }
+      case "right": {
+        const x = object.x + object.visualRadius + 16 * labelMultiplier + attempt * step;
+        const labelY = object.y - 4 * labelMultiplier;
+        return {
+          x,
+          labelY,
+          secondaryY: labelY + 16 * labelMultiplier,
+          textAnchor: "start",
+          direction
+        };
+      }
+    }
+  }
+  function createSceneLayers(orbitVisuals, relations, events, leaders, objects, labels) {
     const backOrbitIds = orbitVisuals.filter((visual) => !visual.hidden && Boolean(visual.backArcPath)).map((visual) => visual.renderId);
     const frontOrbitIds = orbitVisuals.filter((visual) => !visual.hidden).map((visual) => visual.renderId);
     return [
@@ -1275,6 +1411,10 @@
         renderIds: relations.filter((relation) => !relation.hidden).map((relation) => relation.renderId)
       },
       {
+        id: "events",
+        renderIds: events.filter((event) => !event.hidden).map((event) => event.renderId)
+      },
+      {
         id: "objects",
         renderIds: objects.filter((object) => !object.hidden).map((object) => object.renderId)
       },
@@ -1285,7 +1425,7 @@
       { id: "metadata", renderIds: ["wo-title", "wo-subtitle", "wo-meta"] }
     ];
   }
-  function createSceneGroups(objects, orbitVisuals, leaders, labels, relationships) {
+  function createSceneGroups(objects, orbitVisuals, leaders, labels, relationships, labelMultiplier) {
     const groups = /* @__PURE__ */ new Map();
     const ensureGroup = (groupId) => {
       if (!groupId) {
@@ -1334,7 +1474,7 @@
       }
     }
     for (const group of groups.values()) {
-      group.contentBounds = calculateGroupBounds(group, objects, orbitVisuals, leaders, labels);
+      group.contentBounds = calculateGroupBounds(group, objects, orbitVisuals, leaders, labels, labelMultiplier);
     }
     return [...groups.values()].sort((left, right) => left.label.localeCompare(right.label));
   }
@@ -1367,6 +1507,29 @@
         hidden: relation.hidden || !from || !to || from.hidden || to.hidden
       };
     }).sort((left, right) => left.relation.id.localeCompare(right.relation.id));
+  }
+  function createSceneEvents(events, objects, activeEventId) {
+    const objectMap = new Map(objects.map((object) => [object.objectId, object]));
+    return events.map((event) => {
+      const objectIds = [.../* @__PURE__ */ new Set([
+        ...event.targetObjectId ? [event.targetObjectId] : [],
+        ...event.participantObjectIds
+      ])];
+      const positions = objectIds.map((objectId) => objectMap.get(objectId)).filter(Boolean);
+      const centroidX = positions.length > 0 ? positions.reduce((sum, object) => sum + object.x, 0) / positions.length : 0;
+      const centroidY = positions.length > 0 ? positions.reduce((sum, object) => sum + object.y, 0) / positions.length : 0;
+      return {
+        renderId: `${createRenderId(event.id)}-event`,
+        eventId: event.id,
+        event,
+        objectIds,
+        participantIds: [...event.participantObjectIds],
+        targetObjectId: event.targetObjectId,
+        x: centroidX,
+        y: centroidY,
+        hidden: event.hidden || positions.length === 0 || positions.every((object) => object.hidden) || activeEventId !== null && event.id !== activeEventId
+      };
+    }).sort((left, right) => left.event.id.localeCompare(right.event.id));
   }
   function createSceneViewpoints(document2, projection, preset, relationships, objectMap) {
     const generatedOverview = createGeneratedOverviewViewpoint(document2, projection, preset);
@@ -1421,6 +1584,7 @@
       summary: "Fit the whole system with the current atlas defaults.",
       objectId: null,
       selectedObjectId: null,
+      eventIds: [],
       projection,
       preset,
       rotationDeg: 0,
@@ -1456,6 +1620,9 @@
         if (normalizedValue) {
           draft.select = normalizedValue;
         }
+        return;
+      case "events":
+        draft.eventIds = splitListValue(normalizedValue);
         return;
       case "projection":
       case "view":
@@ -1513,6 +1680,7 @@
       summary: draft.summary?.trim() || createViewpointSummary(label, objectId, filter),
       objectId,
       selectedObjectId,
+      eventIds: [...new Set(draft.eventIds ?? [])],
       projection: draft.projection ?? projection,
       preset: draft.preset ?? preset,
       rotationDeg: draft.rotationDeg ?? 0,
@@ -1570,7 +1738,7 @@
         next["orbits-front"] = enabled;
         continue;
       }
-      if (rawLayer === "background" || rawLayer === "guides" || rawLayer === "orbits-back" || rawLayer === "orbits-front" || rawLayer === "relations" || rawLayer === "objects" || rawLayer === "labels" || rawLayer === "metadata") {
+      if (rawLayer === "background" || rawLayer === "guides" || rawLayer === "orbits-back" || rawLayer === "orbits-front" || rawLayer === "relations" || rawLayer === "events" || rawLayer === "objects" || rawLayer === "labels" || rawLayer === "metadata") {
         next[rawLayer] = enabled;
       }
     }
@@ -1618,7 +1786,7 @@
     }
     return parts.join(" - ");
   }
-  function calculateContentBounds(width, height, objects, orbitVisuals, leaders, labels) {
+  function calculateContentBounds(width, height, objects, orbitVisuals, leaders, labels, labelMultiplier) {
     let minX = Number.POSITIVE_INFINITY;
     let minY = Number.POSITIVE_INFINITY;
     let maxX = Number.NEGATIVE_INFINITY;
@@ -1648,7 +1816,7 @@
     for (const label of labels) {
       if (label.hidden)
         continue;
-      includeLabelBounds(label, include);
+      includeLabelBounds(label, include, labelMultiplier);
     }
     if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
       return createBounds(0, 0, width, height);
@@ -1686,13 +1854,10 @@
     include(object.x - object.visualRadius - 24, object.y - object.visualRadius - 16);
     include(object.x + object.visualRadius + 24, object.y + object.visualRadius + 36);
   }
-  function includeLabelBounds(label, include) {
-    const labelScale = 1;
-    const labelHalfWidth = estimateLabelHalfWidthFromText(label.label, label.secondaryLabel, labelScale);
-    include(label.x - labelHalfWidth, label.y - 18);
-    include(label.x + labelHalfWidth, label.y + 8);
-    include(label.x - labelHalfWidth, label.secondaryY - 14);
-    include(label.x + labelHalfWidth, label.secondaryY + 8);
+  function includeLabelBounds(label, include, labelMultiplier) {
+    const bounds = createLabelRectFromText(label.x, label.y, label.secondaryY, label.textAnchor, label.direction, label.label, label.secondaryLabel, labelMultiplier);
+    include(bounds.left, bounds.top);
+    include(bounds.right, bounds.bottom);
   }
   function placeObject(object, x, y, depth, positions, orbitDrafts, leaderDrafts, context) {
     if (positions.has(object.id)) {
@@ -2082,7 +2247,7 @@
         return null;
     }
   }
-  function calculateGroupBounds(group, objects, orbitVisuals, leaders, labels) {
+  function calculateGroupBounds(group, objects, orbitVisuals, leaders, labels, labelMultiplier) {
     let minX = Number.POSITIVE_INFINITY;
     let minY = Number.POSITIVE_INFINITY;
     let maxX = Number.NEGATIVE_INFINITY;
@@ -2111,7 +2276,7 @@
     }
     for (const label of labels) {
       if (!label.hidden && group.labelIds.includes(label.objectId)) {
-        includeLabelBounds(label, include);
+        includeLabelBounds(label, include, labelMultiplier);
       }
     }
     if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
@@ -2136,12 +2301,28 @@
     }
     return current.id;
   }
-  function createLabelRect(x, labelY, secondaryY, labelHalfWidth, direction) {
+  function createLabelRect(object, placement, labelMultiplier) {
+    return createLabelRectFromText(placement.x, placement.labelY, placement.secondaryY, placement.textAnchor, placement.direction, object.label, object.secondaryLabel, labelMultiplier);
+  }
+  function createLabelRectFromText(x, labelY, secondaryY, textAnchor, direction, label, secondaryLabel, labelMultiplier) {
+    const labelHalfWidth = estimateLabelHalfWidthFromText(label, secondaryLabel, labelMultiplier);
+    const labelWidth = labelHalfWidth * 2;
+    const topPadding = direction === "above" ? 18 : 12;
+    const bottomPadding = direction === "above" ? 8 : 12;
+    let left = x - labelHalfWidth;
+    let right = x + labelHalfWidth;
+    if (textAnchor === "start") {
+      left = x;
+      right = x + labelWidth;
+    } else if (textAnchor === "end") {
+      left = x - labelWidth;
+      right = x;
+    }
     return {
-      left: x - labelHalfWidth,
-      right: x + labelHalfWidth,
-      top: Math.min(labelY, secondaryY) - (direction < 0 ? 18 : 12),
-      bottom: Math.max(labelY, secondaryY) + (direction < 0 ? 8 : 12)
+      left,
+      right,
+      top: Math.min(labelY, secondaryY) - topPadding,
+      bottom: Math.max(labelY, secondaryY) + bottomPadding
     };
   }
   function rectsOverlap(left, right) {
@@ -2328,11 +2509,6 @@
   function customColorFor(value) {
     return typeof value === "string" && value.trim() ? value : void 0;
   }
-  function estimateLabelHalfWidth(object, labelMultiplier) {
-    const primaryWidth = object.label.length * 4.6 * labelMultiplier + 18;
-    const secondaryWidth = object.secondaryLabel.length * 3.9 * labelMultiplier + 18;
-    return Math.max(primaryWidth, secondaryWidth, object.visualRadius + 18);
-  }
   function estimateLabelHalfWidthFromText(label, secondaryLabel, labelMultiplier) {
     const primaryWidth = label.length * 4.6 * labelMultiplier + 18;
     const secondaryWidth = secondaryLabel.length * 3.9 * labelMultiplier + 18;
@@ -2349,7 +2525,7 @@
   }
 
   // packages/core/dist/draft.js
-  function materializeAtlasDocument(document2) {
+  function materializeAtlasDocument(document2, options = {}) {
     const system = document2.system ? {
       type: "system",
       id: document2.system.id,
@@ -2360,6 +2536,8 @@
       properties: materializeDraftSystemProperties(document2.system),
       info: materializeDraftSystemInfo(document2.system)
     } : null;
+    const objects = document2.objects.map(cloneWorldOrbitObject);
+    applyEventPoseOverrides(objects, document2.events ?? [], options.activeEventId ?? null);
     return {
       format: "worldorbit",
       version: "1.0",
@@ -2367,7 +2545,8 @@
       system,
       groups: structuredClone(document2.groups ?? []),
       relations: structuredClone(document2.relations ?? []),
-      objects: document2.objects.map(cloneWorldOrbitObject)
+      events: document2.events.map(cloneWorldOrbitEvent),
+      objects
     };
   }
   function cloneWorldOrbitObject(object) {
@@ -2388,6 +2567,52 @@
       placement: object.placement ? structuredClone(object.placement) : null,
       info: { ...object.info }
     };
+  }
+  function cloneWorldOrbitEvent(event) {
+    return {
+      ...event,
+      participantObjectIds: [...event.participantObjectIds],
+      tags: [...event.tags],
+      positions: event.positions.map(cloneWorldOrbitEventPose)
+    };
+  }
+  function cloneWorldOrbitEventPose(pose) {
+    return {
+      objectId: pose.objectId,
+      placement: clonePlacement(pose.placement),
+      inner: pose.inner ? { ...pose.inner } : void 0,
+      outer: pose.outer ? { ...pose.outer } : void 0
+    };
+  }
+  function clonePlacement(placement) {
+    return placement ? structuredClone(placement) : null;
+  }
+  function applyEventPoseOverrides(objects, events, activeEventId) {
+    if (!activeEventId) {
+      return;
+    }
+    const event = events.find((entry) => entry.id === activeEventId);
+    if (!event) {
+      return;
+    }
+    const objectMap = new Map(objects.map((object) => [object.id, object]));
+    for (const pose of event.positions) {
+      const object = objectMap.get(pose.objectId);
+      if (!object) {
+        continue;
+      }
+      object.placement = clonePlacement(pose.placement);
+      if (pose.inner) {
+        object.properties.inner = { ...pose.inner };
+      } else {
+        delete object.properties.inner;
+      }
+      if (pose.outer) {
+        object.properties.outer = { ...pose.outer };
+      } else {
+        delete object.properties.outer;
+      }
+    }
   }
   function cloneProperties(properties) {
     const next = {};
@@ -2477,6 +2702,9 @@
       if ((viewpoint.filter?.groupIds.length ?? 0) > 0) {
         info2[`${prefix}.groups`] = viewpoint.filter?.groupIds.join(" ") ?? "";
       }
+      if (viewpoint.events.length > 0) {
+        info2[`${prefix}.events`] = viewpoint.events.join(" ");
+      }
     }
     for (const annotation of system.annotations) {
       const prefix = `annotation.${annotation.id}`;
@@ -2501,7 +2729,7 @@
     if (orbitFront !== void 0 || orbitBack !== void 0) {
       tokens.push(orbitFront !== false || orbitBack !== false ? "orbits" : "-orbits");
     }
-    for (const key of ["background", "guides", "relations", "objects", "labels", "metadata"]) {
+    for (const key of ["background", "guides", "relations", "events", "objects", "labels", "metadata"]) {
       if (layers[key] !== void 0) {
         tokens.push(layers[key] ? key : `-${key}`);
       }
@@ -2675,6 +2903,7 @@
     const diagnostics = [];
     const objectMap = new Map(document2.objects.map((object) => [object.id, object]));
     const groupIds = new Set(document2.groups.map((group) => group.id));
+    const eventIds = new Set(document2.events.map((event) => event.id));
     if (!document2.system) {
       diagnostics.push(error("validate.system.required", "Atlas documents must declare exactly one system."));
     }
@@ -2684,6 +2913,7 @@
       ["viewpoint", document2.system?.viewpoints.map((viewpoint) => viewpoint.id) ?? []],
       ["annotation", document2.system?.annotations.map((annotation) => annotation.id) ?? []],
       ["relation", document2.relations.map((relation) => relation.id)],
+      ["event", document2.events.map((event) => event.id)],
       ["object", document2.objects.map((object) => object.id)]
     ]) {
       for (const id of ids) {
@@ -2699,10 +2929,13 @@
       validateRelation(relation, objectMap, diagnostics);
     }
     for (const viewpoint of document2.system?.viewpoints ?? []) {
-      validateViewpointFilter(viewpoint.filter, groupIds, sourceSchemaVersion, diagnostics, viewpoint.id);
+      validateViewpoint(viewpoint.filter, viewpoint.events ?? [], groupIds, eventIds, sourceSchemaVersion, diagnostics, viewpoint.id);
     }
     for (const object of document2.objects) {
       validateObject(object, document2.system, objectMap, groupIds, diagnostics);
+    }
+    for (const event of document2.events) {
+      validateEvent(event, objectMap, diagnostics);
     }
     return diagnostics;
   }
@@ -2721,13 +2954,19 @@
       diagnostics.push(error("validate.relation.kind.required", `Relation "${relation.id}" is missing a "kind" value.`));
     }
   }
-  function validateViewpointFilter(filter, groupIds, sourceSchemaVersion, diagnostics, viewpointId) {
-    if (!filter || sourceSchemaVersion !== "2.1") {
-      return;
-    }
-    for (const groupId of filter.groupIds) {
-      if (!groupIds.has(groupId)) {
-        diagnostics.push(warn("validate.viewpoint.group.unknown", `Unknown group "${groupId}" in viewpoint "${viewpointId}".`));
+  function validateViewpoint(filter, eventRefs, groupIds, eventIds, sourceSchemaVersion, diagnostics, viewpointId) {
+    if (sourceSchemaVersion === "2.1") {
+      if (filter) {
+        for (const groupId of filter.groupIds) {
+          if (!groupIds.has(groupId)) {
+            diagnostics.push(warn("validate.viewpoint.group.unknown", `Unknown group "${groupId}" in viewpoint "${viewpointId}".`, void 0, `viewpoint.${viewpointId}.groups`));
+          }
+        }
+      }
+      for (const eventId of eventRefs) {
+        if (!eventIds.has(eventId)) {
+          diagnostics.push(warn("validate.viewpoint.event.unknown", `Unknown event "${eventId}" in viewpoint "${viewpointId}".`, void 0, `viewpoint.${viewpointId}.events`));
+        }
       }
     }
   }
@@ -2810,6 +3049,103 @@
       const toleranceDays = toleranceForField(object, "period");
       if (Math.abs(actualPeriodDays - derivedPeriodDays) > toleranceDays) {
         diagnostics.push(error("validate.kepler.mismatch", `Object "${object.id}" fails Kepler validation for "period".`, object.id, "validate"));
+      }
+    }
+  }
+  function validateEvent(event, objectMap, diagnostics) {
+    const fieldPrefix = `event.${event.id}`;
+    const referencedIds = /* @__PURE__ */ new Set();
+    if (!event.kind.trim()) {
+      diagnostics.push(error("validate.event.kind.required", `Event "${event.id}" is missing a "kind" value.`, void 0, `${fieldPrefix}.kind`));
+    }
+    if (!event.targetObjectId && event.participantObjectIds.length === 0) {
+      diagnostics.push(error("validate.event.references.required", `Event "${event.id}" must define a "target" or at least one participant.`, void 0, `${fieldPrefix}.participants`));
+    }
+    if (event.targetObjectId) {
+      referencedIds.add(event.targetObjectId);
+      if (!objectMap.has(event.targetObjectId)) {
+        diagnostics.push(error("validate.event.target.unknown", `Unknown event target "${event.targetObjectId}" on "${event.id}".`, void 0, `${fieldPrefix}.target`));
+      }
+    }
+    const seenParticipants = /* @__PURE__ */ new Set();
+    for (const participantId of event.participantObjectIds) {
+      referencedIds.add(participantId);
+      if (seenParticipants.has(participantId)) {
+        diagnostics.push(warn("validate.event.participants.duplicate", `Event "${event.id}" repeats participant "${participantId}".`, void 0, `${fieldPrefix}.participants`));
+        continue;
+      }
+      seenParticipants.add(participantId);
+      if (!objectMap.has(participantId)) {
+        diagnostics.push(error("validate.event.participants.unknown", `Unknown event participant "${participantId}" on "${event.id}".`, void 0, `${fieldPrefix}.participants`));
+      }
+    }
+    if (event.targetObjectId && event.participantObjectIds.length > 0 && !event.participantObjectIds.includes(event.targetObjectId)) {
+      diagnostics.push(warn("validate.event.target.notParticipant", `Event "${event.id}" defines a target outside its participants list.`, void 0, `${fieldPrefix}.target`));
+    }
+    if (event.positions.length === 0) {
+      diagnostics.push(warn("validate.event.positions.missing", `Event "${event.id}" has no positions block and cannot drive a scene snapshot.`, void 0, `${fieldPrefix}.positions`));
+    }
+    if (/(?:^|[-_])(solar-eclipse|lunar-eclipse|transit|occultation)(?:$|[-_])/.test(event.kind) && referencedIds.size < 3) {
+      diagnostics.push(warn("validate.event.kind.participants", `Event "${event.id}" looks like an eclipse or transit but references fewer than three bodies.`, void 0, `${fieldPrefix}.participants`));
+    }
+    const poseIds = /* @__PURE__ */ new Set();
+    for (const pose of event.positions) {
+      const poseFieldPrefix = `${fieldPrefix}.pose.${pose.objectId}`;
+      if (poseIds.has(pose.objectId)) {
+        diagnostics.push(error("validate.event.pose.duplicate", `Event "${event.id}" defines "${pose.objectId}" more than once in positions.`, void 0, poseFieldPrefix));
+        continue;
+      }
+      poseIds.add(pose.objectId);
+      const object = objectMap.get(pose.objectId);
+      if (!object) {
+        diagnostics.push(error("validate.event.pose.object.unknown", `Unknown event pose object "${pose.objectId}" on "${event.id}".`, void 0, poseFieldPrefix));
+        continue;
+      }
+      if (!referencedIds.has(pose.objectId)) {
+        diagnostics.push(warn("validate.event.pose.unreferenced", `Event pose "${pose.objectId}" on "${event.id}" is not listed in target/participants.`, void 0, poseFieldPrefix));
+      }
+      validateEventPose(pose, object, objectMap, diagnostics, poseFieldPrefix, event.id);
+    }
+  }
+  function validateEventPose(pose, object, objectMap, diagnostics, fieldPrefix, eventId) {
+    const placement = pose.placement;
+    if (!placement) {
+      diagnostics.push(error("validate.event.pose.placement.required", `Event "${eventId}" pose "${pose.objectId}" is missing a placement mode.`, void 0, fieldPrefix));
+      return;
+    }
+    if (placement.mode === "orbit") {
+      if (!objectMap.has(placement.target)) {
+        diagnostics.push(error("validate.event.pose.orbit.target.unknown", `Unknown event orbit target "${placement.target}" on "${eventId}:${pose.objectId}".`, void 0, `${fieldPrefix}.orbit`));
+      }
+      if (placement.distance && placement.semiMajor) {
+        diagnostics.push(error("validate.event.pose.orbit.distanceConflict", `Event "${eventId}" pose "${pose.objectId}" cannot declare both "distance" and "semiMajor".`, void 0, `${fieldPrefix}.distance`));
+      }
+      return;
+    }
+    if (placement.mode === "surface") {
+      const target = objectMap.get(placement.target);
+      if (!target) {
+        diagnostics.push(error("validate.event.pose.surface.target.unknown", `Unknown event surface target "${placement.target}" on "${eventId}:${pose.objectId}".`, void 0, `${fieldPrefix}.surface`));
+      } else if (!SURFACE_TARGET_TYPES2.has(target.type)) {
+        diagnostics.push(error("validate.event.pose.surface.target.invalid", `Event surface target "${placement.target}" on "${eventId}:${pose.objectId}" is not surface-capable.`, void 0, `${fieldPrefix}.surface`));
+      }
+      return;
+    }
+    if (placement.mode === "at") {
+      if (object.type !== "structure" && object.type !== "phenomenon") {
+        diagnostics.push(error("validate.event.pose.at.objectType", `Only structures and phenomena may use "at" placement in events; found "${object.type}" on "${eventId}:${pose.objectId}".`, void 0, `${fieldPrefix}.at`));
+      }
+      const reference = placement.reference;
+      if (reference.kind === "named" && !objectMap.has(reference.name)) {
+        diagnostics.push(error("validate.event.pose.at.target.unknown", `Unknown event at-reference target "${placement.target}" on "${eventId}:${pose.objectId}".`, void 0, `${fieldPrefix}.at`));
+      } else if (reference.kind === "anchor" && !objectMap.has(reference.objectId)) {
+        diagnostics.push(error("validate.event.pose.anchor.target.unknown", `Unknown event anchor target "${reference.objectId}" on "${eventId}:${pose.objectId}".`, void 0, `${fieldPrefix}.at`));
+      } else if (reference.kind === "lagrange") {
+        if (!objectMap.has(reference.primary)) {
+          diagnostics.push(error("validate.event.pose.lagrange.primary.unknown", `Unknown event Lagrange target "${reference.primary}" on "${eventId}:${pose.objectId}".`, void 0, `${fieldPrefix}.at`));
+        } else if (reference.secondary && !objectMap.has(reference.secondary)) {
+          diagnostics.push(error("validate.event.pose.lagrange.secondary.unknown", `Unknown event Lagrange target "${reference.secondary}" on "${eventId}:${pose.objectId}".`, void 0, `${fieldPrefix}.at`));
+        }
       }
     }
   }
@@ -3013,6 +3349,21 @@
     });
   }
   var DRAFT_OBJECT_FIELD_KEYS = new Set(DRAFT_OBJECT_FIELD_SPECS.keys());
+  var EVENT_POSE_FIELD_KEYS = /* @__PURE__ */ new Set([
+    "orbit",
+    "distance",
+    "semiMajor",
+    "eccentricity",
+    "period",
+    "angle",
+    "inclination",
+    "phase",
+    "at",
+    "surface",
+    "free",
+    "inner",
+    "outer"
+  ]);
   function parseWorldOrbitAtlas(source) {
     return parseAtlasSource(source);
   }
@@ -3027,12 +3378,15 @@
     const objectNodes = [];
     const groups = [];
     const relations = [];
+    const events = [];
+    const eventPoseNodes = /* @__PURE__ */ new Map();
     let sawDefaults = false;
     let sawAtlas = false;
     const viewpointIds = /* @__PURE__ */ new Set();
     const annotationIds = /* @__PURE__ */ new Set();
     const groupIds = /* @__PURE__ */ new Set();
     const relationIds = /* @__PURE__ */ new Set();
+    const eventIds = /* @__PURE__ */ new Set();
     for (let index = 0; index < lines.length; index++) {
       const rawLine = lines[index];
       const lineNumber = index + 1;
@@ -3063,7 +3417,7 @@
         continue;
       }
       if (indent === 0) {
-        section = startTopLevelSection(tokens, lineNumber, sourceSchemaVersion, diagnostics, system, objectNodes, groups, relations, viewpointIds, annotationIds, groupIds, relationIds, { sawDefaults, sawAtlas });
+        section = startTopLevelSection(tokens, lineNumber, sourceSchemaVersion, diagnostics, system, objectNodes, groups, relations, events, eventPoseNodes, viewpointIds, annotationIds, groupIds, relationIds, eventIds, { sawDefaults, sawAtlas });
         if (section.kind === "system") {
           system = section.system;
         } else if (section.kind === "defaults") {
@@ -3082,6 +3436,7 @@
       throw new WorldOrbitError('Missing required atlas schema header "schema 2.0"');
     }
     const objects = objectNodes.map((node) => normalizeDraftObject(node, sourceSchemaVersion, diagnostics));
+    const normalizedEvents = events.map((event) => normalizeDraftEvent(event, eventPoseNodes.get(event.id) ?? []));
     const outputVersion = forcedOutputVersion ?? (sourceSchemaVersion === "2.0-draft" ? "2.0" : sourceSchemaVersion);
     const baseDocument = {
       format: "worldorbit",
@@ -3089,6 +3444,7 @@
       system,
       groups,
       relations,
+      events: normalizedEvents,
       objects,
       diagnostics
     };
@@ -3124,7 +3480,7 @@
     const version = tokens[1].value.toLowerCase();
     return version === "2.1" ? "2.1" : version === "2.0-draft" ? "2.0-draft" : "2.0";
   }
-  function startTopLevelSection(tokens, line, sourceSchemaVersion, diagnostics, system, objectNodes, groups, relations, viewpointIds, annotationIds, groupIds, relationIds, flags) {
+  function startTopLevelSection(tokens, line, sourceSchemaVersion, diagnostics, system, objectNodes, groups, relations, events, eventPoseNodes, viewpointIds, annotationIds, groupIds, relationIds, eventIds, flags) {
     const keyword = tokens[0]?.value.toLowerCase();
     switch (keyword) {
       case "system":
@@ -3161,7 +3517,7 @@
         if (!system) {
           throw new WorldOrbitError('Atlas section "viewpoint" requires a preceding system declaration', line, tokens[0].column);
         }
-        return startViewpointSection(tokens, line, system, viewpointIds);
+        return startViewpointSection(tokens, line, system, viewpointIds, sourceSchemaVersion, diagnostics);
       case "annotation":
         if (!system) {
           throw new WorldOrbitError('Atlas section "annotation" requires a preceding system declaration', line, tokens[0].column);
@@ -3173,6 +3529,9 @@
       case "relation":
         warnIfSchema21Feature(sourceSchemaVersion, diagnostics, "relation", { line, column: tokens[0].column });
         return startRelationSection(tokens, line, relations, relationIds);
+      case "event":
+        warnIfSchema21Feature(sourceSchemaVersion, diagnostics, "event", { line, column: tokens[0].column });
+        return startEventSection(tokens, line, events, eventPoseNodes, eventIds, sourceSchemaVersion, diagnostics);
       case "object":
         return startObjectSection(tokens, line, sourceSchemaVersion, diagnostics, objectNodes);
       default:
@@ -3209,7 +3568,7 @@
       seenFields: /* @__PURE__ */ new Set()
     };
   }
-  function startViewpointSection(tokens, line, system, viewpointIds) {
+  function startViewpointSection(tokens, line, system, viewpointIds, sourceSchemaVersion, diagnostics) {
     if (tokens.length !== 2) {
       throw new WorldOrbitError("Invalid viewpoint declaration", line, tokens[0]?.column ?? 1);
     }
@@ -3226,6 +3585,7 @@
       summary: "",
       focusObjectId: null,
       selectedObjectId: null,
+      events: [],
       projection: system.defaults.view,
       preset: system.defaults.preset,
       zoom: null,
@@ -3238,6 +3598,8 @@
     return {
       kind: "viewpoint",
       viewpoint,
+      sourceSchemaVersion,
+      diagnostics,
       seenFields: /* @__PURE__ */ new Set(),
       inFilter: false,
       filterIndent: null,
@@ -3328,6 +3690,49 @@
       seenFields: /* @__PURE__ */ new Set()
     };
   }
+  function startEventSection(tokens, line, events, eventPoseNodes, eventIds, sourceSchemaVersion, diagnostics) {
+    if (tokens.length !== 2) {
+      throw new WorldOrbitError("Invalid event declaration", line, tokens[0]?.column ?? 1);
+    }
+    const id = normalizeIdentifier(tokens[1].value);
+    if (!id) {
+      throw new WorldOrbitError("Event id must not be empty", line, tokens[1].column);
+    }
+    if (eventIds.has(id)) {
+      throw new WorldOrbitError(`Duplicate event id "${id}"`, line, tokens[1].column);
+    }
+    const event = {
+      id,
+      kind: "",
+      label: humanizeIdentifier2(id),
+      summary: null,
+      targetObjectId: null,
+      participantObjectIds: [],
+      timing: null,
+      visibility: null,
+      tags: [],
+      color: null,
+      hidden: false,
+      positions: []
+    };
+    const rawPoses = [];
+    events.push(event);
+    eventPoseNodes.set(id, rawPoses);
+    eventIds.add(id);
+    return {
+      kind: "event",
+      event,
+      sourceSchemaVersion,
+      diagnostics,
+      seenFields: /* @__PURE__ */ new Set(),
+      rawPoses,
+      inPositions: false,
+      positionsIndent: null,
+      activePose: null,
+      poseIndent: null,
+      activePoseSeenFields: /* @__PURE__ */ new Set()
+    };
+  }
   function startObjectSection(tokens, line, sourceSchemaVersion, diagnostics, objectNodes) {
     if (tokens.length < 3) {
       throw new WorldOrbitError("Invalid atlas object declaration", line, tokens[0]?.column ?? 1);
@@ -3383,6 +3788,9 @@
         return;
       case "relation":
         applyRelationField(section, tokens, line);
+        return;
+      case "event":
+        applyEventField(section, indent, tokens, line);
         return;
       case "object":
         applyObjectField(section, indent, tokens, line);
@@ -3510,7 +3918,14 @@
         section.viewpoint.rotationDeg = parseFiniteNumber2(value, line, tokens[0].column, "rotation");
         return;
       case "layers":
-        section.viewpoint.layers = parseLayerTokens(tokens.slice(1), line);
+        section.viewpoint.layers = parseLayerTokens(tokens.slice(1), line, section.sourceSchemaVersion, section.diagnostics);
+        return;
+      case "events":
+        warnIfSchema21Feature(section.sourceSchemaVersion, section.diagnostics, "viewpoint.events", {
+          line,
+          column: tokens[0].column
+        });
+        section.viewpoint.events = parseTokenList(tokens.slice(1), line, "events");
         return;
       default:
         throw new WorldOrbitError(`Unknown viewpoint field "${tokens[0].value}"`, line, tokens[0].column);
@@ -3615,6 +4030,106 @@
         throw new WorldOrbitError(`Unknown relation field "${tokens[0].value}"`, line, tokens[0].column);
     }
   }
+  function applyEventField(section, indent, tokens, line) {
+    if (section.activePose && indent <= (section.poseIndent ?? 0)) {
+      section.activePose = null;
+      section.poseIndent = null;
+      section.activePoseSeenFields.clear();
+    }
+    if (!section.activePose && section.inPositions && indent <= (section.positionsIndent ?? 0)) {
+      section.inPositions = false;
+      section.positionsIndent = null;
+    }
+    if (section.activePose) {
+      section.activePose.fields.push(parseEventPoseField(tokens, line, section.activePoseSeenFields));
+      return;
+    }
+    if (section.inPositions) {
+      if (tokens.length !== 2 || tokens[0].value.toLowerCase() !== "pose") {
+        throw new WorldOrbitError(`Unknown event positions field "${tokens[0].value}"`, line, tokens[0]?.column ?? 1);
+      }
+      const objectId = tokens[1].value;
+      if (!objectId.trim()) {
+        throw new WorldOrbitError("Event pose object id must not be empty", line, tokens[1].column);
+      }
+      const rawPose = {
+        objectId,
+        fields: [],
+        location: { line, column: tokens[0].column }
+      };
+      section.rawPoses.push(rawPose);
+      section.activePose = rawPose;
+      section.poseIndent = indent;
+      section.activePoseSeenFields = /* @__PURE__ */ new Set();
+      return;
+    }
+    if (tokens.length === 1 && tokens[0].value.toLowerCase() === "positions") {
+      if (section.seenFields.has("positions")) {
+        throw new WorldOrbitError('Duplicate event field "positions"', line, tokens[0].column);
+      }
+      section.seenFields.add("positions");
+      section.inPositions = true;
+      section.positionsIndent = indent;
+      return;
+    }
+    const key = requireUniqueField(tokens, section.seenFields, line);
+    switch (key) {
+      case "kind":
+        section.event.kind = joinFieldValue(tokens, line);
+        return;
+      case "label":
+        section.event.label = joinFieldValue(tokens, line);
+        return;
+      case "summary":
+        section.event.summary = joinFieldValue(tokens, line);
+        return;
+      case "target":
+        section.event.targetObjectId = joinFieldValue(tokens, line);
+        return;
+      case "participants":
+        section.event.participantObjectIds = parseTokenList(tokens.slice(1), line, "participants");
+        return;
+      case "timing":
+        section.event.timing = joinFieldValue(tokens, line);
+        return;
+      case "visibility":
+        section.event.visibility = joinFieldValue(tokens, line);
+        return;
+      case "tags":
+        section.event.tags = parseTokenList(tokens.slice(1), line, "tags");
+        return;
+      case "color":
+        section.event.color = joinFieldValue(tokens, line);
+        return;
+      case "hidden":
+        section.event.hidden = parseAtlasBoolean(joinFieldValue(tokens, line), "hidden", {
+          line,
+          column: tokens[0].column
+        });
+        return;
+      default:
+        throw new WorldOrbitError(`Unknown event field "${tokens[0].value}"`, line, tokens[0].column);
+    }
+  }
+  function parseEventPoseField(tokens, line, seenFields) {
+    if (tokens.length < 2) {
+      throw new WorldOrbitError("Invalid event pose field line", line, tokens[0]?.column ?? 1);
+    }
+    const key = tokens[0].value;
+    if (!EVENT_POSE_FIELD_KEYS.has(key)) {
+      throw new WorldOrbitError(`Unknown event pose field "${key}"`, line, tokens[0].column);
+    }
+    if (seenFields.has(key)) {
+      throw new WorldOrbitError(`Duplicate event pose field "${key}"`, line, tokens[0].column);
+    }
+    seenFields.add(key);
+    return {
+      type: "field",
+      key,
+      values: tokens.slice(1).map((token) => token.value),
+      location: { line, column: tokens[0].column }
+    };
+  }
   function applyObjectField(section, indent, tokens, line) {
     if (section.activeBlock && indent <= (section.blockIndent ?? 0)) {
       section.activeBlock = null;
@@ -3673,7 +4188,7 @@
   function parseObjectTypeTokens(tokens, line) {
     return parseTokenList(tokens, line, "objectTypes").filter((value) => value === "star" || value === "planet" || value === "moon" || value === "belt" || value === "asteroid" || value === "comet" || value === "ring" || value === "structure" || value === "phenomenon");
   }
-  function parseLayerTokens(tokens, line) {
+  function parseLayerTokens(tokens, line, sourceSchemaVersion, diagnostics) {
     const layers = {};
     for (const token of parseTokenList(tokens, line, "layers")) {
       const enabled = !token.startsWith("-") && !token.startsWith("!");
@@ -3683,7 +4198,13 @@
         layers["orbits-front"] = enabled;
         continue;
       }
-      if (raw === "background" || raw === "guides" || raw === "orbits-back" || raw === "orbits-front" || raw === "relations" || raw === "objects" || raw === "labels" || raw === "metadata") {
+      if (raw === "background" || raw === "guides" || raw === "orbits-back" || raw === "orbits-front" || raw === "relations" || raw === "events" || raw === "objects" || raw === "labels" || raw === "metadata") {
+        if (raw === "events" && sourceSchemaVersion && diagnostics) {
+          warnIfSchema21Feature(sourceSchemaVersion, diagnostics, "layers.events", {
+            line,
+            column: tokens[0]?.column ?? 1
+          });
+        }
         layers[raw] = enabled;
       }
     }
@@ -3822,7 +4343,7 @@
   }
   function normalizeDraftObject(node, sourceSchemaVersion, diagnostics) {
     const fieldMap = collectDraftFields(node.fields);
-    const placement = extractDraftPlacement(node.objectType, fieldMap);
+    const placement = extractPlacementFromFieldMap(fieldMap);
     const properties = normalizeDraftProperties(node.objectType, fieldMap);
     const groups = parseOptionalTokenList(fieldMap.get("groups")?.[0]);
     const epoch = parseOptionalJoinedValue(fieldMap.get("epoch")?.[0]);
@@ -3874,6 +4395,24 @@
     }
     return object;
   }
+  function normalizeDraftEvent(event, rawPoses) {
+    return {
+      ...event,
+      participantObjectIds: [...new Set(event.participantObjectIds)],
+      tags: [...new Set(event.tags)],
+      positions: rawPoses.map((pose) => normalizeDraftEventPose(pose))
+    };
+  }
+  function normalizeDraftEventPose(rawPose) {
+    const fieldMap = collectDraftFields(rawPose.fields);
+    const placement = extractPlacementFromFieldMap(fieldMap);
+    return {
+      objectId: rawPose.objectId,
+      placement,
+      inner: parseOptionalUnitField(fieldMap.get("inner")?.[0], "inner"),
+      outer: parseOptionalUnitField(fieldMap.get("outer")?.[0], "outer")
+    };
+  }
   function collectDraftFields(fields) {
     const grouped = /* @__PURE__ */ new Map();
     for (const field of fields) {
@@ -3890,7 +4429,7 @@
     }
     return grouped;
   }
-  function extractDraftPlacement(objectType, fieldMap) {
+  function extractPlacementFromFieldMap(fieldMap) {
     const orbitField = fieldMap.get("orbit")?.[0];
     const atField = fieldMap.get("at")?.[0];
     const surfaceField = fieldMap.get("surface")?.[0];
@@ -4326,6 +4865,7 @@
     background: true,
     guides: true,
     relations: true,
+    events: true,
     orbits: true,
     objects: true,
     labels: true,
@@ -4529,6 +5069,7 @@
     const orbitMarkup = layers.orbits ? renderOrbitLayer(scene, visibleObjectIds, layers.structures) : { back: "", front: "" };
     const leaderMarkup = layers.guides ? scene.leaders.filter((leader) => !leader.hidden).filter((leader) => visibleObjectIds.has(leader.objectId)).filter((leader) => layers.structures || !isStructureLike(leader.object)).map((leader) => `<line class="wo-leader wo-leader-${leader.mode}" x1="${leader.x1}" y1="${leader.y1}" x2="${leader.x2}" y2="${leader.y2}" data-render-id="${escapeXml(leader.renderId)}" data-group-id="${escapeAttribute(leader.groupId ?? "")}" />`).join("") : "";
     const relationMarkup = layers.relations ? scene.relations.filter((relation) => !relation.hidden).filter((relation) => visibleObjectIds.has(relation.fromObjectId) && visibleObjectIds.has(relation.toObjectId)).map((relation) => `<line class="wo-relation" x1="${relation.x1}" y1="${relation.y1}" x2="${relation.x2}" y2="${relation.y2}" data-render-id="${escapeXml(relation.renderId)}" data-relation-id="${escapeAttribute(relation.relationId)}" />`).join("") : "";
+    const eventMarkup = layers.events ? scene.events.filter((event) => !event.hidden).map((event) => renderSceneEventOverlay(scene, event, visibleObjectIds, theme)).join("") : "";
     const objectMarkup = layers.objects ? visibleObjects.map((object) => renderSceneObject(object, options.selectedObjectId ?? null, theme)).join("") : "";
     const labelMarkup = layers.labels ? visibleLabels.map((label) => renderSceneLabel(scene, label, options.selectedObjectId ?? null)).join("") : "";
     const metadataMarkup = layers.metadata ? `<text class="wo-title" x="56" y="64">${escapeXml(scene.title)}</text>
@@ -4564,6 +5105,9 @@
     .wo-orbit-front { opacity: 0.9; }
     .wo-orbit-band { stroke: ${theme.orbitBand}; stroke-linecap: round; }
     .wo-relation { stroke: ${theme.relation}; stroke-width: 2; stroke-dasharray: 10 6; }
+    .wo-event-line { stroke: ${theme.accent}; stroke-width: 1.6; stroke-dasharray: 5 5; opacity: 0.72; }
+    .wo-event-node { fill: ${theme.accent}; stroke: ${theme.selected}; stroke-width: 1.4; opacity: 0.92; }
+    .wo-event-label { fill: ${theme.accent}; font-family: ${theme.fontFamily}; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
     .wo-leader { stroke: ${theme.leader}; stroke-width: 1.5; stroke-dasharray: 6 5; }
     .wo-label { fill: ${theme.ink}; font-family: ${theme.fontFamily}; font-weight: 600; letter-spacing: 0.02em; }
     .wo-label-secondary { fill: ${theme.muted}; font-family: ${theme.fontFamily}; font-weight: 500; }
@@ -4598,6 +5142,7 @@
         ${layers.orbits ? `<g data-layer-id="orbits-back">${orbitMarkup.back}</g>` : ""}
         ${layers.guides ? `<g data-layer-id="guides">${leaderMarkup}</g>` : ""}
         ${layers.relations ? `<g data-layer-id="relations">${relationMarkup}</g>` : ""}
+        ${layers.events ? `<g data-layer-id="events">${eventMarkup}</g>` : ""}
         ${layers.objects ? `<g data-layer-id="objects">${objectMarkup}</g>` : ""}
         ${layers.orbits ? `<g data-layer-id="orbits-front">${orbitMarkup.front}</g>` : ""}
         ${layers.labels ? `<g data-layer-id="labels">${labelMarkup}</g>` : ""}
@@ -4605,6 +5150,20 @@
     </g>
   </g>
 </svg>`;
+  }
+  function renderSceneEventOverlay(scene, event, visibleObjectIds, theme) {
+    const participants = event.objectIds.filter((objectId) => visibleObjectIds.has(objectId)).map((objectId) => scene.objects.find((object) => object.objectId === objectId && !object.hidden)).filter(Boolean);
+    if (participants.length === 0) {
+      return "";
+    }
+    const stroke = event.event.color || theme.accent;
+    const label = event.event.label || event.event.id;
+    const lineMarkup = participants.map((object) => `<line class="wo-event-line" x1="${event.x}" y1="${event.y}" x2="${object.x}" y2="${object.y}" stroke="${escapeAttribute(stroke)}" data-event-id="${escapeAttribute(event.eventId)}" data-object-id="${escapeAttribute(object.objectId)}" />`).join("");
+    return `<g class="wo-event" data-render-id="${escapeXml(event.renderId)}" data-event-id="${escapeAttribute(event.eventId)}">
+    ${lineMarkup}
+    <circle class="wo-event-node" cx="${event.x}" cy="${event.y}" r="5" fill="${escapeAttribute(stroke)}" />
+    <text class="wo-event-label" x="${event.x}" y="${event.y - 10}" text-anchor="middle" font-size="10">${escapeXml(label)}</text>
+  </g>`;
   }
   function renderOrbitLayer(scene, visibleObjectIds, includeStructures) {
     const backParts = [];

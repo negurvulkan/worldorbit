@@ -2,6 +2,7 @@ import type {
   AtlasDocumentPath,
   AtlasResolvedDiagnostic,
   WorldOrbitAtlasDocument,
+  WorldOrbitEvent,
   WorldOrbitAtlasSystem,
   WorldOrbitAtlasViewpoint,
   WorldOrbitObject,
@@ -48,6 +49,7 @@ export interface WorldOrbitEditor {
   undo(): boolean;
   redo(): boolean;
   addObject(type?: WorldOrbitObject["type"]): string;
+  addEvent(): string;
   addViewpoint(): string;
   addAnnotation(): string;
   addMetadata(key?: string, value?: string): string;
@@ -61,5 +63,6 @@ export interface WorldOrbitEditorFormState {
   selection: WorldOrbitEditorSelection | null;
   system: WorldOrbitAtlasSystem | null;
   viewpoints: WorldOrbitAtlasViewpoint[];
+  events: WorldOrbitEvent[];
   objects: WorldOrbitObject[];
 }

@@ -6,6 +6,8 @@ import type {
   WorldOrbitDiagnostic,
   WorldOrbitDraftDocument,
   WorldOrbitDraftSystem,
+  WorldOrbitEvent,
+  WorldOrbitEventPose,
   WorldOrbitObject,
   WorldOrbitRelation,
 } from "./types.js";
@@ -27,6 +29,7 @@ export function collectAtlasDiagnostics(
   const diagnostics: WorldOrbitDiagnostic[] = [];
   const objectMap = new Map(document.objects.map((object) => [object.id, object]));
   const groupIds = new Set(document.groups.map((group) => group.id));
+  const eventIds = new Set(document.events.map((event) => event.id));
 
   if (!document.system) {
     diagnostics.push(error("validate.system.required", "Atlas documents must declare exactly one system."));
@@ -38,6 +41,7 @@ export function collectAtlasDiagnostics(
     ["viewpoint", document.system?.viewpoints.map((viewpoint) => viewpoint.id) ?? []],
     ["annotation", document.system?.annotations.map((annotation) => annotation.id) ?? []],
     ["relation", document.relations.map((relation) => relation.id)],
+    ["event", document.events.map((event) => event.id)],
     ["object", document.objects.map((object) => object.id)],
   ] as const) {
     for (const id of ids) {
@@ -55,11 +59,23 @@ export function collectAtlasDiagnostics(
   }
 
   for (const viewpoint of document.system?.viewpoints ?? []) {
-    validateViewpointFilter(viewpoint.filter, groupIds, sourceSchemaVersion, diagnostics, viewpoint.id);
+    validateViewpoint(
+      viewpoint.filter,
+      viewpoint.events ?? [],
+      groupIds,
+      eventIds,
+      sourceSchemaVersion,
+      diagnostics,
+      viewpoint.id,
+    );
   }
 
   for (const object of document.objects) {
     validateObject(object, document.system, objectMap, groupIds, diagnostics);
+  }
+
+  for (const event of document.events) {
+    validateEvent(event, objectMap, diagnostics);
   }
 
   return diagnostics;
@@ -87,20 +103,28 @@ function validateRelation(
   }
 }
 
-function validateViewpointFilter(
+function validateViewpoint(
   filter: RenderSceneViewpointFilter | null,
+  eventRefs: string[],
   groupIds: Set<string>,
+  eventIds: Set<string>,
   sourceSchemaVersion: WorldOrbitAnyDocumentVersion | undefined,
   diagnostics: WorldOrbitDiagnostic[],
   viewpointId: string,
 ): void {
-  if (!filter || sourceSchemaVersion !== "2.1") {
-    return;
-  }
+  if (sourceSchemaVersion === "2.1") {
+    if (filter) {
+      for (const groupId of filter.groupIds) {
+        if (!groupIds.has(groupId)) {
+          diagnostics.push(warn("validate.viewpoint.group.unknown", `Unknown group "${groupId}" in viewpoint "${viewpointId}".`, undefined, `viewpoint.${viewpointId}.groups`));
+        }
+      }
+    }
 
-  for (const groupId of filter.groupIds) {
-    if (!groupIds.has(groupId)) {
-      diagnostics.push(warn("validate.viewpoint.group.unknown", `Unknown group "${groupId}" in viewpoint "${viewpointId}".`));
+    for (const eventId of eventRefs) {
+      if (!eventIds.has(eventId)) {
+        diagnostics.push(warn("validate.viewpoint.event.unknown", `Unknown event "${eventId}" in viewpoint "${viewpointId}".`, undefined, `viewpoint.${viewpointId}.events`));
+      }
     }
   }
 }
@@ -205,6 +229,134 @@ function validateObject(
     const toleranceDays = toleranceForField(object, "period");
     if (Math.abs(actualPeriodDays - derivedPeriodDays) > toleranceDays) {
       diagnostics.push(error("validate.kepler.mismatch", `Object "${object.id}" fails Kepler validation for "period".`, object.id, "validate"));
+    }
+  }
+}
+
+function validateEvent(
+  event: WorldOrbitEvent,
+  objectMap: Map<string, WorldOrbitObject>,
+  diagnostics: WorldOrbitDiagnostic[],
+): void {
+  const fieldPrefix = `event.${event.id}`;
+  const referencedIds = new Set<string>();
+
+  if (!event.kind.trim()) {
+    diagnostics.push(error("validate.event.kind.required", `Event "${event.id}" is missing a "kind" value.`, undefined, `${fieldPrefix}.kind`));
+  }
+
+  if (!event.targetObjectId && event.participantObjectIds.length === 0) {
+    diagnostics.push(error("validate.event.references.required", `Event "${event.id}" must define a "target" or at least one participant.`, undefined, `${fieldPrefix}.participants`));
+  }
+
+  if (event.targetObjectId) {
+    referencedIds.add(event.targetObjectId);
+    if (!objectMap.has(event.targetObjectId)) {
+      diagnostics.push(error("validate.event.target.unknown", `Unknown event target "${event.targetObjectId}" on "${event.id}".`, undefined, `${fieldPrefix}.target`));
+    }
+  }
+
+  const seenParticipants = new Set<string>();
+  for (const participantId of event.participantObjectIds) {
+    referencedIds.add(participantId);
+    if (seenParticipants.has(participantId)) {
+      diagnostics.push(warn("validate.event.participants.duplicate", `Event "${event.id}" repeats participant "${participantId}".`, undefined, `${fieldPrefix}.participants`));
+      continue;
+    }
+    seenParticipants.add(participantId);
+    if (!objectMap.has(participantId)) {
+      diagnostics.push(error("validate.event.participants.unknown", `Unknown event participant "${participantId}" on "${event.id}".`, undefined, `${fieldPrefix}.participants`));
+    }
+  }
+
+  if (
+    event.targetObjectId &&
+    event.participantObjectIds.length > 0 &&
+    !event.participantObjectIds.includes(event.targetObjectId)
+  ) {
+    diagnostics.push(warn("validate.event.target.notParticipant", `Event "${event.id}" defines a target outside its participants list.`, undefined, `${fieldPrefix}.target`));
+  }
+
+  if (event.positions.length === 0) {
+    diagnostics.push(warn("validate.event.positions.missing", `Event "${event.id}" has no positions block and cannot drive a scene snapshot.`, undefined, `${fieldPrefix}.positions`));
+  }
+
+  if (/(?:^|[-_])(solar-eclipse|lunar-eclipse|transit|occultation)(?:$|[-_])/.test(event.kind) && referencedIds.size < 3) {
+    diagnostics.push(warn("validate.event.kind.participants", `Event "${event.id}" looks like an eclipse or transit but references fewer than three bodies.`, undefined, `${fieldPrefix}.participants`));
+  }
+
+  const poseIds = new Set<string>();
+  for (const pose of event.positions) {
+    const poseFieldPrefix = `${fieldPrefix}.pose.${pose.objectId}`;
+    if (poseIds.has(pose.objectId)) {
+      diagnostics.push(error("validate.event.pose.duplicate", `Event "${event.id}" defines "${pose.objectId}" more than once in positions.`, undefined, poseFieldPrefix));
+      continue;
+    }
+    poseIds.add(pose.objectId);
+
+    const object = objectMap.get(pose.objectId);
+    if (!object) {
+      diagnostics.push(error("validate.event.pose.object.unknown", `Unknown event pose object "${pose.objectId}" on "${event.id}".`, undefined, poseFieldPrefix));
+      continue;
+    }
+
+    if (!referencedIds.has(pose.objectId)) {
+      diagnostics.push(warn("validate.event.pose.unreferenced", `Event pose "${pose.objectId}" on "${event.id}" is not listed in target/participants.`, undefined, poseFieldPrefix));
+    }
+
+    validateEventPose(pose, object, objectMap, diagnostics, poseFieldPrefix, event.id);
+  }
+}
+
+function validateEventPose(
+  pose: WorldOrbitEventPose,
+  object: WorldOrbitObject,
+  objectMap: Map<string, WorldOrbitObject>,
+  diagnostics: WorldOrbitDiagnostic[],
+  fieldPrefix: string,
+  eventId: string,
+): void {
+  const placement = pose.placement;
+  if (!placement) {
+    diagnostics.push(error("validate.event.pose.placement.required", `Event "${eventId}" pose "${pose.objectId}" is missing a placement mode.`, undefined, fieldPrefix));
+    return;
+  }
+
+  if (placement.mode === "orbit") {
+    if (!objectMap.has(placement.target)) {
+      diagnostics.push(error("validate.event.pose.orbit.target.unknown", `Unknown event orbit target "${placement.target}" on "${eventId}:${pose.objectId}".`, undefined, `${fieldPrefix}.orbit`));
+    }
+    if (placement.distance && placement.semiMajor) {
+      diagnostics.push(error("validate.event.pose.orbit.distanceConflict", `Event "${eventId}" pose "${pose.objectId}" cannot declare both "distance" and "semiMajor".`, undefined, `${fieldPrefix}.distance`));
+    }
+    return;
+  }
+
+  if (placement.mode === "surface") {
+    const target = objectMap.get(placement.target);
+    if (!target) {
+      diagnostics.push(error("validate.event.pose.surface.target.unknown", `Unknown event surface target "${placement.target}" on "${eventId}:${pose.objectId}".`, undefined, `${fieldPrefix}.surface`));
+    } else if (!SURFACE_TARGET_TYPES.has(target.type)) {
+      diagnostics.push(error("validate.event.pose.surface.target.invalid", `Event surface target "${placement.target}" on "${eventId}:${pose.objectId}" is not surface-capable.`, undefined, `${fieldPrefix}.surface`));
+    }
+    return;
+  }
+
+  if (placement.mode === "at") {
+    if (object.type !== "structure" && object.type !== "phenomenon") {
+      diagnostics.push(error("validate.event.pose.at.objectType", `Only structures and phenomena may use "at" placement in events; found "${object.type}" on "${eventId}:${pose.objectId}".`, undefined, `${fieldPrefix}.at`));
+    }
+    const reference = placement.reference;
+    if (reference.kind === "named" && !objectMap.has(reference.name)) {
+      diagnostics.push(error("validate.event.pose.at.target.unknown", `Unknown event at-reference target "${placement.target}" on "${eventId}:${pose.objectId}".`, undefined, `${fieldPrefix}.at`));
+    } else if (reference.kind === "anchor" && !objectMap.has(reference.objectId)) {
+      diagnostics.push(error("validate.event.pose.anchor.target.unknown", `Unknown event anchor target "${reference.objectId}" on "${eventId}:${pose.objectId}".`, undefined, `${fieldPrefix}.at`));
+    } else if (reference.kind === "lagrange") {
+      if (!objectMap.has(reference.primary)) {
+        diagnostics.push(error("validate.event.pose.lagrange.primary.unknown", `Unknown event Lagrange target "${reference.primary}" on "${eventId}:${pose.objectId}".`, undefined, `${fieldPrefix}.at`));
+      } else if (reference.secondary && !objectMap.has(reference.secondary)) {
+        diagnostics.push(error("validate.event.pose.lagrange.secondary.unknown", `Unknown event Lagrange target "${reference.secondary}" on "${eventId}:${pose.objectId}".`, undefined, `${fieldPrefix}.at`));
+      }
     }
   }
 }

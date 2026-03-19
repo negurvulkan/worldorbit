@@ -120,6 +120,59 @@ object structure Colony
   groups inner-system
 `.trim();
 
+const schema21EventSource = `
+schema 2.1
+
+system Iyath
+  title "Iyath System"
+  epoch "JY-0001.0"
+
+defaults
+  view topdown
+  preset atlas-card
+
+viewpoint eclipse
+  label "Eclipse View"
+  projection topdown
+  layers background guides orbits-back events objects labels metadata
+  events naar-eclipse
+
+object star Iyath
+  mass 1sol
+
+object planet Naar
+  orbit Iyath
+  semiMajor 1au
+  phase 15deg
+
+object moon Seyra
+  orbit Naar
+  distance 384400km
+  phase 40deg
+
+event naar-eclipse
+  kind solar-eclipse
+  label "Naar Eclipse"
+  summary "Seyra crosses the star from Naar."
+  target Naar
+  participants Iyath Naar Seyra
+  timing "Local noon"
+  visibility "Naar equatorial belt"
+  tags eclipse season
+  color "#7ecb74"
+
+  positions
+    pose Naar
+      orbit Iyath
+      semiMajor 1au
+      phase 90deg
+
+    pose Seyra
+      orbit Naar
+      distance 384400km
+      phase 90deg
+`.trim();
+
 const source = `
 system Iyath
   title "Iyath System"
@@ -341,6 +394,25 @@ test("parseWorldOrbitAtlas supports schema 2.1 comments, groups, relations, and 
   assert.equal(orun?.renderHints?.renderOrbit, false);
 });
 
+test("schema 2.1 parses declarative events, event poses, and viewpoint event references", () => {
+  const atlas = parseWorldOrbitAtlas(schema21EventSource);
+  const document = materializeAtlasDocument(atlas, { activeEventId: "naar-eclipse" });
+  const eventEntry = atlas.events.find((entry) => entry.id === "naar-eclipse");
+  const eclipseView = atlas.system?.viewpoints.find((viewpoint) => viewpoint.id === "eclipse");
+  const activeNaar = document.objects.find((object) => object.id === "Naar");
+  const activeSeyra = document.objects.find((object) => object.id === "Seyra");
+
+  assert.equal(atlas.version, "2.1");
+  assert.equal(eventEntry?.kind, "solar-eclipse");
+  assert.deepEqual(eventEntry?.participantObjectIds, ["Iyath", "Naar", "Seyra"]);
+  assert.equal(eventEntry?.positions.length, 2);
+  assert.equal(eventEntry?.positions[0]?.placement?.mode, "orbit");
+  assert.deepEqual(eclipseView?.events, ["naar-eclipse"]);
+  assert.equal(eclipseView?.layers.events, true);
+  assert.equal(activeNaar?.placement?.phase?.value, 90);
+  assert.equal(activeSeyra?.placement?.phase?.value, 90);
+});
+
 test("schema 2.1 documents roundtrip through formatting without losing semantic fields", () => {
   const atlas = parseWorldOrbitAtlas(schema21Source);
   const formatted = formatDocument(atlas, { schema: "2.1" });
@@ -360,6 +432,20 @@ test("schema 2.1 documents roundtrip through formatting without losing semantic 
   assert.equal(reparsedNaar?.typedBlocks?.settlement?.population, "8.2 billion");
   assert.deepEqual(reparsedNaar?.tolerances, [{ field: "period", value: { value: 0.5, unit: "d" } }]);
   assert.equal(reparsedOrun?.resonance?.ratio, "2:1");
+});
+
+test("schema 2.1 events roundtrip through formatting without losing poses or viewpoint links", () => {
+  const atlas = parseWorldOrbitAtlas(schema21EventSource);
+  const formatted = formatDocument(atlas, { schema: "2.1" });
+  const reparsed = parseWorldOrbitAtlas(formatted);
+  const eventEntry = reparsed.events.find((entry) => entry.id === "naar-eclipse");
+  const eclipseView = reparsed.system?.viewpoints.find((viewpoint) => viewpoint.id === "eclipse");
+
+  assert.match(formatted, /^event naar-eclipse$/m);
+  assert.match(formatted, /^  positions$/m);
+  assert.match(formatted, /^    pose Seyra$/m);
+  assert.equal(eventEntry?.positions.find((entry) => entry.objectId === "Seyra")?.placement?.phase?.value, 90);
+  assert.deepEqual(eclipseView?.events, ["naar-eclipse"]);
 });
 
 test("formatDocument can upgrade schema 2.0 atlas source to schema 2.1 without changing content", () => {
@@ -396,6 +482,43 @@ object star Iyath
         diagnostic.source === "parse" &&
         /requires schema 2\.1/i.test(diagnostic.message) &&
         /group/i.test(diagnostic.message),
+    ),
+  );
+});
+
+test("schema 2.0 input reports compatibility diagnostics for event sections and event layers", () => {
+  const result = loadWorldOrbitSourceWithDiagnostics(`
+schema 2.0
+
+system Iyath
+  title "Iyath"
+
+viewpoint eclipse
+  label "Eclipse"
+  layers background events objects
+  events naar-eclipse
+
+object star Iyath
+
+event naar-eclipse
+  kind solar-eclipse
+  target Iyath
+`.trim());
+
+  assert.equal(result.ok, true);
+  assert.ok(
+    result.diagnostics.some(
+      (diagnostic) =>
+        diagnostic.source === "parse" &&
+        /Feature "layers\.events" requires schema 2\.1/i.test(diagnostic.message),
+    ),
+  );
+  assert.ok(
+    result.diagnostics.some(
+      (diagnostic) =>
+        diagnostic.source === "parse" &&
+        (/Feature "events" requires schema 2\.1/i.test(diagnostic.message) ||
+          /Feature "event" requires schema 2\.1/i.test(diagnostic.message)),
     ),
   );
 });

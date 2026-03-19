@@ -106,12 +106,14 @@ export function createAtlasStateSnapshot(
   return {
     version: "2.0",
     viewpointId,
+    activeEventId: renderOptions.activeEventId ?? null,
     viewerState: { ...viewerState },
     renderOptions: {
       preset: renderOptions.preset,
       projection: renderOptions.projection,
       layers: renderOptions.layers ? { ...renderOptions.layers } : undefined,
       scaleModel: renderOptions.scaleModel ? { ...renderOptions.scaleModel } : undefined,
+      activeEventId: renderOptions.activeEventId ?? null,
     },
     filter: normalizeViewerFilter(filter),
   };
@@ -129,6 +131,7 @@ export function deserializeViewerAtlasState(serialized: string): ViewerAtlasStat
   return {
     version: "2.0",
     viewpointId: raw.viewpointId ?? null,
+    activeEventId: raw.activeEventId ?? raw.renderOptions?.activeEventId ?? null,
     viewerState: {
       scale: raw.viewerState?.scale ?? 1,
       rotationDeg: raw.viewerState?.rotationDeg ?? 0,
@@ -143,6 +146,7 @@ export function deserializeViewerAtlasState(serialized: string): ViewerAtlasStat
       scaleModel: raw.renderOptions?.scaleModel
         ? { ...raw.renderOptions.scaleModel }
         : undefined,
+      activeEventId: raw.activeEventId ?? raw.renderOptions?.activeEventId ?? null,
     },
     filter: normalizeViewerFilter(raw.filter ?? null),
   };
@@ -169,6 +173,7 @@ export function createViewerBookmark(
         scaleModel: atlasState.renderOptions.scaleModel
           ? { ...atlasState.renderOptions.scaleModel }
           : undefined,
+        activeEventId: atlasState.renderOptions.activeEventId ?? null,
       },
       filter: atlasState.filter ? { ...atlasState.filter } : null,
     },
@@ -191,6 +196,7 @@ export function sceneViewpointToLayerOptions(
     background: viewpoint.layers.background,
     guides: viewpoint.layers.guides,
     relations: viewpoint.layers.relations,
+    events: viewpoint.layers.events,
     orbits:
       viewpoint.layers["orbits-front"] === undefined && viewpoint.layers["orbits-back"] === undefined
         ? undefined

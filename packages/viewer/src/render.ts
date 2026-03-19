@@ -75,6 +75,12 @@ export function renderSceneToSvg(scene: RenderScene, options: SvgRenderOptions =
         )
         .join("")
     : "";
+  const eventMarkup = layers.events
+    ? scene.events
+        .filter((event) => !event.hidden)
+        .map((event) => renderSceneEventOverlay(scene, event, visibleObjectIds, theme))
+        .join("")
+    : "";
   const objectMarkup = layers.objects
     ? visibleObjects
         .map((object) => renderSceneObject(object, options.selectedObjectId ?? null, theme))
@@ -125,6 +131,9 @@ export function renderSceneToSvg(scene: RenderScene, options: SvgRenderOptions =
     .wo-orbit-front { opacity: 0.9; }
     .wo-orbit-band { stroke: ${theme.orbitBand}; stroke-linecap: round; }
     .wo-relation { stroke: ${theme.relation}; stroke-width: 2; stroke-dasharray: 10 6; }
+    .wo-event-line { stroke: ${theme.accent}; stroke-width: 1.6; stroke-dasharray: 5 5; opacity: 0.72; }
+    .wo-event-node { fill: ${theme.accent}; stroke: ${theme.selected}; stroke-width: 1.4; opacity: 0.92; }
+    .wo-event-label { fill: ${theme.accent}; font-family: ${theme.fontFamily}; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
     .wo-leader { stroke: ${theme.leader}; stroke-width: 1.5; stroke-dasharray: 6 5; }
     .wo-label { fill: ${theme.ink}; font-family: ${theme.fontFamily}; font-weight: 600; letter-spacing: 0.02em; }
     .wo-label-secondary { fill: ${theme.muted}; font-family: ${theme.fontFamily}; font-weight: 500; }
@@ -159,6 +168,7 @@ export function renderSceneToSvg(scene: RenderScene, options: SvgRenderOptions =
         ${layers.orbits ? `<g data-layer-id="orbits-back">${orbitMarkup.back}</g>` : ""}
         ${layers.guides ? `<g data-layer-id="guides">${leaderMarkup}</g>` : ""}
         ${layers.relations ? `<g data-layer-id="relations">${relationMarkup}</g>` : ""}
+        ${layers.events ? `<g data-layer-id="events">${eventMarkup}</g>` : ""}
         ${layers.objects ? `<g data-layer-id="objects">${objectMarkup}</g>` : ""}
         ${layers.orbits ? `<g data-layer-id="orbits-front">${orbitMarkup.front}</g>` : ""}
         ${layers.labels ? `<g data-layer-id="labels">${labelMarkup}</g>` : ""}
@@ -166,6 +176,37 @@ export function renderSceneToSvg(scene: RenderScene, options: SvgRenderOptions =
     </g>
   </g>
 </svg>`;
+}
+
+function renderSceneEventOverlay(
+  scene: RenderScene,
+  event: RenderScene["events"][number],
+  visibleObjectIds: Set<string>,
+  theme: ReturnType<typeof resolveTheme>,
+): string {
+  const participants = event.objectIds
+    .filter((objectId) => visibleObjectIds.has(objectId))
+    .map((objectId) => scene.objects.find((object) => object.objectId === objectId && !object.hidden))
+    .filter(Boolean) as RenderSceneObject[];
+
+  if (participants.length === 0) {
+    return "";
+  }
+
+  const stroke = event.event.color || theme.accent;
+  const label = event.event.label || event.event.id;
+  const lineMarkup = participants
+    .map(
+      (object) =>
+        `<line class="wo-event-line" x1="${event.x}" y1="${event.y}" x2="${object.x}" y2="${object.y}" stroke="${escapeAttribute(stroke)}" data-event-id="${escapeAttribute(event.eventId)}" data-object-id="${escapeAttribute(object.objectId)}" />`,
+    )
+    .join("");
+
+  return `<g class="wo-event" data-render-id="${escapeXml(event.renderId)}" data-event-id="${escapeAttribute(event.eventId)}">
+    ${lineMarkup}
+    <circle class="wo-event-node" cx="${event.x}" cy="${event.y}" r="5" fill="${escapeAttribute(stroke)}" />
+    <text class="wo-event-label" x="${event.x}" y="${event.y - 10}" text-anchor="middle" font-size="10">${escapeXml(label)}</text>
+  </g>`;
 }
 
 export function renderDocumentToSvg(

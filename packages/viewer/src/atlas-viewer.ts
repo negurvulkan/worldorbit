@@ -415,6 +415,7 @@ export function createAtlasViewer(
         groupCount: activeViewer.getScene().groups.length,
         semanticGroupCount: activeViewer.getScene().semanticGroups.length,
         relationCount: activeViewer.getScene().relations.length,
+        eventCount: activeViewer.getScene().events.length,
         viewpointCount: activeViewer.getScene().viewpoints.length,
       },
     };

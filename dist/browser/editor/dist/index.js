@@ -541,6 +541,7 @@
       system,
       groups: [],
       relations: [],
+      events: [],
       objects
     };
   }
@@ -924,8 +925,10 @@
     const scaleModel = resolveScaleModel(layoutPreset, options.scaleModel);
     const spacingFactor = layoutPresetSpacing(layoutPreset);
     const systemId = document2.system?.id ?? null;
-    const objectMap = new Map(document2.objects.map((object) => [object.id, object]));
-    const relationships = buildSceneRelationships(document2.objects, objectMap);
+    const activeEventId = options.activeEventId ?? null;
+    const effectiveObjects = createEffectiveObjects(document2.objects, document2.events ?? [], activeEventId);
+    const objectMap = new Map(effectiveObjects.map((object) => [object.id, object]));
+    const relationships = buildSceneRelationships(effectiveObjects, objectMap);
     const positions = /* @__PURE__ */ new Map();
     const orbitDrafts = [];
     const leaderDrafts = [];
@@ -934,7 +937,7 @@
     const atObjects = [];
     const surfaceChildren = /* @__PURE__ */ new Map();
     const orbitChildren = /* @__PURE__ */ new Map();
-    for (const object of document2.objects) {
+    for (const object of effectiveObjects) {
       const placement = object.placement;
       if (!placement) {
         rootObjects.push(object);
@@ -1029,13 +1032,14 @@
     const objects = [...positions.values()].map((position) => createSceneObject(position, scaleModel, relationships));
     const orbitVisuals = orbitDrafts.map((draft) => createOrbitVisual(draft, relationships.groupIds.get(draft.object.id) ?? null));
     const leaders = leaderDrafts.map((draft) => createLeaderLine(draft));
-    const labels = createSceneLabels(objects, height, scaleModel.labelMultiplier);
+    const labels = createSceneLabels(objects, width, height, scaleModel.labelMultiplier);
     const relations = createSceneRelations(document2, objects);
-    const layers = createSceneLayers(orbitVisuals, relations, leaders, objects, labels);
-    const groups = createSceneGroups(objects, orbitVisuals, leaders, labels, relationships);
+    const events = createSceneEvents(document2.events ?? [], objects, activeEventId);
+    const layers = createSceneLayers(orbitVisuals, relations, events, leaders, objects, labels);
+    const groups = createSceneGroups(objects, orbitVisuals, leaders, labels, relationships, scaleModel.labelMultiplier);
     const semanticGroups = createSceneSemanticGroups(document2, objects);
     const viewpoints = createSceneViewpoints(document2, projection, frame.preset, relationships, objectMap);
-    const contentBounds = calculateContentBounds(width, height, objects, orbitVisuals, leaders, labels);
+    const contentBounds = calculateContentBounds(width, height, objects, orbitVisuals, leaders, labels, scaleModel.labelMultiplier);
     return {
       width,
       height,
@@ -1061,6 +1065,8 @@
       groups,
       semanticGroups,
       viewpoints,
+      events,
+      activeEventId,
       objects,
       orbitVisuals,
       relations,
@@ -1078,6 +1084,35 @@
       x: center.x + dx * cos - dy * sin,
       y: center.y + dx * sin + dy * cos
     };
+  }
+  function createEffectiveObjects(objects, events, activeEventId) {
+    const cloned = objects.map((object) => structuredClone(object));
+    if (!activeEventId) {
+      return cloned;
+    }
+    const activeEvent = events.find((event) => event.id === activeEventId);
+    if (!activeEvent) {
+      return cloned;
+    }
+    const objectMap = new Map(cloned.map((object) => [object.id, object]));
+    for (const pose of activeEvent.positions) {
+      const object = objectMap.get(pose.objectId);
+      if (!object) {
+        continue;
+      }
+      object.placement = pose.placement ? structuredClone(pose.placement) : null;
+      if (pose.inner) {
+        object.properties.inner = { ...pose.inner };
+      } else {
+        delete object.properties.inner;
+      }
+      if (pose.outer) {
+        object.properties.outer = { ...pose.outer };
+      } else {
+        delete object.properties.outer;
+      }
+    }
+    return cloned;
   }
   function resolveLayoutPreset(document2) {
     const rawScale = String(document2.system?.properties.scale ?? "balanced").toLowerCase();
@@ -1234,24 +1269,14 @@
       hidden: draft.object.properties.hidden === true
     };
   }
-  function createSceneLabels(objects, sceneHeight, labelMultiplier) {
+  function createSceneLabels(objects, sceneWidth, sceneHeight, labelMultiplier) {
     const labels = [];
     const occupied = [];
-    const visibleObjects = [...objects].filter((object) => !object.hidden && object.object.renderHints?.renderLabel !== false).sort((left, right) => left.sortKey - right.sortKey);
+    const objectMap = new Map(objects.map((object) => [object.objectId, object]));
+    const visibleObjects = [...objects].filter((object) => !object.hidden && object.object.renderHints?.renderLabel !== false).sort(compareLabelPlacementOrder);
     for (const object of visibleObjects) {
-      const direction = object.y > sceneHeight * 0.62 ? -1 : 1;
-      const labelHalfWidth = estimateLabelHalfWidth(object, labelMultiplier);
-      let labelY = object.y + direction * (object.radius + 18 * labelMultiplier);
-      let secondaryY = labelY + direction * (16 * labelMultiplier);
-      let bounds = createLabelRect(object.x, labelY, secondaryY, labelHalfWidth, direction);
-      let attempts = 0;
-      while (occupied.some((entry) => rectsOverlap(entry, bounds)) && attempts < 10) {
-        labelY += direction * 14 * labelMultiplier;
-        secondaryY += direction * 14 * labelMultiplier;
-        bounds = createLabelRect(object.x, labelY, secondaryY, labelHalfWidth, direction);
-        attempts += 1;
-      }
-      occupied.push(bounds);
+      const placement = selectLabelPlacement(object, objectMap, occupied, sceneWidth, sceneHeight, labelMultiplier) ?? createLabelPlacement(object, defaultVerticalDirection(object, objectMap.get(object.parentId ?? "") ?? null, sceneHeight), 0, labelMultiplier);
+      occupied.push(createLabelRect(object, placement, labelMultiplier));
       labels.push({
         renderId: `${object.renderId}-label`,
         objectId: object.objectId,
@@ -1260,17 +1285,128 @@
         semanticGroupIds: [...object.semanticGroupIds],
         label: object.label,
         secondaryLabel: object.secondaryLabel,
-        x: object.x,
-        y: labelY,
-        secondaryY,
-        textAnchor: "middle",
-        direction: direction < 0 ? "above" : "below",
+        x: placement.x,
+        y: placement.labelY,
+        secondaryY: placement.secondaryY,
+        textAnchor: placement.textAnchor,
+        direction: placement.direction,
         hidden: object.hidden
       });
     }
     return labels;
   }
-  function createSceneLayers(orbitVisuals, relations, leaders, objects, labels) {
+  function compareLabelPlacementOrder(left, right) {
+    const priorityDiff = labelPlacementPriority(left) - labelPlacementPriority(right);
+    if (priorityDiff !== 0) {
+      return priorityDiff;
+    }
+    const renderPriorityDiff = (right.object.renderHints?.renderPriority ?? 0) - (left.object.renderHints?.renderPriority ?? 0);
+    if (renderPriorityDiff !== 0) {
+      return renderPriorityDiff;
+    }
+    return left.sortKey - right.sortKey;
+  }
+  function labelPlacementPriority(object) {
+    switch (object.object.type) {
+      case "star":
+        return 0;
+      case "planet":
+        return 1;
+      case "moon":
+        return 2;
+      case "belt":
+      case "ring":
+        return 3;
+      case "asteroid":
+      case "comet":
+        return 4;
+      case "structure":
+      case "phenomenon":
+        return 5;
+    }
+  }
+  function selectLabelPlacement(object, objectMap, occupied, sceneWidth, sceneHeight, labelMultiplier) {
+    for (const direction of preferredLabelDirections(object, objectMap, sceneWidth, sceneHeight)) {
+      const maxAttempts = direction === "left" || direction === "right" ? 4 : 6;
+      for (let attempt = 0; attempt <= maxAttempts; attempt += 1) {
+        const placement = createLabelPlacement(object, direction, attempt, labelMultiplier);
+        const rect = createLabelRect(object, placement, labelMultiplier);
+        if (!occupied.some((entry) => rectsOverlap(entry, rect))) {
+          return placement;
+        }
+      }
+    }
+    return null;
+  }
+  function preferredLabelDirections(object, objectMap, sceneWidth, sceneHeight) {
+    const parent = object.parentId ? objectMap.get(object.parentId) ?? null : null;
+    const vertical = defaultVerticalDirection(object, parent, sceneHeight);
+    const oppositeVertical = vertical === "below" ? "above" : "below";
+    const horizontal = defaultHorizontalDirection(object, parent, sceneWidth);
+    const oppositeHorizontal = horizontal === "right" ? "left" : "right";
+    const preferHorizontal = object.object.type === "structure" || object.object.type === "phenomenon" || object.object.placement?.mode === "at" || object.object.placement?.mode === "surface" || object.object.placement?.mode === "free";
+    return preferHorizontal ? [horizontal, vertical, oppositeHorizontal, oppositeVertical] : [vertical, horizontal, oppositeVertical, oppositeHorizontal];
+  }
+  function defaultVerticalDirection(object, parent, sceneHeight) {
+    if (parent && Math.abs(object.y - parent.y) > 6) {
+      return object.y >= parent.y ? "below" : "above";
+    }
+    return object.y > sceneHeight * 0.62 ? "above" : "below";
+  }
+  function defaultHorizontalDirection(object, parent, sceneWidth) {
+    if (parent && Math.abs(object.x - parent.x) > 6) {
+      return object.x >= parent.x ? "right" : "left";
+    }
+    return object.x >= sceneWidth / 2 ? "right" : "left";
+  }
+  function createLabelPlacement(object, direction, attempt, labelMultiplier) {
+    const step = 14 * labelMultiplier;
+    switch (direction) {
+      case "above": {
+        const labelY = object.y - (object.radius + 18 * labelMultiplier + attempt * step);
+        return {
+          x: object.x,
+          labelY,
+          secondaryY: labelY - 16 * labelMultiplier,
+          textAnchor: "middle",
+          direction
+        };
+      }
+      case "below": {
+        const labelY = object.y + object.radius + 18 * labelMultiplier + attempt * step;
+        return {
+          x: object.x,
+          labelY,
+          secondaryY: labelY + 16 * labelMultiplier,
+          textAnchor: "middle",
+          direction
+        };
+      }
+      case "left": {
+        const x = object.x - (object.visualRadius + 16 * labelMultiplier + attempt * step);
+        const labelY = object.y - 4 * labelMultiplier;
+        return {
+          x,
+          labelY,
+          secondaryY: labelY + 16 * labelMultiplier,
+          textAnchor: "end",
+          direction
+        };
+      }
+      case "right": {
+        const x = object.x + object.visualRadius + 16 * labelMultiplier + attempt * step;
+        const labelY = object.y - 4 * labelMultiplier;
+        return {
+          x,
+          labelY,
+          secondaryY: labelY + 16 * labelMultiplier,
+          textAnchor: "start",
+          direction
+        };
+      }
+    }
+  }
+  function createSceneLayers(orbitVisuals, relations, events, leaders, objects, labels) {
     const backOrbitIds = orbitVisuals.filter((visual) => !visual.hidden && Boolean(visual.backArcPath)).map((visual) => visual.renderId);
     const frontOrbitIds = orbitVisuals.filter((visual) => !visual.hidden).map((visual) => visual.renderId);
     return [
@@ -1286,6 +1422,10 @@
         renderIds: relations.filter((relation) => !relation.hidden).map((relation) => relation.renderId)
       },
       {
+        id: "events",
+        renderIds: events.filter((event) => !event.hidden).map((event) => event.renderId)
+      },
+      {
         id: "objects",
         renderIds: objects.filter((object) => !object.hidden).map((object) => object.renderId)
       },
@@ -1296,7 +1436,7 @@
       { id: "metadata", renderIds: ["wo-title", "wo-subtitle", "wo-meta"] }
     ];
   }
-  function createSceneGroups(objects, orbitVisuals, leaders, labels, relationships) {
+  function createSceneGroups(objects, orbitVisuals, leaders, labels, relationships, labelMultiplier) {
     const groups = /* @__PURE__ */ new Map();
     const ensureGroup = (groupId) => {
       if (!groupId) {
@@ -1345,7 +1485,7 @@
       }
     }
     for (const group of groups.values()) {
-      group.contentBounds = calculateGroupBounds(group, objects, orbitVisuals, leaders, labels);
+      group.contentBounds = calculateGroupBounds(group, objects, orbitVisuals, leaders, labels, labelMultiplier);
     }
     return [...groups.values()].sort((left, right) => left.label.localeCompare(right.label));
   }
@@ -1378,6 +1518,29 @@
         hidden: relation.hidden || !from || !to || from.hidden || to.hidden
       };
     }).sort((left, right) => left.relation.id.localeCompare(right.relation.id));
+  }
+  function createSceneEvents(events, objects, activeEventId) {
+    const objectMap = new Map(objects.map((object) => [object.objectId, object]));
+    return events.map((event) => {
+      const objectIds = [.../* @__PURE__ */ new Set([
+        ...event.targetObjectId ? [event.targetObjectId] : [],
+        ...event.participantObjectIds
+      ])];
+      const positions = objectIds.map((objectId) => objectMap.get(objectId)).filter(Boolean);
+      const centroidX = positions.length > 0 ? positions.reduce((sum, object) => sum + object.x, 0) / positions.length : 0;
+      const centroidY = positions.length > 0 ? positions.reduce((sum, object) => sum + object.y, 0) / positions.length : 0;
+      return {
+        renderId: `${createRenderId(event.id)}-event`,
+        eventId: event.id,
+        event,
+        objectIds,
+        participantIds: [...event.participantObjectIds],
+        targetObjectId: event.targetObjectId,
+        x: centroidX,
+        y: centroidY,
+        hidden: event.hidden || positions.length === 0 || positions.every((object) => object.hidden) || activeEventId !== null && event.id !== activeEventId
+      };
+    }).sort((left, right) => left.event.id.localeCompare(right.event.id));
   }
   function createSceneViewpoints(document2, projection, preset, relationships, objectMap) {
     const generatedOverview = createGeneratedOverviewViewpoint(document2, projection, preset);
@@ -1432,6 +1595,7 @@
       summary: "Fit the whole system with the current atlas defaults.",
       objectId: null,
       selectedObjectId: null,
+      eventIds: [],
       projection,
       preset,
       rotationDeg: 0,
@@ -1467,6 +1631,9 @@
         if (normalizedValue) {
           draft.select = normalizedValue;
         }
+        return;
+      case "events":
+        draft.eventIds = splitListValue(normalizedValue);
         return;
       case "projection":
       case "view":
@@ -1524,6 +1691,7 @@
       summary: draft.summary?.trim() || createViewpointSummary(label, objectId, filter),
       objectId,
       selectedObjectId,
+      eventIds: [...new Set(draft.eventIds ?? [])],
       projection: draft.projection ?? projection,
       preset: draft.preset ?? preset,
       rotationDeg: draft.rotationDeg ?? 0,
@@ -1581,7 +1749,7 @@
         next["orbits-front"] = enabled;
         continue;
       }
-      if (rawLayer === "background" || rawLayer === "guides" || rawLayer === "orbits-back" || rawLayer === "orbits-front" || rawLayer === "relations" || rawLayer === "objects" || rawLayer === "labels" || rawLayer === "metadata") {
+      if (rawLayer === "background" || rawLayer === "guides" || rawLayer === "orbits-back" || rawLayer === "orbits-front" || rawLayer === "relations" || rawLayer === "events" || rawLayer === "objects" || rawLayer === "labels" || rawLayer === "metadata") {
         next[rawLayer] = enabled;
       }
     }
@@ -1629,7 +1797,7 @@
     }
     return parts.join(" - ");
   }
-  function calculateContentBounds(width, height, objects, orbitVisuals, leaders, labels) {
+  function calculateContentBounds(width, height, objects, orbitVisuals, leaders, labels, labelMultiplier) {
     let minX = Number.POSITIVE_INFINITY;
     let minY = Number.POSITIVE_INFINITY;
     let maxX = Number.NEGATIVE_INFINITY;
@@ -1659,7 +1827,7 @@
     for (const label of labels) {
       if (label.hidden)
         continue;
-      includeLabelBounds(label, include);
+      includeLabelBounds(label, include, labelMultiplier);
     }
     if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
       return createBounds(0, 0, width, height);
@@ -1697,13 +1865,10 @@
     include(object.x - object.visualRadius - 24, object.y - object.visualRadius - 16);
     include(object.x + object.visualRadius + 24, object.y + object.visualRadius + 36);
   }
-  function includeLabelBounds(label, include) {
-    const labelScale = 1;
-    const labelHalfWidth = estimateLabelHalfWidthFromText(label.label, label.secondaryLabel, labelScale);
-    include(label.x - labelHalfWidth, label.y - 18);
-    include(label.x + labelHalfWidth, label.y + 8);
-    include(label.x - labelHalfWidth, label.secondaryY - 14);
-    include(label.x + labelHalfWidth, label.secondaryY + 8);
+  function includeLabelBounds(label, include, labelMultiplier) {
+    const bounds = createLabelRectFromText(label.x, label.y, label.secondaryY, label.textAnchor, label.direction, label.label, label.secondaryLabel, labelMultiplier);
+    include(bounds.left, bounds.top);
+    include(bounds.right, bounds.bottom);
   }
   function placeObject(object, x, y, depth, positions, orbitDrafts, leaderDrafts, context) {
     if (positions.has(object.id)) {
@@ -2093,7 +2258,7 @@
         return null;
     }
   }
-  function calculateGroupBounds(group, objects, orbitVisuals, leaders, labels) {
+  function calculateGroupBounds(group, objects, orbitVisuals, leaders, labels, labelMultiplier) {
     let minX = Number.POSITIVE_INFINITY;
     let minY = Number.POSITIVE_INFINITY;
     let maxX = Number.NEGATIVE_INFINITY;
@@ -2122,7 +2287,7 @@
     }
     for (const label of labels) {
       if (!label.hidden && group.labelIds.includes(label.objectId)) {
-        includeLabelBounds(label, include);
+        includeLabelBounds(label, include, labelMultiplier);
       }
     }
     if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
@@ -2147,12 +2312,28 @@
     }
     return current.id;
   }
-  function createLabelRect(x, labelY, secondaryY, labelHalfWidth, direction) {
+  function createLabelRect(object, placement, labelMultiplier) {
+    return createLabelRectFromText(placement.x, placement.labelY, placement.secondaryY, placement.textAnchor, placement.direction, object.label, object.secondaryLabel, labelMultiplier);
+  }
+  function createLabelRectFromText(x, labelY, secondaryY, textAnchor, direction, label, secondaryLabel, labelMultiplier) {
+    const labelHalfWidth = estimateLabelHalfWidthFromText(label, secondaryLabel, labelMultiplier);
+    const labelWidth = labelHalfWidth * 2;
+    const topPadding = direction === "above" ? 18 : 12;
+    const bottomPadding = direction === "above" ? 8 : 12;
+    let left = x - labelHalfWidth;
+    let right = x + labelHalfWidth;
+    if (textAnchor === "start") {
+      left = x;
+      right = x + labelWidth;
+    } else if (textAnchor === "end") {
+      left = x - labelWidth;
+      right = x;
+    }
     return {
-      left: x - labelHalfWidth,
-      right: x + labelHalfWidth,
-      top: Math.min(labelY, secondaryY) - (direction < 0 ? 18 : 12),
-      bottom: Math.max(labelY, secondaryY) + (direction < 0 ? 8 : 12)
+      left,
+      right,
+      top: Math.min(labelY, secondaryY) - topPadding,
+      bottom: Math.max(labelY, secondaryY) + bottomPadding
     };
   }
   function rectsOverlap(left, right) {
@@ -2339,11 +2520,6 @@
   function customColorFor(value) {
     return typeof value === "string" && value.trim() ? value : void 0;
   }
-  function estimateLabelHalfWidth(object, labelMultiplier) {
-    const primaryWidth = object.label.length * 4.6 * labelMultiplier + 18;
-    const secondaryWidth = object.secondaryLabel.length * 3.9 * labelMultiplier + 18;
-    return Math.max(primaryWidth, secondaryWidth, object.visualRadius + 18);
-  }
   function estimateLabelHalfWidthFromText(label, secondaryLabel, labelMultiplier) {
     const primaryWidth = label.length * 4.6 * labelMultiplier + 18;
     const secondaryWidth = secondaryLabel.length * 3.9 * labelMultiplier + 18;
@@ -2383,6 +2559,7 @@
       system,
       groups: structuredClone(document2.groups ?? []),
       relations: structuredClone(document2.relations ?? []),
+      events: structuredClone(document2.events ?? []),
       objects: document2.objects.map(cloneWorldOrbitObject),
       diagnostics
     };
@@ -2390,7 +2567,7 @@
   function upgradeDocumentToDraftV2(document2, options = {}) {
     return convertAtlasDocumentToLegacyDraft(upgradeDocumentToV2(document2, options));
   }
-  function materializeAtlasDocument(document2) {
+  function materializeAtlasDocument(document2, options = {}) {
     const system = document2.system ? {
       type: "system",
       id: document2.system.id,
@@ -2401,6 +2578,8 @@
       properties: materializeDraftSystemProperties(document2.system),
       info: materializeDraftSystemInfo(document2.system)
     } : null;
+    const objects = document2.objects.map(cloneWorldOrbitObject);
+    applyEventPoseOverrides(objects, document2.events ?? [], options.activeEventId ?? null);
     return {
       format: "worldorbit",
       version: "1.0",
@@ -2408,7 +2587,8 @@
       system,
       groups: structuredClone(document2.groups ?? []),
       relations: structuredClone(document2.relations ?? []),
-      objects: document2.objects.map(cloneWorldOrbitObject)
+      events: document2.events.map(cloneWorldOrbitEvent),
+      objects
     };
   }
   function createDraftSystem(document2, defaults, atlasMetadata, annotations, diagnostics, preset) {
@@ -2533,6 +2713,7 @@
       summary: viewpoint.summary,
       focusObjectId: viewpoint.objectId,
       selectedObjectId: viewpoint.selectedObjectId,
+      events: [...viewpoint.eventIds],
       projection: viewpoint.projection,
       preset: viewpoint.preset,
       zoom: viewpoint.scale,
@@ -2564,6 +2745,52 @@
       placement: object.placement ? structuredClone(object.placement) : null,
       info: { ...object.info }
     };
+  }
+  function cloneWorldOrbitEvent(event) {
+    return {
+      ...event,
+      participantObjectIds: [...event.participantObjectIds],
+      tags: [...event.tags],
+      positions: event.positions.map(cloneWorldOrbitEventPose)
+    };
+  }
+  function cloneWorldOrbitEventPose(pose) {
+    return {
+      objectId: pose.objectId,
+      placement: clonePlacement(pose.placement),
+      inner: pose.inner ? { ...pose.inner } : void 0,
+      outer: pose.outer ? { ...pose.outer } : void 0
+    };
+  }
+  function clonePlacement(placement) {
+    return placement ? structuredClone(placement) : null;
+  }
+  function applyEventPoseOverrides(objects, events, activeEventId) {
+    if (!activeEventId) {
+      return;
+    }
+    const event = events.find((entry) => entry.id === activeEventId);
+    if (!event) {
+      return;
+    }
+    const objectMap = new Map(objects.map((object) => [object.id, object]));
+    for (const pose of event.positions) {
+      const object = objectMap.get(pose.objectId);
+      if (!object) {
+        continue;
+      }
+      object.placement = clonePlacement(pose.placement);
+      if (pose.inner) {
+        object.properties.inner = { ...pose.inner };
+      } else {
+        delete object.properties.inner;
+      }
+      if (pose.outer) {
+        object.properties.outer = { ...pose.outer };
+      } else {
+        delete object.properties.outer;
+      }
+    }
   }
   function cloneProperties(properties) {
     const next = {};
@@ -2662,6 +2889,9 @@
       if ((viewpoint.filter?.groupIds.length ?? 0) > 0) {
         info2[`${prefix}.groups`] = viewpoint.filter?.groupIds.join(" ") ?? "";
       }
+      if (viewpoint.events.length > 0) {
+        info2[`${prefix}.events`] = viewpoint.events.join(" ");
+      }
     }
     for (const annotation of system.annotations) {
       const prefix = `annotation.${annotation.id}`;
@@ -2686,7 +2916,7 @@
     if (orbitFront !== void 0 || orbitBack !== void 0) {
       tokens.push(orbitFront !== false || orbitBack !== false ? "orbits" : "-orbits");
     }
-    for (const key of ["background", "guides", "relations", "objects", "labels", "metadata"]) {
+    for (const key of ["background", "guides", "relations", "events", "objects", "labels", "metadata"]) {
       if (layers[key] !== void 0) {
         tokens.push(layers[key] ? key : `-${key}`);
       }
@@ -2790,6 +3020,10 @@
       lines.push("");
       lines.push(...formatAtlasRelation(relation));
     }
+    for (const event of [...document2.events].sort(compareIdLike)) {
+      lines.push("");
+      lines.push(...formatAtlasEvent(event));
+    }
     const sortedObjects = [...document2.objects].sort(compareObjects);
     if (sortedObjects.length > 0 && lines.at(-1) !== "") {
       lines.push("");
@@ -2819,6 +3053,10 @@
     for (const relation of [...legacy.relations].sort(compareIdLike)) {
       lines.push("");
       lines.push(...formatAtlasRelation(relation));
+    }
+    for (const event of [...legacy.events].sort(compareIdLike)) {
+      lines.push("");
+      lines.push(...formatAtlasEvent(event));
     }
     const sortedObjects = [...legacy.objects].sort(compareObjects);
     if (sortedObjects.length > 0 && lines.at(-1) !== "") {
@@ -3031,6 +3269,9 @@
     if (layerTokens.length > 0) {
       lines.push(`  layers ${layerTokens.join(" ")}`);
     }
+    if (viewpoint.events.length > 0) {
+      lines.push(`  events ${viewpoint.events.join(" ")}`);
+    }
     if (viewpoint.filter) {
       lines.push("  filter");
       if (viewpoint.filter.query) {
@@ -3103,6 +3344,54 @@
     }
     return lines;
   }
+  function formatAtlasEvent(event) {
+    const lines = [`event ${event.id}`, `  kind ${quoteIfNeeded(event.kind)}`];
+    if (event.label) {
+      lines.push(`  label ${quoteIfNeeded(event.label)}`);
+    }
+    if (event.summary) {
+      lines.push(`  summary ${quoteIfNeeded(event.summary)}`);
+    }
+    if (event.targetObjectId) {
+      lines.push(`  target ${event.targetObjectId}`);
+    }
+    if (event.participantObjectIds.length > 0) {
+      lines.push(`  participants ${event.participantObjectIds.join(" ")}`);
+    }
+    if (event.timing) {
+      lines.push(`  timing ${quoteIfNeeded(event.timing)}`);
+    }
+    if (event.visibility) {
+      lines.push(`  visibility ${quoteIfNeeded(event.visibility)}`);
+    }
+    if (event.tags.length > 0) {
+      lines.push(`  tags ${event.tags.map(quoteIfNeeded).join(" ")}`);
+    }
+    if (event.color) {
+      lines.push(`  color ${quoteIfNeeded(event.color)}`);
+    }
+    if (event.hidden) {
+      lines.push("  hidden true");
+    }
+    if (event.positions.length > 0) {
+      lines.push("");
+      lines.push("  positions");
+      for (const pose of [...event.positions].sort(comparePoseObjectId)) {
+        lines.push(`    pose ${pose.objectId}`);
+        for (const fieldLine of formatEventPoseFields(pose)) {
+          lines.push(`      ${fieldLine}`);
+        }
+      }
+    }
+    return lines;
+  }
+  function formatEventPoseFields(pose) {
+    return [
+      ...formatPlacement(pose.placement),
+      ...formatOptionalUnit("inner", pose.inner),
+      ...formatOptionalUnit("outer", pose.outer)
+    ];
+  }
   function formatValue(value) {
     if (Array.isArray(value)) {
       return value.map((item) => quoteIfNeeded(item)).join(" ");
@@ -3144,7 +3433,7 @@
     if (orbitFront !== void 0 || orbitBack !== void 0) {
       tokens.push(orbitFront !== false || orbitBack !== false ? "orbits" : "-orbits");
     }
-    for (const key of ["background", "guides", "relations", "objects", "labels", "metadata"]) {
+    for (const key of ["background", "guides", "relations", "events", "objects", "labels", "metadata"]) {
       if (layers[key] !== void 0) {
         tokens.push(layers[key] ? key : `-${key}`);
       }
@@ -3171,6 +3460,9 @@
   }
   function compareIdLike(left, right) {
     return left.id.localeCompare(right.id);
+  }
+  function comparePoseObjectId(left, right) {
+    return left.objectId.localeCompare(right.objectId);
   }
   function objectTypeIndex(objectType) {
     switch (objectType) {
@@ -3367,6 +3659,7 @@
     const diagnostics = [];
     const objectMap = new Map(document2.objects.map((object) => [object.id, object]));
     const groupIds = new Set(document2.groups.map((group) => group.id));
+    const eventIds = new Set(document2.events.map((event) => event.id));
     if (!document2.system) {
       diagnostics.push(error("validate.system.required", "Atlas documents must declare exactly one system."));
     }
@@ -3376,6 +3669,7 @@
       ["viewpoint", document2.system?.viewpoints.map((viewpoint) => viewpoint.id) ?? []],
       ["annotation", document2.system?.annotations.map((annotation) => annotation.id) ?? []],
       ["relation", document2.relations.map((relation) => relation.id)],
+      ["event", document2.events.map((event) => event.id)],
       ["object", document2.objects.map((object) => object.id)]
     ]) {
       for (const id of ids) {
@@ -3391,10 +3685,13 @@
       validateRelation(relation, objectMap, diagnostics);
     }
     for (const viewpoint of document2.system?.viewpoints ?? []) {
-      validateViewpointFilter(viewpoint.filter, groupIds, sourceSchemaVersion, diagnostics, viewpoint.id);
+      validateViewpoint(viewpoint.filter, viewpoint.events ?? [], groupIds, eventIds, sourceSchemaVersion, diagnostics, viewpoint.id);
     }
     for (const object of document2.objects) {
       validateObject(object, document2.system, objectMap, groupIds, diagnostics);
+    }
+    for (const event of document2.events) {
+      validateEvent(event, objectMap, diagnostics);
     }
     return diagnostics;
   }
@@ -3413,13 +3710,19 @@
       diagnostics.push(error("validate.relation.kind.required", `Relation "${relation.id}" is missing a "kind" value.`));
     }
   }
-  function validateViewpointFilter(filter, groupIds, sourceSchemaVersion, diagnostics, viewpointId) {
-    if (!filter || sourceSchemaVersion !== "2.1") {
-      return;
-    }
-    for (const groupId of filter.groupIds) {
-      if (!groupIds.has(groupId)) {
-        diagnostics.push(warn("validate.viewpoint.group.unknown", `Unknown group "${groupId}" in viewpoint "${viewpointId}".`));
+  function validateViewpoint(filter, eventRefs, groupIds, eventIds, sourceSchemaVersion, diagnostics, viewpointId) {
+    if (sourceSchemaVersion === "2.1") {
+      if (filter) {
+        for (const groupId of filter.groupIds) {
+          if (!groupIds.has(groupId)) {
+            diagnostics.push(warn("validate.viewpoint.group.unknown", `Unknown group "${groupId}" in viewpoint "${viewpointId}".`, void 0, `viewpoint.${viewpointId}.groups`));
+          }
+        }
+      }
+      for (const eventId of eventRefs) {
+        if (!eventIds.has(eventId)) {
+          diagnostics.push(warn("validate.viewpoint.event.unknown", `Unknown event "${eventId}" in viewpoint "${viewpointId}".`, void 0, `viewpoint.${viewpointId}.events`));
+        }
       }
     }
   }
@@ -3502,6 +3805,103 @@
       const toleranceDays = toleranceForField(object, "period");
       if (Math.abs(actualPeriodDays - derivedPeriodDays) > toleranceDays) {
         diagnostics.push(error("validate.kepler.mismatch", `Object "${object.id}" fails Kepler validation for "period".`, object.id, "validate"));
+      }
+    }
+  }
+  function validateEvent(event, objectMap, diagnostics) {
+    const fieldPrefix = `event.${event.id}`;
+    const referencedIds = /* @__PURE__ */ new Set();
+    if (!event.kind.trim()) {
+      diagnostics.push(error("validate.event.kind.required", `Event "${event.id}" is missing a "kind" value.`, void 0, `${fieldPrefix}.kind`));
+    }
+    if (!event.targetObjectId && event.participantObjectIds.length === 0) {
+      diagnostics.push(error("validate.event.references.required", `Event "${event.id}" must define a "target" or at least one participant.`, void 0, `${fieldPrefix}.participants`));
+    }
+    if (event.targetObjectId) {
+      referencedIds.add(event.targetObjectId);
+      if (!objectMap.has(event.targetObjectId)) {
+        diagnostics.push(error("validate.event.target.unknown", `Unknown event target "${event.targetObjectId}" on "${event.id}".`, void 0, `${fieldPrefix}.target`));
+      }
+    }
+    const seenParticipants = /* @__PURE__ */ new Set();
+    for (const participantId of event.participantObjectIds) {
+      referencedIds.add(participantId);
+      if (seenParticipants.has(participantId)) {
+        diagnostics.push(warn("validate.event.participants.duplicate", `Event "${event.id}" repeats participant "${participantId}".`, void 0, `${fieldPrefix}.participants`));
+        continue;
+      }
+      seenParticipants.add(participantId);
+      if (!objectMap.has(participantId)) {
+        diagnostics.push(error("validate.event.participants.unknown", `Unknown event participant "${participantId}" on "${event.id}".`, void 0, `${fieldPrefix}.participants`));
+      }
+    }
+    if (event.targetObjectId && event.participantObjectIds.length > 0 && !event.participantObjectIds.includes(event.targetObjectId)) {
+      diagnostics.push(warn("validate.event.target.notParticipant", `Event "${event.id}" defines a target outside its participants list.`, void 0, `${fieldPrefix}.target`));
+    }
+    if (event.positions.length === 0) {
+      diagnostics.push(warn("validate.event.positions.missing", `Event "${event.id}" has no positions block and cannot drive a scene snapshot.`, void 0, `${fieldPrefix}.positions`));
+    }
+    if (/(?:^|[-_])(solar-eclipse|lunar-eclipse|transit|occultation)(?:$|[-_])/.test(event.kind) && referencedIds.size < 3) {
+      diagnostics.push(warn("validate.event.kind.participants", `Event "${event.id}" looks like an eclipse or transit but references fewer than three bodies.`, void 0, `${fieldPrefix}.participants`));
+    }
+    const poseIds = /* @__PURE__ */ new Set();
+    for (const pose of event.positions) {
+      const poseFieldPrefix = `${fieldPrefix}.pose.${pose.objectId}`;
+      if (poseIds.has(pose.objectId)) {
+        diagnostics.push(error("validate.event.pose.duplicate", `Event "${event.id}" defines "${pose.objectId}" more than once in positions.`, void 0, poseFieldPrefix));
+        continue;
+      }
+      poseIds.add(pose.objectId);
+      const object = objectMap.get(pose.objectId);
+      if (!object) {
+        diagnostics.push(error("validate.event.pose.object.unknown", `Unknown event pose object "${pose.objectId}" on "${event.id}".`, void 0, poseFieldPrefix));
+        continue;
+      }
+      if (!referencedIds.has(pose.objectId)) {
+        diagnostics.push(warn("validate.event.pose.unreferenced", `Event pose "${pose.objectId}" on "${event.id}" is not listed in target/participants.`, void 0, poseFieldPrefix));
+      }
+      validateEventPose(pose, object, objectMap, diagnostics, poseFieldPrefix, event.id);
+    }
+  }
+  function validateEventPose(pose, object, objectMap, diagnostics, fieldPrefix, eventId) {
+    const placement = pose.placement;
+    if (!placement) {
+      diagnostics.push(error("validate.event.pose.placement.required", `Event "${eventId}" pose "${pose.objectId}" is missing a placement mode.`, void 0, fieldPrefix));
+      return;
+    }
+    if (placement.mode === "orbit") {
+      if (!objectMap.has(placement.target)) {
+        diagnostics.push(error("validate.event.pose.orbit.target.unknown", `Unknown event orbit target "${placement.target}" on "${eventId}:${pose.objectId}".`, void 0, `${fieldPrefix}.orbit`));
+      }
+      if (placement.distance && placement.semiMajor) {
+        diagnostics.push(error("validate.event.pose.orbit.distanceConflict", `Event "${eventId}" pose "${pose.objectId}" cannot declare both "distance" and "semiMajor".`, void 0, `${fieldPrefix}.distance`));
+      }
+      return;
+    }
+    if (placement.mode === "surface") {
+      const target = objectMap.get(placement.target);
+      if (!target) {
+        diagnostics.push(error("validate.event.pose.surface.target.unknown", `Unknown event surface target "${placement.target}" on "${eventId}:${pose.objectId}".`, void 0, `${fieldPrefix}.surface`));
+      } else if (!SURFACE_TARGET_TYPES2.has(target.type)) {
+        diagnostics.push(error("validate.event.pose.surface.target.invalid", `Event surface target "${placement.target}" on "${eventId}:${pose.objectId}" is not surface-capable.`, void 0, `${fieldPrefix}.surface`));
+      }
+      return;
+    }
+    if (placement.mode === "at") {
+      if (object.type !== "structure" && object.type !== "phenomenon") {
+        diagnostics.push(error("validate.event.pose.at.objectType", `Only structures and phenomena may use "at" placement in events; found "${object.type}" on "${eventId}:${pose.objectId}".`, void 0, `${fieldPrefix}.at`));
+      }
+      const reference = placement.reference;
+      if (reference.kind === "named" && !objectMap.has(reference.name)) {
+        diagnostics.push(error("validate.event.pose.at.target.unknown", `Unknown event at-reference target "${placement.target}" on "${eventId}:${pose.objectId}".`, void 0, `${fieldPrefix}.at`));
+      } else if (reference.kind === "anchor" && !objectMap.has(reference.objectId)) {
+        diagnostics.push(error("validate.event.pose.anchor.target.unknown", `Unknown event anchor target "${reference.objectId}" on "${eventId}:${pose.objectId}".`, void 0, `${fieldPrefix}.at`));
+      } else if (reference.kind === "lagrange") {
+        if (!objectMap.has(reference.primary)) {
+          diagnostics.push(error("validate.event.pose.lagrange.primary.unknown", `Unknown event Lagrange target "${reference.primary}" on "${eventId}:${pose.objectId}".`, void 0, `${fieldPrefix}.at`));
+        } else if (reference.secondary && !objectMap.has(reference.secondary)) {
+          diagnostics.push(error("validate.event.pose.lagrange.secondary.unknown", `Unknown event Lagrange target "${reference.secondary}" on "${eventId}:${pose.objectId}".`, void 0, `${fieldPrefix}.at`));
+        }
       }
     }
   }
@@ -3705,6 +4105,21 @@
     });
   }
   var DRAFT_OBJECT_FIELD_KEYS = new Set(DRAFT_OBJECT_FIELD_SPECS.keys());
+  var EVENT_POSE_FIELD_KEYS = /* @__PURE__ */ new Set([
+    "orbit",
+    "distance",
+    "semiMajor",
+    "eccentricity",
+    "period",
+    "angle",
+    "inclination",
+    "phase",
+    "at",
+    "surface",
+    "free",
+    "inner",
+    "outer"
+  ]);
   function parseWorldOrbitAtlas(source) {
     return parseAtlasSource(source);
   }
@@ -3719,12 +4134,15 @@
     const objectNodes = [];
     const groups = [];
     const relations = [];
+    const events = [];
+    const eventPoseNodes = /* @__PURE__ */ new Map();
     let sawDefaults = false;
     let sawAtlas = false;
     const viewpointIds = /* @__PURE__ */ new Set();
     const annotationIds = /* @__PURE__ */ new Set();
     const groupIds = /* @__PURE__ */ new Set();
     const relationIds = /* @__PURE__ */ new Set();
+    const eventIds = /* @__PURE__ */ new Set();
     for (let index = 0; index < lines.length; index++) {
       const rawLine = lines[index];
       const lineNumber = index + 1;
@@ -3755,7 +4173,7 @@
         continue;
       }
       if (indent === 0) {
-        section = startTopLevelSection(tokens, lineNumber, sourceSchemaVersion, diagnostics, system, objectNodes, groups, relations, viewpointIds, annotationIds, groupIds, relationIds, { sawDefaults, sawAtlas });
+        section = startTopLevelSection(tokens, lineNumber, sourceSchemaVersion, diagnostics, system, objectNodes, groups, relations, events, eventPoseNodes, viewpointIds, annotationIds, groupIds, relationIds, eventIds, { sawDefaults, sawAtlas });
         if (section.kind === "system") {
           system = section.system;
         } else if (section.kind === "defaults") {
@@ -3774,6 +4192,7 @@
       throw new WorldOrbitError('Missing required atlas schema header "schema 2.0"');
     }
     const objects = objectNodes.map((node) => normalizeDraftObject(node, sourceSchemaVersion, diagnostics));
+    const normalizedEvents = events.map((event) => normalizeDraftEvent(event, eventPoseNodes.get(event.id) ?? []));
     const outputVersion = forcedOutputVersion ?? (sourceSchemaVersion === "2.0-draft" ? "2.0" : sourceSchemaVersion);
     const baseDocument = {
       format: "worldorbit",
@@ -3781,6 +4200,7 @@
       system,
       groups,
       relations,
+      events: normalizedEvents,
       objects,
       diagnostics
     };
@@ -3816,7 +4236,7 @@
     const version = tokens[1].value.toLowerCase();
     return version === "2.1" ? "2.1" : version === "2.0-draft" ? "2.0-draft" : "2.0";
   }
-  function startTopLevelSection(tokens, line, sourceSchemaVersion, diagnostics, system, objectNodes, groups, relations, viewpointIds, annotationIds, groupIds, relationIds, flags) {
+  function startTopLevelSection(tokens, line, sourceSchemaVersion, diagnostics, system, objectNodes, groups, relations, events, eventPoseNodes, viewpointIds, annotationIds, groupIds, relationIds, eventIds, flags) {
     const keyword = tokens[0]?.value.toLowerCase();
     switch (keyword) {
       case "system":
@@ -3853,7 +4273,7 @@
         if (!system) {
           throw new WorldOrbitError('Atlas section "viewpoint" requires a preceding system declaration', line, tokens[0].column);
         }
-        return startViewpointSection(tokens, line, system, viewpointIds);
+        return startViewpointSection(tokens, line, system, viewpointIds, sourceSchemaVersion, diagnostics);
       case "annotation":
         if (!system) {
           throw new WorldOrbitError('Atlas section "annotation" requires a preceding system declaration', line, tokens[0].column);
@@ -3865,6 +4285,9 @@
       case "relation":
         warnIfSchema21Feature(sourceSchemaVersion, diagnostics, "relation", { line, column: tokens[0].column });
         return startRelationSection(tokens, line, relations, relationIds);
+      case "event":
+        warnIfSchema21Feature(sourceSchemaVersion, diagnostics, "event", { line, column: tokens[0].column });
+        return startEventSection(tokens, line, events, eventPoseNodes, eventIds, sourceSchemaVersion, diagnostics);
       case "object":
         return startObjectSection(tokens, line, sourceSchemaVersion, diagnostics, objectNodes);
       default:
@@ -3901,7 +4324,7 @@
       seenFields: /* @__PURE__ */ new Set()
     };
   }
-  function startViewpointSection(tokens, line, system, viewpointIds) {
+  function startViewpointSection(tokens, line, system, viewpointIds, sourceSchemaVersion, diagnostics) {
     if (tokens.length !== 2) {
       throw new WorldOrbitError("Invalid viewpoint declaration", line, tokens[0]?.column ?? 1);
     }
@@ -3918,6 +4341,7 @@
       summary: "",
       focusObjectId: null,
       selectedObjectId: null,
+      events: [],
       projection: system.defaults.view,
       preset: system.defaults.preset,
       zoom: null,
@@ -3930,6 +4354,8 @@
     return {
       kind: "viewpoint",
       viewpoint,
+      sourceSchemaVersion,
+      diagnostics,
       seenFields: /* @__PURE__ */ new Set(),
       inFilter: false,
       filterIndent: null,
@@ -4020,6 +4446,49 @@
       seenFields: /* @__PURE__ */ new Set()
     };
   }
+  function startEventSection(tokens, line, events, eventPoseNodes, eventIds, sourceSchemaVersion, diagnostics) {
+    if (tokens.length !== 2) {
+      throw new WorldOrbitError("Invalid event declaration", line, tokens[0]?.column ?? 1);
+    }
+    const id = normalizeIdentifier2(tokens[1].value);
+    if (!id) {
+      throw new WorldOrbitError("Event id must not be empty", line, tokens[1].column);
+    }
+    if (eventIds.has(id)) {
+      throw new WorldOrbitError(`Duplicate event id "${id}"`, line, tokens[1].column);
+    }
+    const event = {
+      id,
+      kind: "",
+      label: humanizeIdentifier3(id),
+      summary: null,
+      targetObjectId: null,
+      participantObjectIds: [],
+      timing: null,
+      visibility: null,
+      tags: [],
+      color: null,
+      hidden: false,
+      positions: []
+    };
+    const rawPoses = [];
+    events.push(event);
+    eventPoseNodes.set(id, rawPoses);
+    eventIds.add(id);
+    return {
+      kind: "event",
+      event,
+      sourceSchemaVersion,
+      diagnostics,
+      seenFields: /* @__PURE__ */ new Set(),
+      rawPoses,
+      inPositions: false,
+      positionsIndent: null,
+      activePose: null,
+      poseIndent: null,
+      activePoseSeenFields: /* @__PURE__ */ new Set()
+    };
+  }
   function startObjectSection(tokens, line, sourceSchemaVersion, diagnostics, objectNodes) {
     if (tokens.length < 3) {
       throw new WorldOrbitError("Invalid atlas object declaration", line, tokens[0]?.column ?? 1);
@@ -4075,6 +4544,9 @@
         return;
       case "relation":
         applyRelationField(section, tokens, line);
+        return;
+      case "event":
+        applyEventField(section, indent, tokens, line);
         return;
       case "object":
         applyObjectField(section, indent, tokens, line);
@@ -4202,7 +4674,14 @@
         section.viewpoint.rotationDeg = parseFiniteNumber2(value, line, tokens[0].column, "rotation");
         return;
       case "layers":
-        section.viewpoint.layers = parseLayerTokens(tokens.slice(1), line);
+        section.viewpoint.layers = parseLayerTokens(tokens.slice(1), line, section.sourceSchemaVersion, section.diagnostics);
+        return;
+      case "events":
+        warnIfSchema21Feature(section.sourceSchemaVersion, section.diagnostics, "viewpoint.events", {
+          line,
+          column: tokens[0].column
+        });
+        section.viewpoint.events = parseTokenList(tokens.slice(1), line, "events");
         return;
       default:
         throw new WorldOrbitError(`Unknown viewpoint field "${tokens[0].value}"`, line, tokens[0].column);
@@ -4307,6 +4786,106 @@
         throw new WorldOrbitError(`Unknown relation field "${tokens[0].value}"`, line, tokens[0].column);
     }
   }
+  function applyEventField(section, indent, tokens, line) {
+    if (section.activePose && indent <= (section.poseIndent ?? 0)) {
+      section.activePose = null;
+      section.poseIndent = null;
+      section.activePoseSeenFields.clear();
+    }
+    if (!section.activePose && section.inPositions && indent <= (section.positionsIndent ?? 0)) {
+      section.inPositions = false;
+      section.positionsIndent = null;
+    }
+    if (section.activePose) {
+      section.activePose.fields.push(parseEventPoseField(tokens, line, section.activePoseSeenFields));
+      return;
+    }
+    if (section.inPositions) {
+      if (tokens.length !== 2 || tokens[0].value.toLowerCase() !== "pose") {
+        throw new WorldOrbitError(`Unknown event positions field "${tokens[0].value}"`, line, tokens[0]?.column ?? 1);
+      }
+      const objectId = tokens[1].value;
+      if (!objectId.trim()) {
+        throw new WorldOrbitError("Event pose object id must not be empty", line, tokens[1].column);
+      }
+      const rawPose = {
+        objectId,
+        fields: [],
+        location: { line, column: tokens[0].column }
+      };
+      section.rawPoses.push(rawPose);
+      section.activePose = rawPose;
+      section.poseIndent = indent;
+      section.activePoseSeenFields = /* @__PURE__ */ new Set();
+      return;
+    }
+    if (tokens.length === 1 && tokens[0].value.toLowerCase() === "positions") {
+      if (section.seenFields.has("positions")) {
+        throw new WorldOrbitError('Duplicate event field "positions"', line, tokens[0].column);
+      }
+      section.seenFields.add("positions");
+      section.inPositions = true;
+      section.positionsIndent = indent;
+      return;
+    }
+    const key = requireUniqueField(tokens, section.seenFields, line);
+    switch (key) {
+      case "kind":
+        section.event.kind = joinFieldValue(tokens, line);
+        return;
+      case "label":
+        section.event.label = joinFieldValue(tokens, line);
+        return;
+      case "summary":
+        section.event.summary = joinFieldValue(tokens, line);
+        return;
+      case "target":
+        section.event.targetObjectId = joinFieldValue(tokens, line);
+        return;
+      case "participants":
+        section.event.participantObjectIds = parseTokenList(tokens.slice(1), line, "participants");
+        return;
+      case "timing":
+        section.event.timing = joinFieldValue(tokens, line);
+        return;
+      case "visibility":
+        section.event.visibility = joinFieldValue(tokens, line);
+        return;
+      case "tags":
+        section.event.tags = parseTokenList(tokens.slice(1), line, "tags");
+        return;
+      case "color":
+        section.event.color = joinFieldValue(tokens, line);
+        return;
+      case "hidden":
+        section.event.hidden = parseAtlasBoolean(joinFieldValue(tokens, line), "hidden", {
+          line,
+          column: tokens[0].column
+        });
+        return;
+      default:
+        throw new WorldOrbitError(`Unknown event field "${tokens[0].value}"`, line, tokens[0].column);
+    }
+  }
+  function parseEventPoseField(tokens, line, seenFields) {
+    if (tokens.length < 2) {
+      throw new WorldOrbitError("Invalid event pose field line", line, tokens[0]?.column ?? 1);
+    }
+    const key = tokens[0].value;
+    if (!EVENT_POSE_FIELD_KEYS.has(key)) {
+      throw new WorldOrbitError(`Unknown event pose field "${key}"`, line, tokens[0].column);
+    }
+    if (seenFields.has(key)) {
+      throw new WorldOrbitError(`Duplicate event pose field "${key}"`, line, tokens[0].column);
+    }
+    seenFields.add(key);
+    return {
+      type: "field",
+      key,
+      values: tokens.slice(1).map((token) => token.value),
+      location: { line, column: tokens[0].column }
+    };
+  }
   function applyObjectField(section, indent, tokens, line) {
     if (section.activeBlock && indent <= (section.blockIndent ?? 0)) {
       section.activeBlock = null;
@@ -4365,7 +4944,7 @@
   function parseObjectTypeTokens(tokens, line) {
     return parseTokenList(tokens, line, "objectTypes").filter((value) => value === "star" || value === "planet" || value === "moon" || value === "belt" || value === "asteroid" || value === "comet" || value === "ring" || value === "structure" || value === "phenomenon");
   }
-  function parseLayerTokens(tokens, line) {
+  function parseLayerTokens(tokens, line, sourceSchemaVersion, diagnostics) {
     const layers = {};
     for (const token of parseTokenList(tokens, line, "layers")) {
       const enabled = !token.startsWith("-") && !token.startsWith("!");
@@ -4375,7 +4954,13 @@
         layers["orbits-front"] = enabled;
         continue;
       }
-      if (raw === "background" || raw === "guides" || raw === "orbits-back" || raw === "orbits-front" || raw === "relations" || raw === "objects" || raw === "labels" || raw === "metadata") {
+      if (raw === "background" || raw === "guides" || raw === "orbits-back" || raw === "orbits-front" || raw === "relations" || raw === "events" || raw === "objects" || raw === "labels" || raw === "metadata") {
+        if (raw === "events" && sourceSchemaVersion && diagnostics) {
+          warnIfSchema21Feature(sourceSchemaVersion, diagnostics, "layers.events", {
+            line,
+            column: tokens[0]?.column ?? 1
+          });
+        }
         layers[raw] = enabled;
       }
     }
@@ -4514,7 +5099,7 @@
   }
   function normalizeDraftObject(node, sourceSchemaVersion, diagnostics) {
     const fieldMap = collectDraftFields(node.fields);
-    const placement = extractDraftPlacement(node.objectType, fieldMap);
+    const placement = extractPlacementFromFieldMap(fieldMap);
     const properties = normalizeDraftProperties(node.objectType, fieldMap);
     const groups = parseOptionalTokenList(fieldMap.get("groups")?.[0]);
     const epoch = parseOptionalJoinedValue(fieldMap.get("epoch")?.[0]);
@@ -4566,6 +5151,24 @@
     }
     return object;
   }
+  function normalizeDraftEvent(event, rawPoses) {
+    return {
+      ...event,
+      participantObjectIds: [...new Set(event.participantObjectIds)],
+      tags: [...new Set(event.tags)],
+      positions: rawPoses.map((pose) => normalizeDraftEventPose(pose))
+    };
+  }
+  function normalizeDraftEventPose(rawPose) {
+    const fieldMap = collectDraftFields(rawPose.fields);
+    const placement = extractPlacementFromFieldMap(fieldMap);
+    return {
+      objectId: rawPose.objectId,
+      placement,
+      inner: parseOptionalUnitField(fieldMap.get("inner")?.[0], "inner"),
+      outer: parseOptionalUnitField(fieldMap.get("outer")?.[0], "outer")
+    };
+  }
   function collectDraftFields(fields) {
     const grouped = /* @__PURE__ */ new Map();
     for (const field of fields) {
@@ -4582,7 +5185,7 @@
     }
     return grouped;
   }
-  function extractDraftPlacement(objectType, fieldMap) {
+  function extractPlacementFromFieldMap(fieldMap) {
     const orbitField = fieldMap.get("orbit")?.[0];
     const atField = fieldMap.get("at")?.[0];
     const surfaceField = fieldMap.get("surface")?.[0];
@@ -4875,6 +5478,7 @@
       },
       groups: [],
       relations: [],
+      events: [],
       objects: [],
       diagnostics: []
     };
@@ -4892,6 +5496,10 @@
         return path.key ? document2.system?.atlasMetadata[path.key] ?? null : null;
       case "group":
         return path.id ? findGroup(document2, path.id) : null;
+      case "event":
+        return path.id ? findEvent(document2, path.id) : null;
+      case "event-pose":
+        return path.id && path.key ? findEventPose(document2, path.id, path.key) : null;
       case "object":
         return path.id ? findObject(document2, path.id) : null;
       case "viewpoint":
@@ -4919,6 +5527,19 @@
       case "group":
         if (path.id) {
           next.groups = next.groups.filter((group) => group.id !== path.id);
+        }
+        return next;
+      case "event":
+        if (path.id) {
+          next.events = next.events.filter((event) => event.id !== path.id);
+        }
+        return next;
+      case "event-pose":
+        if (path.id && path.key) {
+          const event = findEvent(next, path.id);
+          if (event) {
+            event.positions = event.positions.filter((pose) => pose.objectId !== path.key);
+          }
         }
         return next;
       case "viewpoint":
@@ -4989,6 +5610,22 @@
         };
       }
     }
+    if (diagnostic.field?.startsWith("event.")) {
+      const parts = diagnostic.field.split(".");
+      if (parts[1] && findEvent(document2, parts[1])) {
+        if (parts[2] === "pose" && parts[3] && findEventPose(document2, parts[1], parts[3])) {
+          return {
+            kind: "event-pose",
+            id: parts[1],
+            key: parts[3]
+          };
+        }
+        return {
+          kind: "event",
+          id: parts[1]
+        };
+      }
+    }
     if (diagnostic.field && diagnostic.field in ensureSystem(document2).atlasMetadata) {
       return {
         kind: "metadata",
@@ -5019,6 +5656,12 @@
   }
   function findRelation(document2, relationId) {
     return document2.relations.find((relation) => relation.id === relationId) ?? null;
+  }
+  function findEvent(document2, eventId) {
+    return document2.events.find((event) => event.id === eventId) ?? null;
+  }
+  function findEventPose(document2, eventId, objectId) {
+    return findEvent(document2, eventId)?.positions.find((pose) => pose.objectId === objectId) ?? null;
   }
   function findViewpoint(system, viewpointId) {
     return system?.viewpoints.find((viewpoint) => viewpoint.id === viewpointId) ?? null;
@@ -5197,6 +5840,7 @@
     background: true,
     guides: true,
     relations: true,
+    events: true,
     orbits: true,
     objects: true,
     labels: true,
@@ -5345,12 +5989,14 @@
     return {
       version: "2.0",
       viewpointId,
+      activeEventId: renderOptions.activeEventId ?? null,
       viewerState: { ...viewerState },
       renderOptions: {
         preset: renderOptions.preset,
         projection: renderOptions.projection,
         layers: renderOptions.layers ? { ...renderOptions.layers } : void 0,
-        scaleModel: renderOptions.scaleModel ? { ...renderOptions.scaleModel } : void 0
+        scaleModel: renderOptions.scaleModel ? { ...renderOptions.scaleModel } : void 0,
+        activeEventId: renderOptions.activeEventId ?? null
       },
       filter: normalizeViewerFilter(filter)
     };
@@ -5363,6 +6009,7 @@
     return {
       version: "2.0",
       viewpointId: raw.viewpointId ?? null,
+      activeEventId: raw.activeEventId ?? raw.renderOptions?.activeEventId ?? null,
       viewerState: {
         scale: raw.viewerState?.scale ?? 1,
         rotationDeg: raw.viewerState?.rotationDeg ?? 0,
@@ -5374,7 +6021,8 @@
         preset: raw.renderOptions?.preset,
         projection: raw.renderOptions?.projection,
         layers: raw.renderOptions?.layers ? { ...raw.renderOptions.layers } : void 0,
-        scaleModel: raw.renderOptions?.scaleModel ? { ...raw.renderOptions.scaleModel } : void 0
+        scaleModel: raw.renderOptions?.scaleModel ? { ...raw.renderOptions.scaleModel } : void 0,
+        activeEventId: raw.activeEventId ?? raw.renderOptions?.activeEventId ?? null
       },
       filter: normalizeViewerFilter(raw.filter ?? null)
     };
@@ -5390,7 +6038,8 @@
         renderOptions: {
           ...atlasState.renderOptions,
           layers: atlasState.renderOptions.layers ? { ...atlasState.renderOptions.layers } : void 0,
-          scaleModel: atlasState.renderOptions.scaleModel ? { ...atlasState.renderOptions.scaleModel } : void 0
+          scaleModel: atlasState.renderOptions.scaleModel ? { ...atlasState.renderOptions.scaleModel } : void 0,
+          activeEventId: atlasState.renderOptions.activeEventId ?? null
         },
         filter: atlasState.filter ? { ...atlasState.filter } : null
       }
@@ -5408,6 +6057,7 @@
       background: viewpoint.layers.background,
       guides: viewpoint.layers.guides,
       relations: viewpoint.layers.relations,
+      events: viewpoint.layers.events,
       orbits: viewpoint.layers["orbits-front"] === void 0 && viewpoint.layers["orbits-back"] === void 0 ? void 0 : viewpoint.layers["orbits-front"] !== false || viewpoint.layers["orbits-back"] !== false,
       objects: viewpoint.layers.objects,
       labels: viewpoint.layers.labels,
@@ -5694,6 +6344,7 @@
     const orbitMarkup = layers.orbits ? renderOrbitLayer(scene, visibleObjectIds, layers.structures) : { back: "", front: "" };
     const leaderMarkup = layers.guides ? scene.leaders.filter((leader) => !leader.hidden).filter((leader) => visibleObjectIds.has(leader.objectId)).filter((leader) => layers.structures || !isStructureLike(leader.object)).map((leader) => `<line class="wo-leader wo-leader-${leader.mode}" x1="${leader.x1}" y1="${leader.y1}" x2="${leader.x2}" y2="${leader.y2}" data-render-id="${escapeXml(leader.renderId)}" data-group-id="${escapeAttribute(leader.groupId ?? "")}" />`).join("") : "";
     const relationMarkup = layers.relations ? scene.relations.filter((relation) => !relation.hidden).filter((relation) => visibleObjectIds.has(relation.fromObjectId) && visibleObjectIds.has(relation.toObjectId)).map((relation) => `<line class="wo-relation" x1="${relation.x1}" y1="${relation.y1}" x2="${relation.x2}" y2="${relation.y2}" data-render-id="${escapeXml(relation.renderId)}" data-relation-id="${escapeAttribute(relation.relationId)}" />`).join("") : "";
+    const eventMarkup = layers.events ? scene.events.filter((event) => !event.hidden).map((event) => renderSceneEventOverlay(scene, event, visibleObjectIds, theme)).join("") : "";
     const objectMarkup = layers.objects ? visibleObjects.map((object) => renderSceneObject(object, options.selectedObjectId ?? null, theme)).join("") : "";
     const labelMarkup = layers.labels ? visibleLabels.map((label) => renderSceneLabel(scene, label, options.selectedObjectId ?? null)).join("") : "";
     const metadataMarkup = layers.metadata ? `<text class="wo-title" x="56" y="64">${escapeXml(scene.title)}</text>
@@ -5729,6 +6380,9 @@
     .wo-orbit-front { opacity: 0.9; }
     .wo-orbit-band { stroke: ${theme.orbitBand}; stroke-linecap: round; }
     .wo-relation { stroke: ${theme.relation}; stroke-width: 2; stroke-dasharray: 10 6; }
+    .wo-event-line { stroke: ${theme.accent}; stroke-width: 1.6; stroke-dasharray: 5 5; opacity: 0.72; }
+    .wo-event-node { fill: ${theme.accent}; stroke: ${theme.selected}; stroke-width: 1.4; opacity: 0.92; }
+    .wo-event-label { fill: ${theme.accent}; font-family: ${theme.fontFamily}; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
     .wo-leader { stroke: ${theme.leader}; stroke-width: 1.5; stroke-dasharray: 6 5; }
     .wo-label { fill: ${theme.ink}; font-family: ${theme.fontFamily}; font-weight: 600; letter-spacing: 0.02em; }
     .wo-label-secondary { fill: ${theme.muted}; font-family: ${theme.fontFamily}; font-weight: 500; }
@@ -5763,6 +6417,7 @@
         ${layers.orbits ? `<g data-layer-id="orbits-back">${orbitMarkup.back}</g>` : ""}
         ${layers.guides ? `<g data-layer-id="guides">${leaderMarkup}</g>` : ""}
         ${layers.relations ? `<g data-layer-id="relations">${relationMarkup}</g>` : ""}
+        ${layers.events ? `<g data-layer-id="events">${eventMarkup}</g>` : ""}
         ${layers.objects ? `<g data-layer-id="objects">${objectMarkup}</g>` : ""}
         ${layers.orbits ? `<g data-layer-id="orbits-front">${orbitMarkup.front}</g>` : ""}
         ${layers.labels ? `<g data-layer-id="labels">${labelMarkup}</g>` : ""}
@@ -5770,6 +6425,20 @@
     </g>
   </g>
 </svg>`;
+  }
+  function renderSceneEventOverlay(scene, event, visibleObjectIds, theme) {
+    const participants = event.objectIds.filter((objectId) => visibleObjectIds.has(objectId)).map((objectId) => scene.objects.find((object) => object.objectId === objectId && !object.hidden)).filter(Boolean);
+    if (participants.length === 0) {
+      return "";
+    }
+    const stroke = event.event.color || theme.accent;
+    const label = event.event.label || event.event.id;
+    const lineMarkup = participants.map((object) => `<line class="wo-event-line" x1="${event.x}" y1="${event.y}" x2="${object.x}" y2="${object.y}" stroke="${escapeAttribute(stroke)}" data-event-id="${escapeAttribute(event.eventId)}" data-object-id="${escapeAttribute(object.objectId)}" />`).join("");
+    return `<g class="wo-event" data-render-id="${escapeXml(event.renderId)}" data-event-id="${escapeAttribute(event.eventId)}">
+    ${lineMarkup}
+    <circle class="wo-event-node" cx="${event.x}" cy="${event.y}" r="5" fill="${escapeAttribute(stroke)}" />
+    <text class="wo-event-label" x="${event.x}" y="${event.y - 10}" text-anchor="middle" font-size="10">${escapeXml(label)}</text>
+  </g>`;
   }
   function renderOrbitLayer(scene, visibleObjectIds, includeStructures) {
     const backParts = [];
@@ -6352,6 +7021,13 @@
         value: `${details.object.resonance.targetObjectId} ${details.object.resonance.ratio}`
       });
     }
+    if (details.relatedEvents.length > 0) {
+      fields.set("events", {
+        key: "events",
+        label: "Events",
+        value: details.relatedEvents.map((event) => event.event.label || event.event.id).join(", ")
+      });
+    }
     if (placement?.mode === "at") {
       fields.set("placement", {
         key: "placement",
@@ -6766,6 +7442,12 @@
         emitAtlasStateChange();
         return true;
       },
+      getActiveEventId() {
+        return renderOptions.activeEventId ?? null;
+      },
+      setActiveEvent(id) {
+        api.setRenderOptions({ activeEventId: id });
+      },
       search(query, limit = 12) {
         return searchSceneObjects(scene, query, limit);
       },
@@ -7030,6 +7712,7 @@
         orbit: scene.orbitVisuals.find((orbit) => orbit.objectId === renderObject.objectId && !orbit.hidden) ?? null,
         relatedOrbits: scene.orbitVisuals.filter((orbit) => !orbit.hidden && (orbit.objectId === renderObject.objectId || renderObject.ancestorIds.includes(orbit.objectId) || renderObject.childIds.includes(orbit.objectId))),
         relations: scene.relations.filter((relation) => !relation.hidden && (relation.fromObjectId === renderObject.objectId || relation.toObjectId === renderObject.objectId)),
+        relatedEvents: scene.events.filter((event) => !event.hidden && (event.targetObjectId === renderObject.objectId || event.objectIds.includes(renderObject.objectId))),
         parent: getObjectById(renderObject.parentId),
         children: renderObject.childIds.map((childId) => getObjectById(childId)).filter(Boolean),
         ancestors: renderObject.ancestorIds.map((ancestorId) => getObjectById(ancestorId)).filter(Boolean),
@@ -7346,7 +8029,8 @@
       filter: renderOptions.filter ? { ...renderOptions.filter } : void 0,
       scaleModel: renderOptions.scaleModel ? { ...renderOptions.scaleModel } : void 0,
       layers: renderOptions.layers ? { ...renderOptions.layers } : void 0,
-      theme: renderOptions.theme && typeof renderOptions.theme === "object" ? { ...renderOptions.theme } : renderOptions.theme
+      theme: renderOptions.theme && typeof renderOptions.theme === "object" ? { ...renderOptions.theme } : renderOptions.theme,
+      activeEventId: renderOptions.activeEventId ?? null
     };
   }
   function mergeRenderOptions(current, next) {
@@ -7366,7 +8050,7 @@
     };
   }
   function hasSceneAffectingRenderOptions(options) {
-    return options.width !== void 0 || options.height !== void 0 || options.padding !== void 0 || options.preset !== void 0 || options.projection !== void 0 || options.scaleModel !== void 0;
+    return options.width !== void 0 || options.height !== void 0 || options.padding !== void 0 || options.preset !== void 0 || options.projection !== void 0 || options.scaleModel !== void 0 || options.activeEventId !== void 0;
   }
   function resolveSourceRenderOptions(loaded, renderOptions) {
     const atlasDocument = loaded.atlasDocument ?? loaded.draftDocument;
@@ -7699,6 +8383,34 @@
       description: "Rotates the saved camera angle in degrees.",
       references: ["90deg = quarter turn", "180deg = flip"]
     },
+    "viewpoint-events": {
+      description: "Lists event IDs that this viewpoint should feature in its detail panel.",
+      references: ["solar-eclipse-naar", "transit-window conjunction"]
+    },
+    "event-kind": {
+      description: "Short semantic event type for tooling and viewer overlays.",
+      references: ["solar-eclipse", "lunar-eclipse", "transit"]
+    },
+    "event-target": {
+      description: "Primary object this event is centered on.",
+      references: ["Naar", "Seyra"]
+    },
+    "event-participants": {
+      description: "Objects that participate in the event snapshot or description.",
+      references: ["Iyath Naar Seyra", "Naar Seyra Orun"]
+    },
+    "event-timing": {
+      description: "Free-text timing note for the event.",
+      references: ['"Every late bloom season"', '"At local midyear"']
+    },
+    "event-visibility": {
+      description: "Notes where or how the event is visible.",
+      references: ['"Visible from Naar"', '"Southern hemisphere only"']
+    },
+    "event-viewpoints": {
+      description: "Viewpoint IDs that should list this event prominently.",
+      references: ["naar-system", "overview inner-system"]
+    },
     "placement-target": {
       description: "Names the body or reference this object is attached to.",
       references: ["orbit Primary", "surface Homeworld", "at Naar:L4"]
@@ -7817,10 +8529,21 @@
       minimap: true,
       tooltipMode: "hover",
       onSelectionChange(selectedObject) {
+        const activeEventId = selection ? selectionEventId(selection) : null;
         if (ignoreViewerSelection || !selectedObject) {
-          if (!ignoreViewerSelection && selection?.kind === "object") {
-            setSelection(null, false, true);
+          if (!ignoreViewerSelection) {
+            if (selection?.kind === "event-pose" && selection.id) {
+              setSelection({ kind: "event", id: selection.id }, false, true);
+            } else if (selection?.kind === "object") {
+              setSelection(activeEventId ? { kind: "event", id: activeEventId } : null, false, true);
+            } else if (selection?.kind === "event" && selection.id) {
+              setSelection({ kind: "event", id: selection.id }, false, true);
+            }
           }
+          return;
+        }
+        if (activeEventId && findEventPose2(atlasDocument, activeEventId, selectedObject.objectId)) {
+          setSelection({ kind: "event-pose", id: activeEventId, key: selectedObject.objectId }, false, true);
           return;
         }
         setSelection({ kind: "object", id: selectedObject.objectId }, false, true);
@@ -7832,6 +8555,7 @@
     toolbar.addEventListener("click", handleToolbarClick);
     outline.addEventListener("click", handleOutlineClick);
     overlay.addEventListener("pointerdown", handleOverlayPointerDown);
+    inspector?.addEventListener("click", handleInspectorClick);
     inspector?.addEventListener("input", handleInspectorInput);
     inspector?.addEventListener("change", handleInspectorChange);
     sourcePane?.addEventListener("input", handleSourceInput);
@@ -7906,6 +8630,28 @@
         replaceAtlasDocument(nextDocument, true, { kind: "object", id });
         return id;
       },
+      addEvent() {
+        const id = createUniqueId("event", atlasDocument.events.map((event) => event.id));
+        const created = {
+          id,
+          kind: "",
+          label: humanizeIdentifier4(id),
+          summary: null,
+          targetObjectId: null,
+          participantObjectIds: [],
+          timing: null,
+          visibility: null,
+          tags: [],
+          color: null,
+          hidden: false,
+          positions: []
+        };
+        const nextDocument = cloneAtlasDocument(atlasDocument);
+        nextDocument.events.push(created);
+        nextDocument.events.sort(compareEvents);
+        replaceAtlasDocument(nextDocument, true, { kind: "event", id });
+        return id;
+      },
       addViewpoint() {
         const id = createUniqueId("viewpoint", atlasDocument.system?.viewpoints.map((viewpoint) => viewpoint.id) ?? []);
         const created = {
@@ -7914,6 +8660,7 @@
           summary: "",
           focusObjectId: null,
           selectedObjectId: null,
+          events: [],
           projection: atlasDocument.system?.defaults.view ?? "topdown",
           preset: atlasDocument.system?.defaults.preset ?? null,
           zoom: null,
@@ -7974,6 +8721,7 @@
         toolbar.removeEventListener("click", handleToolbarClick);
         outline.removeEventListener("click", handleOutlineClick);
         overlay.removeEventListener("pointerdown", handleOverlayPointerDown);
+        inspector?.removeEventListener("click", handleInspectorClick);
         inspector?.removeEventListener("input", handleInspectorInput);
         inspector?.removeEventListener("change", handleInspectorChange);
         sourcePane?.removeEventListener("input", handleSourceInput);
@@ -8019,7 +8767,7 @@
     }
     function getCurrentSourceForExport() {
       if (dragState?.changed) {
-        return formatDocument(atlasDocument, { schema: "2.0" });
+        return formatAtlasSource(atlasDocument);
       }
       return canonicalSource;
     }
@@ -8058,7 +8806,7 @@
       }
       clearSourceInputTimer();
       atlasDocument = cloneAtlasDocument(nextDocument);
-      canonicalSource = formatDocument(atlasDocument, { schema: "2.0" });
+      canonicalSource = formatAtlasSource(atlasDocument);
       if (!preserveSourceText) {
         sourceText = canonicalSource;
       }
@@ -8099,10 +8847,10 @@
       if (commitHistory) {
         history.push(createHistoryEntry());
         future.length = 0;
-        sourceText = formatDocument(nextDocument, { schema: "2.0" });
+        sourceText = formatAtlasSource(nextDocument);
       }
       atlasDocument = cloneAtlasDocument(nextDocument);
-      canonicalSource = formatDocument(atlasDocument, { schema: "2.0" });
+      canonicalSource = formatAtlasSource(atlasDocument);
       diagnostics = mergeDiagnostics(loadedDiagnostics, collectDocumentDiagnostics(atlasDocument));
       selection = normalizeSelection(selection);
       syncViewer({
@@ -8121,11 +8869,13 @@
       const previousState = viewer.getState();
       const currentRenderOptions = viewer.getRenderOptions();
       const nextPreset = atlasDocument.system?.defaults.preset ?? "atlas-card";
+      const nextActiveEventId = selection ? selectionEventId(selection) : null;
       ignoreViewerSelection = true;
-      if (currentRenderOptions.preset !== nextPreset || currentRenderOptions.projection !== "document") {
+      if (currentRenderOptions.preset !== nextPreset || currentRenderOptions.projection !== "document" || (currentRenderOptions.activeEventId ?? null) !== nextActiveEventId) {
         viewer.setRenderOptions({
           preset: nextPreset,
-          projection: "document"
+          projection: "document",
+          activeEventId: nextActiveEventId
         });
       }
       viewer.setDocument(materializeAtlasDocument(atlasDocument));
@@ -8134,10 +8884,12 @@
       } else if (options2.preserveCamera !== false) {
         viewer.setState({
           ...previousState,
-          selectedObjectId: selection?.kind === "object" ? selection.id ?? null : null
+          selectedObjectId: selection?.kind === "object" ? selection.id ?? null : selection?.kind === "event-pose" ? selection.key ?? null : null
         });
       } else if (selection?.kind === "object" && selection.id) {
         viewer.focusObject(selection.id);
+      } else if (selection?.kind === "event-pose" && selection.key) {
+        viewer.focusObject(selection.key);
       }
       ignoreViewerSelection = false;
     }
@@ -8156,8 +8908,11 @@
       selection = normalizeSelection(nextSelection);
       if (syncViewerSelection) {
         ignoreViewerSelection = true;
+        viewer.setRenderOptions({ activeEventId: selection ? selectionEventId(selection) : null });
         if (selection?.kind === "object" && selection.id) {
           viewer.focusObject(selection.id);
+        } else if (selection?.kind === "event-pose" && selection.key) {
+          viewer.focusObject(selection.key);
         } else if (selection?.kind === "viewpoint" && selection.id) {
           viewer.goToViewpoint(selection.id);
         }
@@ -8207,6 +8962,7 @@
           ${OBJECT_TYPES.map((type) => `<option value="${escapeHtml3(type)}"${type === objectType ? " selected" : ""}>${escapeHtml3(humanizeIdentifier4(type))}</option>`).join("")}
         </select>
         <button type="button" data-editor-action="add-object">Add object</button>
+        <button type="button" data-editor-action="add-event">Add event</button>
         <button type="button" data-editor-action="add-viewpoint">Add viewpoint</button>
         <button type="button" data-editor-action="add-annotation">Add annotation</button>
         <button type="button" data-editor-action="add-metadata">Add metadata</button>
@@ -8240,6 +8996,10 @@
       <div class="wo-editor-outline-section">
         <h3>Annotations</h3>
         ${(atlasDocument.system?.annotations.length ?? 0) > 0 ? atlasDocument.system?.annotations.map((annotation) => renderOutlineButton({ kind: "annotation", id: annotation.id }, annotation.label, activeKey, diagnosticBuckets)).join("") : `<p class="wo-editor-empty">No annotations yet.</p>`}
+      </div>
+      <div class="wo-editor-outline-section">
+        <h3>Events</h3>
+        ${atlasDocument.events.length > 0 ? atlasDocument.events.map((eventEntry) => renderEventOutlineItems(eventEntry, activeKey, diagnosticBuckets)).join("") : `<p class="wo-editor-empty">No events yet.</p>`}
       </div>
       <div class="wo-editor-outline-section">
         <h3>Objects</h3>
@@ -8278,6 +9038,7 @@
         selection: selection ? { path: { ...selection } } : null,
         system: atlasDocument.system,
         viewpoints: atlasDocument.system?.viewpoints ?? [],
+        events: atlasDocument.events,
         objects: atlasDocument.objects
       };
       if (!selection) {
@@ -8303,6 +9064,16 @@
           return;
         case "viewpoint":
           inspector.innerHTML = diagnosticSummary + renderViewpointInspector(formState, selection.id ?? "");
+          applyInspectorSectionState(inspector, inspectorSectionState);
+          decorateInspectorDiagnostics(selection, diagnostics);
+          return;
+        case "event":
+          inspector.innerHTML = diagnosticSummary + renderEventInspector(formState, selection.id ?? "");
+          applyInspectorSectionState(inspector, inspectorSectionState);
+          decorateInspectorDiagnostics(selection, diagnostics);
+          return;
+        case "event-pose":
+          inspector.innerHTML = diagnosticSummary + renderEventPoseInspector(formState, selection.id ?? "", selection.key ?? "");
           applyInspectorSectionState(inspector, inspectorSectionState);
           decorateInspectorDiagnostics(selection, diagnostics);
           return;
@@ -8338,10 +9109,11 @@
         return;
       }
       overlay.innerHTML = "";
-      if (selection?.kind !== "object" || !selection.id) {
+      const selectedObjectId = selection?.kind === "object" ? selection.id ?? null : selection?.kind === "event-pose" ? selection.key ?? null : null;
+      if (!selectedObjectId) {
         return;
       }
-      const details = viewer.getObjectDetails(selection.id);
+      const details = viewer.getObjectDetails(selectedObjectId);
       if (!details) {
         return;
       }
@@ -8453,6 +9225,9 @@
         case "add-viewpoint":
           api.addViewpoint();
           return;
+        case "add-event":
+          api.addEvent();
+          return;
         case "add-annotation":
           api.addAnnotation();
           return;
@@ -8487,6 +9262,32 @@
         key: button.dataset.pathKey || void 0
       }, true, true);
     }
+    function handleInspectorClick(event) {
+      const pathButton = event.target?.closest("[data-path-kind]");
+      if (pathButton) {
+        setSelection({
+          kind: pathButton.dataset.pathKind,
+          id: pathButton.dataset.pathId || void 0,
+          key: pathButton.dataset.pathKey || void 0
+        }, true, true);
+        return;
+      }
+      const actionButton = event.target?.closest("[data-editor-action]");
+      if (!actionButton) {
+        return;
+      }
+      if (actionButton.dataset.editorAction === "add-event-pose") {
+        const eventId = actionButton.dataset.editorEventId || (selection?.kind === "event" || selection?.kind === "event-pose" ? selection.id ?? "" : "");
+        if (!eventId) {
+          return;
+        }
+        const nextDocument = addEventPose(atlasDocument, eventId);
+        const createdEvent = nextDocument.events.find((entry) => entry.id === eventId);
+        const createdPose = createdEvent?.positions.at(-1) ?? createdEvent?.positions[0];
+        replaceAtlasDocument(nextDocument, true, createdPose ? { kind: "event-pose", id: eventId, key: createdPose.objectId } : { kind: "event", id: eventId });
+        return;
+      }
+    }
     function handleInspectorInput() {
       applyInspectorState(false);
     }
@@ -8509,6 +9310,12 @@
           return;
         case "viewpoint":
           replaceAtlasDocument(buildViewpointDocumentFromInspector(selection.id ?? ""), commitHistory, selection, false);
+          return;
+        case "event":
+          replaceAtlasDocument(buildEventDocumentFromInspector(selection.id ?? ""), commitHistory, selection, false);
+          return;
+        case "event-pose":
+          replaceAtlasDocument(buildEventPoseDocumentFromInspector(selection.id ?? "", selection.key ?? ""), commitHistory, selection, false);
           return;
         case "annotation":
           replaceAtlasDocument(buildAnnotationDocumentFromInspector(selection.id ?? ""), commitHistory, selection, false);
@@ -8578,6 +9385,7 @@
         kind,
         objectId,
         pointerId: event.pointerId,
+        path: selection ? { ...selection } : { kind: "object", id: objectId },
         startedFrom: createHistoryEntry(),
         changed: false,
         orbitRadiusContext: kind === "orbit-radius" && details ? createOrbitRadiusDragContext(atlasDocument, viewer.getScene(), details) : null
@@ -8586,7 +9394,7 @@
       event.preventDefault();
     }
     function handleWindowPointerMove(event) {
-      if (!dragState || dragState.pointerId !== event.pointerId || selection?.kind !== "object" || selection.id !== dragState.objectId) {
+      if (!dragState || dragState.pointerId !== event.pointerId || !selection || selectionKey(selection) !== selectionKey(dragState.path)) {
         return;
       }
       const details = viewer.getObjectDetails(dragState.objectId);
@@ -8598,27 +9406,27 @@
       switch (dragState.kind) {
         case "orbit-phase":
           if (details.object.placement?.mode === "orbit" && details.orbit) {
-            nextDocument = updateOrbitPhase(atlasDocument, dragState.objectId, details, pointer);
+            nextDocument = updateOrbitPhase(atlasDocument, dragState.path, dragState.objectId, details, pointer);
           }
           break;
         case "orbit-radius":
           if (details.object.placement?.mode === "orbit" && details.orbit) {
-            nextDocument = updateOrbitRadius(atlasDocument, dragState.objectId, details, pointer, dragState.orbitRadiusContext ?? null);
+            nextDocument = updateOrbitRadius(atlasDocument, dragState.path, dragState.objectId, details, pointer, dragState.orbitRadiusContext ?? null);
           }
           break;
         case "at-reference":
           if (details.object.placement?.mode === "at") {
-            nextDocument = updateAtReference(atlasDocument, dragState.objectId, viewer.getScene(), pointer);
+            nextDocument = updateAtReference(atlasDocument, dragState.path, dragState.objectId, viewer.getScene(), pointer);
           }
           break;
         case "surface-target":
           if (details.object.placement?.mode === "surface") {
-            nextDocument = updateSurfaceTarget(atlasDocument, dragState.objectId, viewer.getScene(), pointer);
+            nextDocument = updateSurfaceTarget(atlasDocument, dragState.path, dragState.objectId, viewer.getScene(), pointer);
           }
           break;
         case "free-distance":
           if (details.object.placement?.mode === "free") {
-            nextDocument = updateFreeDistance(atlasDocument, dragState.objectId, viewer.getScene(), details, pointer);
+            nextDocument = updateFreeDistance(atlasDocument, dragState.path, dragState.objectId, viewer.getScene(), details, pointer);
           }
           break;
       }
@@ -8650,7 +9458,7 @@
       }
       history.push(dragState.startedFrom);
       future.length = 0;
-      canonicalSource = formatDocument(atlasDocument, { schema: "2.0" });
+      canonicalSource = formatAtlasSource(atlasDocument);
       sourceText = canonicalSource;
       dragState = null;
       renderAll();
@@ -8753,10 +9561,12 @@
           guides: readCheckbox(form, "layer-guides"),
           "orbits-back": readCheckbox(form, "layer-orbits-back"),
           "orbits-front": readCheckbox(form, "layer-orbits-front"),
+          events: readCheckbox(form, "layer-events"),
           objects: readCheckbox(form, "layer-objects"),
           labels: readCheckbox(form, "layer-labels"),
           metadata: readCheckbox(form, "layer-metadata")
         },
+        events: splitTokens(readOptionalTextInput(form, "viewpoint-events")),
         filter: {
           query: readOptionalTextInput(form, "filter-query"),
           objectTypes: parseObjectTypes(readOptionalTextInput(form, "filter-object-types")),
@@ -8767,6 +9577,66 @@
       nextDocument.system.viewpoints = nextDocument.system.viewpoints.filter((viewpoint) => viewpoint.id !== current.id).concat(replacement).sort((left, right) => left.id.localeCompare(right.id));
       if (current.id !== replacement.id) {
         selection = { kind: "viewpoint", id: replacement.id };
+      }
+      return nextDocument;
+    }
+    function buildEventDocumentFromInspector(currentId) {
+      const nextDocument = cloneAtlasDocument(atlasDocument);
+      const form = inspector?.querySelector("form[data-editor-form='event']");
+      const current = nextDocument.events.find((entry) => entry.id === currentId);
+      if (!form || !current) {
+        return nextDocument;
+      }
+      const nextId = readTextInput(form, "event-id") || current.id;
+      const replacement = {
+        ...current,
+        id: nextId,
+        kind: readTextInput(form, "event-kind"),
+        label: readTextInput(form, "event-label") || current.label,
+        summary: readOptionalTextInput(form, "event-summary"),
+        targetObjectId: readOptionalTextInput(form, "event-target"),
+        participantObjectIds: splitTokens(readOptionalTextInput(form, "event-participants")),
+        timing: readOptionalTextInput(form, "event-timing"),
+        visibility: readOptionalTextInput(form, "event-visibility"),
+        tags: splitTokens(readOptionalTextInput(form, "event-tags")),
+        color: readOptionalTextInput(form, "event-color"),
+        hidden: readCheckbox(form, "event-hidden")
+      };
+      nextDocument.events = nextDocument.events.filter((entry) => entry.id !== current.id).concat(replacement).sort(compareEvents);
+      syncEventViewpointReferences(nextDocument, current.id, replacement.id, splitTokens(readOptionalTextInput(form, "event-viewpoints")));
+      if (current.id !== replacement.id) {
+        selection = { kind: "event", id: replacement.id };
+      }
+      return nextDocument;
+    }
+    function buildEventPoseDocumentFromInspector(eventId, objectId) {
+      const nextDocument = cloneAtlasDocument(atlasDocument);
+      const form = inspector?.querySelector("form[data-editor-form='event-pose']");
+      const eventEntry = nextDocument.events.find((entry) => entry.id === eventId);
+      const currentPose = eventEntry?.positions.find((entry) => entry.objectId === objectId);
+      if (!form || !eventEntry || !currentPose) {
+        return nextDocument;
+      }
+      const nextObjectId = readTextInput(form, "pose-object-id") || currentPose.objectId;
+      const replacement = {
+        objectId: nextObjectId,
+        placement: buildPlacementFromPoseForm(form, currentPose)
+      };
+      const inner = parseOptionalUnit(readOptionalTextInput(form, "prop-inner"));
+      const outer = parseOptionalUnit(readOptionalTextInput(form, "prop-outer"));
+      if (inner) {
+        replacement.inner = inner;
+      }
+      if (outer) {
+        replacement.outer = outer;
+      }
+      eventEntry.positions = eventEntry.positions.filter((entry) => entry.objectId !== currentPose.objectId).concat(replacement).sort(compareEventPoses);
+      if (eventEntry.targetObjectId !== replacement.objectId && !eventEntry.participantObjectIds.includes(replacement.objectId)) {
+        eventEntry.participantObjectIds.push(replacement.objectId);
+        eventEntry.participantObjectIds.sort((left, right) => left.localeCompare(right));
+      }
+      if (currentPose.objectId !== replacement.objectId) {
+        selection = { kind: "event-pose", id: eventId, key: replacement.objectId };
       }
       return nextDocument;
     }
@@ -8962,7 +9832,7 @@
       const atlasDocument2 = cloneAtlasDocument(options.atlasDocument);
       return {
         atlasDocument: atlasDocument2,
-        source: formatDocument(atlasDocument2, { schema: "2.0" }),
+        source: formatAtlasSource(atlasDocument2),
         diagnostics: collectDocumentDiagnostics(atlasDocument2)
       };
     }
@@ -8972,7 +9842,7 @@
         const atlasDocument2 = loaded.value.atlasDocument ?? upgradeDocumentToV2(loaded.value.document);
         return {
           atlasDocument: atlasDocument2,
-          source: formatDocument(atlasDocument2, { schema: "2.0" }),
+          source: formatAtlasSource(atlasDocument2),
           diagnostics: mergeDiagnostics(resolveAtlasDiagnostics(atlasDocument2, loaded.diagnostics), collectDocumentDiagnostics(atlasDocument2))
         };
       }
@@ -8980,9 +9850,12 @@
     const atlasDocument = createEmptyAtlasDocument("WorldOrbit");
     return {
       atlasDocument,
-      source: formatDocument(atlasDocument, { schema: "2.0" }),
+      source: formatAtlasSource(atlasDocument),
       diagnostics: collectDocumentDiagnostics(atlasDocument)
     };
+  }
+  function formatAtlasSource(document2) {
+    return formatDocument(document2, { schema: document2.version });
   }
   function buildEditorMarkup() {
     const previewOpen = shouldPreviewSectionBeOpenByDefault();
@@ -9098,6 +9971,12 @@
     const badge = bucket && (bucket.errors > 0 || bucket.warnings > 0) ? `<span class="wo-editor-outline-badge${bucket.errors > 0 ? " is-error" : " is-warning"}">${bucket.errors > 0 ? bucket.errors : bucket.warnings}</span>` : "";
     return `<button type="button" class="wo-editor-outline-item${key === activeKey ? " is-active" : ""}" data-path-kind="${escapeHtml3(path.kind)}"${path.id ? ` data-path-id="${escapeHtml3(path.id)}"` : ""}${path.key ? ` data-path-key="${escapeHtml3(path.key)}"` : ""}><span>${escapeHtml3(label)}</span>${badge}</button>`;
   }
+  function renderEventOutlineItems(eventEntry, activeKey, diagnosticBuckets) {
+    return `<div class="wo-editor-outline-group">
+    ${renderOutlineButton({ kind: "event", id: eventEntry.id }, eventEntry.label || eventEntry.id, activeKey, diagnosticBuckets)}
+    ${eventEntry.positions.length > 0 ? `<div class="wo-editor-outline-children">${[...eventEntry.positions].sort(compareEventPoses).map((pose) => renderOutlineButton({ kind: "event-pose", id: eventEntry.id, key: pose.objectId }, pose.objectId, activeKey, diagnosticBuckets)).join("")}</div>` : ""}
+  </div>`;
+  }
   function renderSystemInspector(formState) {
     return `<form class="wo-editor-form" data-editor-form="system">
     <h2>System</h2>
@@ -9164,6 +10043,7 @@
         ${renderCheckboxField("Guides", "layer-guides", viewpoint.layers.guides !== false)}
         ${renderCheckboxField("Orbits back", "layer-orbits-back", viewpoint.layers["orbits-back"] !== false)}
         ${renderCheckboxField("Orbits front", "layer-orbits-front", viewpoint.layers["orbits-front"] !== false)}
+        ${renderCheckboxField("Events", "layer-events", viewpoint.layers.events !== false)}
         ${renderCheckboxField("Objects", "layer-objects", viewpoint.layers.objects !== false)}
         ${renderCheckboxField("Labels", "layer-labels", viewpoint.layers.labels !== false)}
         ${renderCheckboxField("Metadata", "layer-metadata", viewpoint.layers.metadata !== false)}
@@ -9171,7 +10051,70 @@
     ${renderInspectorSection("viewpoint", "filter", "Filter", `${renderTextField("Filter query", "filter-query", viewpoint.filter?.query ?? "")}
       ${renderTextField("Filter object types", "filter-object-types", viewpoint.filter?.objectTypes.join(" ") ?? "")}
       ${renderTextField("Filter tags", "filter-tags", viewpoint.filter?.tags.join(" ") ?? "")}
-      ${renderTextField("Filter groups", "filter-groups", viewpoint.filter?.groupIds.join(" ") ?? "")}`)}
+      ${renderTextField("Filter groups", "filter-groups", viewpoint.filter?.groupIds.join(" ") ?? "")}
+      ${renderTextField("Events", "viewpoint-events", viewpoint.events.join(" "))}`)}
+  </form>`;
+  }
+  function renderEventInspector(formState, id) {
+    const eventEntry = formState.events.find((entry) => entry.id === id);
+    if (!eventEntry) {
+      return `<p class="wo-editor-empty">Event not found.</p>`;
+    }
+    const linkedViewpoints = formState.viewpoints.filter((viewpoint) => viewpoint.events.includes(eventEntry.id)).map((viewpoint) => viewpoint.id).join(" ");
+    return `<form class="wo-editor-form" data-editor-form="event">
+    <h2>Event</h2>
+    ${renderInspectorSection("event", "basics", "Basics", `${renderTextField("ID", "event-id", eventEntry.id)}
+      ${renderTextField("Kind", "event-kind", eventEntry.kind)}
+      ${renderTextField("Label", "event-label", eventEntry.label)}
+      ${renderTextAreaField("Summary", "event-summary", eventEntry.summary ?? "")}
+      ${renderTextField("Target object", "event-target", eventEntry.targetObjectId ?? "")}
+      ${renderTextField("Participants", "event-participants", eventEntry.participantObjectIds.join(" "))}
+      ${renderTextField("Timing", "event-timing", eventEntry.timing ?? "")}
+      ${renderTextField("Visibility", "event-visibility", eventEntry.visibility ?? "")}
+      ${renderTextField("Tags", "event-tags", eventEntry.tags.join(" "))}
+      ${renderTextField("Color", "event-color", eventEntry.color ?? "")}
+      ${renderCheckboxField("Hidden", "event-hidden", eventEntry.hidden === true)}`, true)}
+    ${renderInspectorSection("event", "viewpoints", "Viewpoints", `${renderTextField("Viewpoints", "event-viewpoints", linkedViewpoints)}`)}
+    ${renderInspectorSection("event", "positions", "Positions", `${eventEntry.positions.length > 0 ? `<div class="wo-editor-inline-list">${eventEntry.positions.map((pose) => renderOutlineButton({ kind: "event-pose", id: eventEntry.id, key: pose.objectId }, pose.objectId, null, /* @__PURE__ */ new Map())).join("")}</div>` : `<p class="wo-editor-empty">No event poses yet.</p>`}
+      <div class="wo-editor-inline-actions">
+        <button type="button" data-editor-action="add-event-pose" data-editor-event-id="${escapeHtml3(eventEntry.id)}">Add pose</button>
+      </div>`)}
+  </form>`;
+  }
+  function renderEventPoseInspector(formState, eventId, objectId) {
+    const eventEntry = formState.events.find((entry) => entry.id === eventId);
+    const pose = eventEntry?.positions.find((entry) => entry.objectId === objectId);
+    if (!eventEntry || !pose) {
+      return `<p class="wo-editor-empty">Event pose not found.</p>`;
+    }
+    const placementMode = pose.placement?.mode ?? "";
+    const placementTarget = pose.placement?.mode === "orbit" || pose.placement?.mode === "surface" || pose.placement?.mode === "at" ? pose.placement.target : "";
+    const freeValue = pose.placement?.mode === "free" ? pose.placement.distance ? formatUnitValue3(pose.placement.distance) : pose.placement.descriptor ?? "" : "";
+    return `<form class="wo-editor-form" data-editor-form="event-pose">
+    <h2>Event Pose</h2>
+    <p class="wo-editor-inline-note">Event <strong>${escapeHtml3(eventEntry.label || eventEntry.id)}</strong></p>
+    ${renderInspectorSection("event-pose", "identity", "Identity", `${renderTextField("Object", "pose-object-id", pose.objectId)}
+      <div class="wo-editor-inline-actions">
+        <button type="button" data-path-kind="event" data-path-id="${escapeHtml3(eventEntry.id)}">Select event</button>
+      </div>`, true)}
+    ${renderInspectorSection("event-pose", "placement", "Placement", `${renderSelectField("Placement mode", "placement-mode", [
+      ["", "None"],
+      ["orbit", "Orbit"],
+      ["at", "At"],
+      ["surface", "Surface"],
+      ["free", "Free"]
+    ], placementMode)}
+      ${renderTextField("Placement target", "placement-target", placementTarget)}
+      ${renderTextField("Free value", "placement-free", freeValue)}
+      ${renderTextField("Distance", "placement-distance", pose.placement?.mode === "orbit" && pose.placement.distance ? formatUnitValue3(pose.placement.distance) : "")}
+      ${renderTextField("Semi-major", "placement-semiMajor", pose.placement?.mode === "orbit" && pose.placement.semiMajor ? formatUnitValue3(pose.placement.semiMajor) : "")}
+      ${renderTextField("Eccentricity", "placement-eccentricity", pose.placement?.mode === "orbit" && pose.placement.eccentricity !== void 0 ? String(pose.placement.eccentricity) : "")}
+      ${renderTextField("Period", "placement-period", pose.placement?.mode === "orbit" && pose.placement.period ? formatUnitValue3(pose.placement.period) : "")}
+      ${renderTextField("Angle", "placement-angle", pose.placement?.mode === "orbit" && pose.placement.angle ? formatUnitValue3(pose.placement.angle) : "")}
+      ${renderTextField("Inclination", "placement-inclination", pose.placement?.mode === "orbit" && pose.placement.inclination ? formatUnitValue3(pose.placement.inclination) : "")}
+      ${renderTextField("Phase", "placement-phase", pose.placement?.mode === "orbit" && pose.placement.phase ? formatUnitValue3(pose.placement.phase) : "")}
+      ${renderTextField("Inner", "prop-inner", pose.inner ? formatUnitValue3(pose.inner) : "")}
+      ${renderTextField("Outer", "prop-outer", pose.outer ? formatUnitValue3(pose.outer) : "")}`, true)}
   </form>`;
   }
   function renderAnnotationInspector(formState, id) {
@@ -9276,13 +10219,19 @@
     return form.elements.namedItem(name)?.checked ?? false;
   }
   function buildPlacementFromForm(form, current) {
+    return buildPlacementFromValues(form, current.placement, current.id);
+  }
+  function buildPlacementFromPoseForm(form, current) {
+    return buildPlacementFromValues(form, current.placement, current.objectId);
+  }
+  function buildPlacementFromValues(form, currentPlacement, fallbackTarget) {
     const mode = readTextInput(form, "placement-mode");
     const target = readOptionalTextInput(form, "placement-target");
     switch (mode) {
       case "orbit":
         return {
           mode,
-          target: target ?? (current.placement?.mode === "orbit" ? current.placement.target : current.id),
+          target: target ?? (currentPlacement?.mode === "orbit" ? currentPlacement.target : fallbackTarget),
           distance: parseOptionalUnit(readOptionalTextInput(form, "placement-distance")),
           semiMajor: parseOptionalUnit(readOptionalTextInput(form, "placement-semiMajor")),
           eccentricity: parseNullableNumber(readOptionalTextInput(form, "placement-eccentricity")) ?? void 0,
@@ -9294,13 +10243,13 @@
       case "at":
         return {
           mode,
-          target: target ?? current.id,
-          reference: parseAtReferenceString(target ?? current.id)
+          target: target ?? fallbackTarget,
+          reference: parseAtReferenceString(target ?? fallbackTarget)
         };
       case "surface":
         return {
           mode,
-          target: target ?? current.id
+          target: target ?? fallbackTarget
         };
       case "free": {
         const freeValue = readOptionalTextInput(form, "placement-free");
@@ -9431,9 +10380,48 @@
         annotation.sourceObjectId = toId;
       }
     }
+    for (const eventEntry of document2.events) {
+      if (eventEntry.targetObjectId === fromId) {
+        eventEntry.targetObjectId = toId;
+      }
+      eventEntry.participantObjectIds = eventEntry.participantObjectIds.map((entry) => entry === fromId ? toId : entry);
+      for (const pose of eventEntry.positions) {
+        if (pose.objectId === fromId) {
+          pose.objectId = toId;
+        }
+        if (pose.placement?.mode === "orbit" && pose.placement.target === fromId) {
+          pose.placement.target = toId;
+        }
+        if (pose.placement?.mode === "surface" && pose.placement.target === fromId) {
+          pose.placement.target = toId;
+        }
+        if (pose.placement?.mode === "at") {
+          const reference = pose.placement.reference;
+          if (reference.kind === "anchor" && reference.objectId === fromId) {
+            reference.objectId = toId;
+          }
+          if (reference.kind === "lagrange") {
+            if (reference.primary === fromId) {
+              reference.primary = toId;
+            }
+            if (reference.secondary === fromId) {
+              reference.secondary = toId;
+            }
+          }
+          pose.placement.target = formatAtReference2(reference);
+        }
+      }
+      eventEntry.positions.sort(compareEventPoses);
+    }
   }
   function removeSelectedNode(document2, selection) {
     const next = removeAtlasDocumentNode(document2, selection);
+    if (selection.kind === "event" && selection.id) {
+      for (const viewpoint of next.system?.viewpoints ?? []) {
+        viewpoint.events = viewpoint.events.filter((eventId) => eventId !== selection.id);
+      }
+      return next;
+    }
     if (selection.kind !== "object" || !selection.id) {
       return next;
     }
@@ -9468,9 +10456,45 @@
         annotation.sourceObjectId = null;
       }
     }
+    for (const eventEntry of next.events) {
+      if (eventEntry.targetObjectId === selection.id) {
+        eventEntry.targetObjectId = null;
+      }
+      eventEntry.participantObjectIds = eventEntry.participantObjectIds.filter((entry) => entry !== selection.id);
+      eventEntry.positions = eventEntry.positions.filter((entry) => entry.objectId !== selection.id);
+      for (const pose of eventEntry.positions) {
+        if (pose.placement?.mode === "orbit" && pose.placement.target === selection.id) {
+          pose.placement = null;
+        }
+        if (pose.placement?.mode === "surface" && pose.placement.target === selection.id) {
+          pose.placement = null;
+        }
+        if (pose.placement?.mode === "at") {
+          const reference = pose.placement.reference;
+          const touchesSelection = reference.kind === "anchor" && reference.objectId === selection.id || reference.kind === "lagrange" && (reference.primary === selection.id || reference.secondary === selection.id);
+          if (touchesSelection) {
+            pose.placement = null;
+          }
+        }
+      }
+    }
     return next;
   }
-  function updateOrbitPhase(document2, objectId, details, pointer) {
+  function findEditablePlacementOwner(document2, path, objectId) {
+    if (path.kind === "event-pose" && path.id && path.key) {
+      const pose = findEventPose2(document2, path.id, path.key);
+      if (pose?.placement) {
+        return { placement: pose.placement };
+      }
+      return null;
+    }
+    const object = findObject2(document2, objectId);
+    if (object?.placement) {
+      return { placement: object.placement };
+    }
+    return null;
+  }
+  function updateOrbitPhase(document2, path, objectId, details, pointer) {
     const orbit = details.orbit;
     if (!orbit || details.object.placement?.mode !== "orbit") {
       return document2;
@@ -9481,17 +10505,17 @@
     const radians = Math.atan2((unrotated.y - orbit.cy) / Math.max(ry, 1), (unrotated.x - orbit.cx) / Math.max(rx, 1));
     const phaseDeg = normalizeDegrees(radians * 180 / Math.PI);
     const next = cloneAtlasDocument(document2);
-    const object = next.objects.find((entry) => entry.id === objectId);
-    if (!object || object.placement?.mode !== "orbit") {
+    const placementOwner = findEditablePlacementOwner(next, path, objectId);
+    if (!placementOwner || placementOwner.placement.mode !== "orbit") {
       return document2;
     }
-    object.placement.phase = {
+    placementOwner.placement.phase = {
       value: roundNumber(phaseDeg, 2),
       unit: "deg"
     };
     return next;
   }
-  function updateOrbitRadius(document2, objectId, details, pointer, dragContext) {
+  function updateOrbitRadius(document2, path, objectId, details, pointer, dragContext) {
     const orbit = details.orbit;
     if (!orbit || details.object.placement?.mode !== "orbit" || !dragContext) {
       return document2;
@@ -9501,47 +10525,47 @@
     const nextBaseRadius = Math.max(nextDisplayedRadius - dragContext.radiusOffsetPx, dragContext.innerPx);
     const nextMetric = orbitRadiusPxToMetric(nextBaseRadius, dragContext.innerPx, dragContext.stepPx);
     const next = cloneAtlasDocument(document2);
-    const object = next.objects.find((entry) => entry.id === objectId);
-    if (!object || object.placement?.mode !== "orbit") {
+    const placementOwner = findEditablePlacementOwner(next, path, objectId);
+    if (!placementOwner || placementOwner.placement.mode !== "orbit") {
       return document2;
     }
-    const currentValue = object.placement.semiMajor ?? object.placement.distance ?? {
+    const currentValue = placementOwner.placement.semiMajor ?? placementOwner.placement.distance ?? {
       value: 1,
       unit: "au"
     };
     const scaled = distanceMetricToUnitValue(Math.max(nextMetric, 0), dragContext.preferredUnit ?? currentValue.unit);
-    if (object.placement.semiMajor) {
-      object.placement.semiMajor = scaled;
+    if (placementOwner.placement.semiMajor) {
+      placementOwner.placement.semiMajor = scaled;
     } else {
-      object.placement.distance = scaled;
+      placementOwner.placement.distance = scaled;
     }
     return next;
   }
-  function updateAtReference(document2, objectId, scene, pointer) {
+  function updateAtReference(document2, path, objectId, scene, pointer) {
     const candidate = findNearestAtCandidate(scene, objectId, pointer);
     if (!candidate) {
       return document2;
     }
     const next = cloneAtlasDocument(document2);
-    const object = next.objects.find((entry) => entry.id === objectId);
-    if (!object || object.placement?.mode !== "at") {
+    const placementOwner = findEditablePlacementOwner(next, path, objectId);
+    if (!placementOwner || placementOwner.placement.mode !== "at") {
       return document2;
     }
-    object.placement.reference = candidate.reference;
-    object.placement.target = formatAtReference2(candidate.reference);
+    placementOwner.placement.reference = candidate.reference;
+    placementOwner.placement.target = formatAtReference2(candidate.reference);
     return next;
   }
-  function updateSurfaceTarget(document2, objectId, scene, pointer) {
+  function updateSurfaceTarget(document2, path, objectId, scene, pointer) {
     const target = findNearestSceneObject(scene, objectId, pointer, (entry) => SURFACE_TARGET_TYPES3.has(entry.object.type));
     if (!target) {
       return document2;
     }
     const next = cloneAtlasDocument(document2);
-    const object = next.objects.find((entry) => entry.id === objectId);
-    if (!object || object.placement?.mode !== "surface") {
+    const placementOwner = findEditablePlacementOwner(next, path, objectId);
+    if (!placementOwner || placementOwner.placement.mode !== "surface") {
       return document2;
     }
-    object.placement.target = target.objectId;
+    placementOwner.placement.target = target.objectId;
     return next;
   }
   function createOrbitRadiusDragContext(document2, scene, details) {
@@ -9549,7 +10573,7 @@
       return null;
     }
     const targetId = details.object.placement.target;
-    const siblingCount = document2.objects.filter((entry) => entry.placement?.mode === "orbit" && entry.placement.target === targetId).length;
+    const siblingCount = scene.objects.filter((entry) => entry.object.placement?.mode === "orbit" && entry.object.placement.target === targetId && !entry.hidden).length;
     const spacingFactor = layoutPresetSpacingForScene(scene.layoutPreset);
     const stepPx = (siblingCount > 2 ? 54 : 64) * spacingFactor * scene.scaleModel.orbitDistanceMultiplier;
     const innerPx = details.parent.radius + 56 * spacingFactor * scene.scaleModel.orbitDistanceMultiplier;
@@ -9564,28 +10588,28 @@
       preferredUnit: currentValue?.unit ?? null
     };
   }
-  function updateFreeDistance(document2, objectId, scene, details, pointer) {
+  function updateFreeDistance(document2, path, objectId, scene, details, pointer) {
     if (details.object.placement?.mode !== "free") {
       return document2;
     }
     const railX = scene.width - scene.padding - 140;
     const offsetPx = Math.max(0, railX - pointer.x);
     const next = cloneAtlasDocument(document2);
-    const object = next.objects.find((entry) => entry.id === objectId);
-    if (!object || object.placement?.mode !== "free") {
+    const placementOwner = findEditablePlacementOwner(next, path, objectId);
+    if (!placementOwner || placementOwner.placement.mode !== "free") {
       return document2;
     }
-    const preferredUnit = normalizeFreeDistanceUnit(object.placement.distance?.unit ?? null);
+    const preferredUnit = normalizeFreeDistanceUnit(placementOwner.placement.distance?.unit ?? null);
     const metric = offsetPx / Math.max(FREE_DISTANCE_PIXEL_FACTOR * scene.scaleModel.freePlacementMultiplier, 1);
     if (metric < 0.01) {
-      object.placement.distance = void 0;
-      if (!object.placement.descriptor) {
-        delete object.placement.descriptor;
+      placementOwner.placement.distance = void 0;
+      if (!placementOwner.placement.descriptor) {
+        delete placementOwner.placement.descriptor;
       }
       return next;
     }
-    object.placement.distance = distanceMetricToUnitValue(metric, preferredUnit);
-    delete object.placement.descriptor;
+    placementOwner.placement.distance = distanceMetricToUnitValue(metric, preferredUnit);
+    delete placementOwner.placement.descriptor;
     return next;
   }
   function findNearestSceneObject(scene, selectedObjectId, pointer, predicate = () => true) {
@@ -9857,9 +10881,60 @@
             return ["viewpoint-zoom"];
           case "rotationDeg":
             return ["viewpoint-rotation"];
+          case "events":
+            return ["viewpoint-events"];
           default:
             return [];
         }
+      case "event":
+        switch (field) {
+          case "id":
+            return ["event-id"];
+          case "kind":
+            return ["event-kind"];
+          case "label":
+            return ["event-label"];
+          case "summary":
+            return ["event-summary"];
+          case "targetObjectId":
+          case "target":
+            return ["event-target"];
+          case "participantObjectIds":
+          case "participants":
+            return ["event-participants"];
+          case "timing":
+            return ["event-timing"];
+          case "visibility":
+            return ["event-visibility"];
+          case "tags":
+            return ["event-tags"];
+          case "color":
+            return ["event-color"];
+          case "hidden":
+            return ["event-hidden"];
+          default:
+            return [];
+        }
+      case "event-pose":
+        if (field === "objectId") {
+          return ["pose-object-id"];
+        }
+        if (field === "placement") {
+          return ["placement-mode"];
+        }
+        if (field === "reference" || field === "target") {
+          return ["placement-target"];
+        }
+        if (field === "descriptor") {
+          return ["placement-free"];
+        }
+        if (PLACEMENT_DIAGNOSTIC_FIELDS.has(field)) {
+          return [`placement-${field}`];
+        }
+        if (field === "inner" || field === "outer") {
+          return [`prop-${field}`];
+        }
+        return [];
       case "annotation":
         switch (field) {
           case "id":
@@ -9945,6 +11020,10 @@
         return `Metadata: ${path.key ?? ""}`;
       case "group":
         return `Group: ${path.id ?? ""}`;
+      case "event":
+        return `Event: ${path.id ?? ""}`;
+      case "event-pose":
+        return `Event Pose: ${path.id ?? ""} / ${path.key ?? ""}`;
       case "object":
         return `Object: ${path.id ?? ""}`;
       case "viewpoint":
@@ -9956,10 +11035,69 @@
     }
   }
   function selectionKey(path) {
-    return path ? `${path.kind}:${path.id ?? path.key ?? ""}` : null;
+    return path ? `${path.kind}:${path.id ?? ""}:${path.key ?? ""}` : null;
+  }
+  function selectionEventId(path) {
+    if (!path) {
+      return null;
+    }
+    return path.kind === "event" || path.kind === "event-pose" ? path.id ?? null : null;
   }
   function compareObjects2(left, right) {
     return left.id.localeCompare(right.id);
+  }
+  function compareEvents(left, right) {
+    return left.id.localeCompare(right.id);
+  }
+  function compareEventPoses(left, right) {
+    return left.objectId.localeCompare(right.objectId);
+  }
+  function findEvent2(document2, eventId) {
+    return document2.events.find((entry) => entry.id === eventId) ?? null;
+  }
+  function findEventPose2(document2, eventId, objectId) {
+    return findEvent2(document2, eventId)?.positions.find((entry) => entry.objectId === objectId) ?? null;
+  }
+  function findObject2(document2, objectId) {
+    return document2.objects.find((entry) => entry.id === objectId) ?? null;
+  }
+  function addEventPose(document2, eventId) {
+    const next = cloneAtlasDocument(document2);
+    const eventEntry = next.events.find((entry) => entry.id === eventId);
+    if (!eventEntry) {
+      return document2;
+    }
+    const baseObject = next.objects.find((object) => !eventEntry.positions.some((pose) => pose.objectId === object.id)) ?? next.objects[0];
+    if (!baseObject) {
+      return document2;
+    }
+    if (eventEntry.targetObjectId !== baseObject.id && !eventEntry.participantObjectIds.includes(baseObject.id)) {
+      eventEntry.participantObjectIds.push(baseObject.id);
+      eventEntry.participantObjectIds.sort((left, right) => left.localeCompare(right));
+    }
+    eventEntry.positions.push(createEventPoseFromObject(baseObject));
+    eventEntry.positions.sort(compareEventPoses);
+    return next;
+  }
+  function createEventPoseFromObject(object) {
+    return {
+      objectId: object.id,
+      placement: object.placement ? structuredClone(object.placement) : null,
+      inner: readUnitValue(object.properties.inner),
+      outer: readUnitValue(object.properties.outer)
+    };
+  }
+  function syncEventViewpointReferences(document2, previousEventId, nextEventId, viewpointIds) {
+    const desired = new Set(viewpointIds);
+    for (const viewpoint of document2.system?.viewpoints ?? []) {
+      const currentIds = new Set(viewpoint.events);
+      currentIds.delete(previousEventId);
+      currentIds.delete(nextEventId);
+      if (desired.has(viewpoint.id)) {
+        currentIds.add(nextEventId);
+      }
+      viewpoint.events = [...currentIds].sort((left, right) => left.localeCompare(right));
+    }
   }
   function createUniqueId(prefix, existing) {
     const safePrefix = prefix.trim() || "item";
@@ -9988,6 +11126,9 @@
   }
   function readUnitProperty(value) {
     return value && typeof value === "object" && "value" in value ? formatUnitValue3(value) : "";
+  }
+  function readUnitValue(value) {
+    return value && typeof value === "object" && "value" in value ? value : void 0;
   }
   function readNumberProperty(value) {
     return typeof value === "number" ? String(value) : "";
@@ -10294,6 +11435,12 @@
     .wo-editor-overlay-diagnostic-warning { border: 1px solid rgba(240, 180, 100, 0.24); }
     .wo-editor-outline { display: grid; gap: 14px; }
     .wo-editor-outline-section { display: grid; gap: 8px; }
+    .wo-editor-outline-group { display: grid; gap: 6px; }
+    .wo-editor-outline-children {
+      display: grid;
+      gap: 6px;
+      padding-left: 16px;
+    }
     .wo-editor-outline-section h3 {
       margin: 0;
       color: rgba(237,246,255,0.68);
@@ -10332,6 +11479,27 @@
     .wo-editor-outline-badge.is-error {
       background: rgba(255, 120, 120, 0.18);
       color: #ffb2b2;
+    }
+    .wo-editor-inline-list { display: grid; gap: 8px; }
+    .wo-editor-inline-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .wo-editor-inline-actions button {
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+      color: #edf6ff;
+      cursor: pointer;
+      font: 600 12px/1.2 "Segoe UI Variable", "Segoe UI", sans-serif;
+      padding: 8px 12px;
+    }
+    .wo-editor-inline-note {
+      margin: 0 0 12px;
+      color: rgba(237,246,255,0.72);
+      font: 500 12px/1.5 "Segoe UI Variable", "Segoe UI", sans-serif;
     }
     .wo-editor-diagnostics { display: grid; gap: 10px; }
     .wo-editor-diagnostic {

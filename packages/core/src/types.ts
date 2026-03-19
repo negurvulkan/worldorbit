@@ -113,6 +113,7 @@ export interface WorldOrbitDocument {
   system: WorldOrbitSystem | null;
   groups: WorldOrbitGroup[];
   relations: WorldOrbitRelation[];
+  events: WorldOrbitEvent[];
   objects: WorldOrbitObject[];
 }
 
@@ -124,6 +125,7 @@ export interface WorldOrbitAtlasDocument {
   system: WorldOrbitAtlasSystem | null;
   groups: WorldOrbitGroup[];
   relations: WorldOrbitRelation[];
+  events: WorldOrbitEvent[];
   objects: WorldOrbitObject[];
   diagnostics: WorldOrbitDiagnostic[];
 }
@@ -136,6 +138,7 @@ export interface WorldOrbitDraftDocument {
   system: WorldOrbitAtlasSystem | null;
   groups: WorldOrbitGroup[];
   relations: WorldOrbitRelation[];
+  events: WorldOrbitEvent[];
   objects: WorldOrbitObject[];
   diagnostics: WorldOrbitDiagnostic[];
 }
@@ -194,6 +197,28 @@ export interface WorldOrbitRelation {
   tags: string[];
   color: string | null;
   hidden: boolean;
+}
+
+export interface WorldOrbitEvent {
+  id: string;
+  kind: string;
+  label: string;
+  summary: string | null;
+  targetObjectId: string | null;
+  participantObjectIds: string[];
+  timing: string | null;
+  visibility: string | null;
+  tags: string[];
+  color: string | null;
+  hidden: boolean;
+  positions: WorldOrbitEventPose[];
+}
+
+export interface WorldOrbitEventPose {
+  objectId: string;
+  placement: Placement | null;
+  inner?: UnitValue;
+  outer?: UnitValue;
 }
 
 export interface WorldOrbitResonance {
@@ -305,6 +330,7 @@ export interface SceneRenderOptions {
   preset?: RenderPresetName;
   projection?: "document" | ViewProjection;
   scaleModel?: Partial<RenderScaleModel>;
+  activeEventId?: string | null;
 }
 
 export interface RenderBounds {
@@ -394,12 +420,25 @@ export interface RenderSceneLabel {
   hidden: boolean;
 }
 
+export interface RenderSceneEvent {
+  renderId: string;
+  eventId: string;
+  event: WorldOrbitEvent;
+  objectIds: string[];
+  participantIds: string[];
+  targetObjectId: string | null;
+  x: number;
+  y: number;
+  hidden: boolean;
+}
+
 export type SceneLayerId =
   | "background"
   | "guides"
   | "orbits-back"
   | "orbits-front"
   | "relations"
+  | "events"
   | "objects"
   | "labels"
   | "metadata";
@@ -417,6 +456,7 @@ export interface RenderSceneViewpoint {
   summary: string;
   objectId: string | null;
   selectedObjectId: string | null;
+  eventIds: string[];
   projection: ViewProjection;
   preset: RenderPresetName | null;
   rotationDeg: number;
@@ -483,6 +523,8 @@ export interface RenderScene {
   groups: RenderSceneGroup[];
   semanticGroups: RenderSceneSemanticGroup[];
   viewpoints: RenderSceneViewpoint[];
+  events: RenderSceneEvent[];
+  activeEventId: string | null;
   objects: RenderSceneObject[];
   orbitVisuals: RenderOrbitVisual[];
   relations: RenderSceneRelation[];
@@ -557,6 +599,7 @@ export interface WorldOrbitAtlasViewpoint {
   summary: string;
   focusObjectId: string | null;
   selectedObjectId: string | null;
+  events: string[];
   projection: ViewProjection;
   preset: RenderPresetName | null;
   zoom: number | null;
@@ -592,6 +635,8 @@ export type AtlasDocumentPathKind =
   | "defaults"
   | "metadata"
   | "group"
+  | "event"
+  | "event-pose"
   | "object"
   | "viewpoint"
   | "annotation"

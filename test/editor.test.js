@@ -68,6 +68,55 @@ object phenomenon Beacon
   kind signal
 `.trim();
 
+const eventSource = `schema 2.1
+
+system Iyath
+  title "Iyath System"
+  epoch "JY-0001.0"
+
+defaults
+  view topdown
+  preset atlas-card
+
+viewpoint eclipse
+  label "Eclipse"
+  projection topdown
+  layers background guides orbits-back events objects labels metadata
+  events naar-eclipse
+
+object star Iyath
+  mass 1sol
+
+object planet Naar
+  orbit Iyath
+  semiMajor 1au
+  phase 15deg
+
+object moon Seyra
+  orbit Naar
+  distance 384400km
+  phase 40deg
+
+event naar-eclipse
+  kind solar-eclipse
+  label "Naar Eclipse"
+  target Naar
+  participants Iyath Naar Seyra
+  timing "Local noon"
+  visibility "Naar equatorial belt"
+
+  positions
+    pose Naar
+      orbit Iyath
+      semiMajor 1au
+      phase 90deg
+
+    pose Seyra
+      orbit Naar
+      distance 384400km
+      phase 90deg
+`.trim();
+
 function installDomGlobals(window) {
   const previous = {
     window: globalThis.window,
@@ -351,6 +400,73 @@ test("editor mounts, edits atlas state, and supports undo/redo", () => {
     assert.ok(selections.length > 0);
     assert.ok(diagnosticsLog.length > 0);
   } finally {
+    restoreRects();
+    restoreGlobals();
+    dom.window.close();
+  }
+});
+
+test("editor preserves schema 2.1, supports events in the outline, and drags event poses without mutating base objects", () => {
+  const dom = new JSDOM(`<div id="editor"></div>`, {
+    pretendToBeVisual: true,
+  });
+  const restoreGlobals = installDomGlobals(dom.window);
+  const restoreRects = installFixedRects(dom.window, 1120, 680);
+  const root = dom.window.document.getElementById("editor");
+  let editor;
+
+  try {
+    editor = createWorldOrbitEditor(root, {
+      source: eventSource,
+    });
+
+    assert.equal(editor.getAtlasDocument().version, "2.1");
+    assert.ok(root.querySelector('[data-path-kind="event"][data-path-id="naar-eclipse"]'));
+    assert.ok(
+      root.querySelector('[data-path-kind="event-pose"][data-path-id="naar-eclipse"][data-path-key="Seyra"]'),
+    );
+
+    const createdEventId = editor.addEvent();
+    assert.equal(editor.getSelection()?.path?.kind, "event");
+    assert.equal(editor.getSelection()?.path?.id, createdEventId);
+    assert.match(editor.getSource(), /^schema 2\.1/m);
+
+    editor.selectPath({ kind: "event-pose", id: "naar-eclipse", key: "Seyra" });
+    assert.equal(root.querySelector('[data-editor-form="event-pose"]') !== null, true);
+
+    const originalBasePhase =
+      editor.getAtlasDocument().objects.find((object) => object.id === "Seyra")?.placement?.phase?.value ?? null;
+    const originalPosePhase =
+      editor
+        .getAtlasDocument()
+        .events.find((entry) => entry.id === "naar-eclipse")
+        ?.positions.find((pose) => pose.objectId === "Seyra")
+        ?.placement?.phase?.value ?? null;
+    assert.equal(originalBasePhase, 40);
+    assert.equal(originalPosePhase, 90);
+
+    const { handle, point } = getHandlePoint(root, "orbit-phase");
+    const naarPoint = getProjectedObjectPoint(root, "Naar");
+    dragHandleFromTo(dom.window, handle, point, {
+      x: naarPoint.x + 110,
+      y: naarPoint.y,
+    });
+
+    const updatedBasePhase =
+      editor.getAtlasDocument().objects.find((object) => object.id === "Seyra")?.placement?.phase?.value ?? null;
+    const updatedPosePhase =
+      editor
+        .getAtlasDocument()
+        .events.find((entry) => entry.id === "naar-eclipse")
+        ?.positions.find((pose) => pose.objectId === "Seyra")
+        ?.placement?.phase?.value ?? null;
+
+    assert.equal(updatedBasePhase, 40);
+    assert.notEqual(updatedPosePhase, 90);
+    assert.match(editor.getSource(), /event naar-eclipse/);
+    assert.match(editor.getSource(), /pose Seyra/);
+  } finally {
+    editor?.destroy();
     restoreRects();
     restoreGlobals();
     dom.window.close();

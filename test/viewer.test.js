@@ -132,6 +132,56 @@ object belt Outer-Belt
   distance 5au
 `.trim();
 
+const schema21EventSource = `
+schema 2.1
+
+system Iyath
+  title "Iyath System"
+  epoch "JY-0001.0"
+
+defaults
+  view topdown
+  preset atlas-card
+
+viewpoint eclipse
+  label "Eclipse View"
+  projection topdown
+  layers background guides orbits-back events objects labels metadata
+  events naar-eclipse
+
+object star Iyath
+  mass 1sol
+
+object planet Naar
+  orbit Iyath
+  semiMajor 1au
+  phase 15deg
+
+object moon Seyra
+  orbit Naar
+  distance 384400km
+  phase 40deg
+
+event naar-eclipse
+  kind solar-eclipse
+  label "Naar Eclipse"
+  target Naar
+  participants Iyath Naar Seyra
+  timing "Local noon"
+  visibility "Naar equatorial belt"
+
+  positions
+    pose Naar
+      orbit Iyath
+      semiMajor 1au
+      phase 90deg
+
+    pose Seyra
+      orbit Naar
+      distance 384400km
+      phase 90deg
+`.trim();
+
 function installDomGlobals(window) {
   const previous = {
     window: globalThis.window,
@@ -451,6 +501,51 @@ test("interactive viewer loads schema 2.1 semantic groups and relations without 
     assert.equal(viewer.getObjectDetails("Orun")?.relations.length, 0);
     assert.match(viewer.exportSvg(), /data-layer-id="relations"/);
     assert.match(viewer.exportSvg(), /data-relation-id="supply-route"/);
+
+    viewer.destroy();
+  } finally {
+    restoreGlobals();
+    dom.window.close();
+  }
+});
+
+test("interactive viewer can activate schema 2.1 events and expose related event details", () => {
+  const dom = new JSDOM(`<div id="preview"></div>`, {
+    pretendToBeVisual: true,
+  });
+  const restoreGlobals = installDomGlobals(dom.window);
+  const preview = dom.window.document.getElementById("preview");
+
+  preview.getBoundingClientRect = () => ({
+    x: 0,
+    y: 0,
+    left: 0,
+    top: 0,
+    right: 960,
+    bottom: 560,
+    width: 960,
+    height: 560,
+    toJSON() {
+      return {};
+    },
+  });
+
+  try {
+    const viewer = createInteractiveViewer(preview, {
+      source: schema21EventSource,
+      width: 960,
+      height: 560,
+    });
+
+    assert.equal(viewer.getActiveEventId(), null);
+    viewer.setActiveEvent("naar-eclipse");
+
+    const details = viewer.getObjectDetails("Seyra");
+    assert.equal(viewer.getActiveEventId(), "naar-eclipse");
+    assert.equal(viewer.getRenderOptions().activeEventId, "naar-eclipse");
+    assert.ok(details?.relatedEvents.some((eventEntry) => eventEntry.eventId === "naar-eclipse"));
+    assert.match(viewer.exportSvg(), /data-layer-id="events"/);
+    assert.match(viewer.exportSvg(), /data-event-id="naar-eclipse"/);
 
     viewer.destroy();
   } finally {

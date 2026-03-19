@@ -6,6 +6,8 @@ import type {
   WorldOrbitAtlasAnnotation,
   WorldOrbitAtlasDocument,
   WorldOrbitAtlasDocumentVersion,
+  WorldOrbitEvent,
+  WorldOrbitEventPose,
   WorldOrbitAtlasSystem,
   WorldOrbitGroup,
   WorldOrbitAtlasViewpoint,
@@ -43,6 +45,7 @@ export function createEmptyAtlasDocument(
     },
     groups: [],
     relations: [],
+    events: [],
     objects: [],
     diagnostics: [],
   };
@@ -77,6 +80,13 @@ export function listAtlasDocumentPaths(document: WorldOrbitAtlasDocument): Atlas
     paths.push({ kind: "relation", id: relation.id });
   }
 
+  for (const event of [...document.events].sort(compareIdLike)) {
+    paths.push({ kind: "event", id: event.id });
+    for (const pose of [...event.positions].sort(comparePoseObjectId)) {
+      paths.push({ kind: "event-pose", id: event.id, key: pose.objectId });
+    }
+  }
+
   for (const object of [...document.objects].sort(compareIdLike)) {
     paths.push({ kind: "object", id: object.id });
   }
@@ -97,6 +107,10 @@ export function getAtlasDocumentNode(
       return path.key ? (document.system?.atlasMetadata[path.key] ?? null) : null;
     case "group":
       return path.id ? findGroup(document, path.id) : null;
+    case "event":
+      return path.id ? findEvent(document, path.id) : null;
+    case "event-pose":
+      return path.id && path.key ? findEventPose(document, path.id, path.key) : null;
     case "object":
       return path.id ? findObject(document, path.id) : null;
     case "viewpoint":
@@ -141,6 +155,18 @@ export function upsertAtlasDocumentNode(
         throw new Error('Group updates require an "id" value.');
       }
       upsertById(next.groups, value as WorldOrbitGroup);
+      return next;
+    case "event":
+      if (!path.id) {
+        throw new Error('Event updates require an "id" value.');
+      }
+      upsertById(next.events, value as WorldOrbitEvent);
+      return next;
+    case "event-pose":
+      if (!path.id || !path.key) {
+        throw new Error('Event pose updates require an event "id" and pose "key" value.');
+      }
+      upsertEventPose(next.events, path.id, value as WorldOrbitEventPose);
       return next;
     case "object":
       if (!path.id) {
@@ -198,6 +224,19 @@ export function removeAtlasDocumentNode(
     case "group":
       if (path.id) {
         next.groups = next.groups.filter((group) => group.id !== path.id);
+      }
+      return next;
+    case "event":
+      if (path.id) {
+        next.events = next.events.filter((event) => event.id !== path.id);
+      }
+      return next;
+    case "event-pose":
+      if (path.id && path.key) {
+        const event = findEvent(next, path.id);
+        if (event) {
+          event.positions = event.positions.filter((pose) => pose.objectId !== path.key);
+        }
       }
       return next;
     case "viewpoint":
@@ -281,6 +320,23 @@ export function resolveAtlasDiagnosticPath(
     }
   }
 
+  if (diagnostic.field?.startsWith("event.")) {
+    const parts = diagnostic.field.split(".");
+    if (parts[1] && findEvent(document, parts[1])) {
+      if (parts[2] === "pose" && parts[3] && findEventPose(document, parts[1], parts[3])) {
+        return {
+          kind: "event-pose",
+          id: parts[1],
+          key: parts[3],
+        };
+      }
+      return {
+        kind: "event",
+        id: parts[1],
+      };
+    }
+  }
+
   if (diagnostic.field && diagnostic.field in ensureSystem(document).atlasMetadata) {
     return {
       kind: "metadata",
@@ -331,6 +387,21 @@ function findRelation(
   return document.relations.find((relation) => relation.id === relationId) ?? null;
 }
 
+function findEvent(
+  document: WorldOrbitAtlasDocument,
+  eventId: string,
+): WorldOrbitEvent | null {
+  return document.events.find((event) => event.id === eventId) ?? null;
+}
+
+function findEventPose(
+  document: WorldOrbitAtlasDocument,
+  eventId: string,
+  objectId: string,
+): WorldOrbitEventPose | null {
+  return findEvent(document, eventId)?.positions.find((pose) => pose.objectId === objectId) ?? null;
+}
+
 function findViewpoint(
   system: WorldOrbitAtlasSystem | null,
   viewpointId: string,
@@ -356,6 +427,33 @@ function upsertById<T extends { id: string }>(items: T[], value: T): void {
   items[index] = value;
 }
 
+function upsertEventPose(
+  events: WorldOrbitEvent[],
+  eventId: string,
+  value: WorldOrbitEventPose,
+): void {
+  const event = events.find((entry) => entry.id === eventId);
+  if (!event) {
+    throw new Error(`Unknown event "${eventId}" for pose update.`);
+  }
+
+  const index = event.positions.findIndex((entry) => entry.objectId === value.objectId);
+  if (index === -1) {
+    event.positions.push(value);
+    event.positions.sort(comparePoseObjectId);
+    return;
+  }
+
+  event.positions[index] = value;
+}
+
 function compareIdLike(left: { id: string }, right: { id: string }): number {
   return left.id.localeCompare(right.id);
+}
+
+function comparePoseObjectId(
+  left: WorldOrbitEventPose,
+  right: WorldOrbitEventPose,
+): number {
+  return left.objectId.localeCompare(right.objectId);
 }

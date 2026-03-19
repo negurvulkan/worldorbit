@@ -16,6 +16,8 @@ import type {
   WorldOrbitDraftAnnotation,
   WorldOrbitDraftDocument,
   WorldOrbitDraftDocumentVersion,
+  WorldOrbitEvent,
+  WorldOrbitEventPose,
   WorldOrbitDraftSystem,
   WorldOrbitDraftViewpoint,
   WorldOrbitFieldSchema,
@@ -66,6 +68,12 @@ interface DraftRawObject {
   location: AstSourceLocation;
 }
 
+interface DraftRawEventPose {
+  objectId: string;
+  fields: AstFieldNode[];
+  location: AstSourceLocation;
+}
+
 type ObjectBlockKind = "info" | WorldOrbitTypedBlockName;
 
 type DraftSectionState =
@@ -90,6 +98,8 @@ type DraftSectionState =
   | {
       kind: "viewpoint";
       viewpoint: WorldOrbitDraftViewpoint;
+      sourceSchemaVersion: SourceSchemaVersion;
+      diagnostics: WorldOrbitDiagnostic[];
       seenFields: Set<string>;
       inFilter: boolean;
       filterIndent: number | null;
@@ -109,6 +119,19 @@ type DraftSectionState =
       kind: "relation";
       relation: WorldOrbitRelation;
       seenFields: Set<string>;
+    }
+  | {
+      kind: "event";
+      event: WorldOrbitEvent;
+      sourceSchemaVersion: SourceSchemaVersion;
+      diagnostics: WorldOrbitDiagnostic[];
+      seenFields: Set<string>;
+      rawPoses: DraftRawEventPose[];
+      inPositions: boolean;
+      positionsIndent: number | null;
+      activePose: DraftRawEventPose | null;
+      poseIndent: number | null;
+      activePoseSeenFields: Set<string>;
     }
   | {
       kind: "object";
@@ -204,6 +227,21 @@ for (const spec of [
 }
 
 const DRAFT_OBJECT_FIELD_KEYS = new Set(DRAFT_OBJECT_FIELD_SPECS.keys());
+const EVENT_POSE_FIELD_KEYS = new Set([
+  "orbit",
+  "distance",
+  "semiMajor",
+  "eccentricity",
+  "period",
+  "angle",
+  "inclination",
+  "phase",
+  "at",
+  "surface",
+  "free",
+  "inner",
+  "outer",
+]);
 
 export function parseWorldOrbitAtlas(source: string): WorldOrbitAtlasDocument {
   return parseAtlasSource(source) as WorldOrbitAtlasDocument;
@@ -227,12 +265,15 @@ function parseAtlasSource(
   const objectNodes: DraftRawObject[] = [];
   const groups: WorldOrbitGroup[] = [];
   const relations: WorldOrbitRelation[] = [];
+  const events: WorldOrbitEvent[] = [];
+  const eventPoseNodes = new Map<string, DraftRawEventPose[]>();
   let sawDefaults = false;
   let sawAtlas = false;
   const viewpointIds = new Set<string>();
   const annotationIds = new Set<string>();
   const groupIds = new Set<string>();
   const relationIds = new Set<string>();
+  const eventIds = new Set<string>();
 
   for (let index = 0; index < lines.length; index++) {
     const rawLine = lines[index];
@@ -278,10 +319,13 @@ function parseAtlasSource(
         objectNodes,
         groups,
         relations,
+        events,
+        eventPoseNodes,
         viewpointIds,
         annotationIds,
         groupIds,
         relationIds,
+        eventIds,
         { sawDefaults, sawAtlas },
       );
 
@@ -314,6 +358,9 @@ function parseAtlasSource(
   const objects = objectNodes.map((node) =>
     normalizeDraftObject(node, sourceSchemaVersion, diagnostics),
   );
+  const normalizedEvents = events.map((event) =>
+    normalizeDraftEvent(event, eventPoseNodes.get(event.id) ?? []),
+  );
 
   const outputVersion =
     forcedOutputVersion ??
@@ -325,6 +372,7 @@ function parseAtlasSource(
     system,
     groups,
     relations,
+    events: normalizedEvents,
     objects,
     diagnostics,
   };
@@ -392,10 +440,13 @@ function startTopLevelSection(
   objectNodes: DraftRawObject[],
   groups: WorldOrbitGroup[],
   relations: WorldOrbitRelation[],
+  events: WorldOrbitEvent[],
+  eventPoseNodes: Map<string, DraftRawEventPose[]>,
   viewpointIds: Set<string>,
   annotationIds: Set<string>,
   groupIds: Set<string>,
   relationIds: Set<string>,
+  eventIds: Set<string>,
   flags: {
     sawDefaults: boolean;
     sawAtlas: boolean;
@@ -462,7 +513,7 @@ function startTopLevelSection(
           tokens[0].column,
         );
       }
-      return startViewpointSection(tokens, line, system, viewpointIds);
+      return startViewpointSection(tokens, line, system, viewpointIds, sourceSchemaVersion, diagnostics);
     case "annotation":
       if (!system) {
         throw new WorldOrbitError(
@@ -488,6 +539,14 @@ function startTopLevelSection(
         { line, column: tokens[0].column },
       );
       return startRelationSection(tokens, line, relations, relationIds);
+    case "event":
+      warnIfSchema21Feature(
+        sourceSchemaVersion,
+        diagnostics,
+        "event",
+        { line, column: tokens[0].column },
+      );
+      return startEventSection(tokens, line, events, eventPoseNodes, eventIds, sourceSchemaVersion, diagnostics);
     case "object":
       return startObjectSection(tokens, line, sourceSchemaVersion, diagnostics, objectNodes);
     default:
@@ -546,6 +605,8 @@ function startViewpointSection(
   line: number,
   system: WorldOrbitDraftSystem,
   viewpointIds: Set<string>,
+  sourceSchemaVersion: SourceSchemaVersion,
+  diagnostics: WorldOrbitDiagnostic[],
 ): DraftSectionState {
   if (tokens.length !== 2) {
     throw new WorldOrbitError(
@@ -569,6 +630,7 @@ function startViewpointSection(
     summary: "",
     focusObjectId: null,
     selectedObjectId: null,
+    events: [],
     projection: system.defaults.view,
     preset: system.defaults.preset,
     zoom: null,
@@ -583,6 +645,8 @@ function startViewpointSection(
   return {
     kind: "viewpoint",
     viewpoint,
+    sourceSchemaVersion,
+    diagnostics,
     seenFields: new Set<string>(),
     inFilter: false,
     filterIndent: null,
@@ -716,6 +780,66 @@ function startRelationSection(
   };
 }
 
+function startEventSection(
+  tokens: LineToken[],
+  line: number,
+  events: WorldOrbitEvent[],
+  eventPoseNodes: Map<string, DraftRawEventPose[]>,
+  eventIds: Set<string>,
+  sourceSchemaVersion: SourceSchemaVersion,
+  diagnostics: WorldOrbitDiagnostic[],
+): DraftSectionState {
+  if (tokens.length !== 2) {
+    throw new WorldOrbitError(
+      "Invalid event declaration",
+      line,
+      tokens[0]?.column ?? 1,
+    );
+  }
+
+  const id = normalizeIdentifier(tokens[1].value);
+  if (!id) {
+    throw new WorldOrbitError("Event id must not be empty", line, tokens[1].column);
+  }
+  if (eventIds.has(id)) {
+    throw new WorldOrbitError(`Duplicate event id "${id}"`, line, tokens[1].column);
+  }
+
+  const event: WorldOrbitEvent = {
+    id,
+    kind: "",
+    label: humanizeIdentifier(id),
+    summary: null,
+    targetObjectId: null,
+    participantObjectIds: [],
+    timing: null,
+    visibility: null,
+    tags: [],
+    color: null,
+    hidden: false,
+    positions: [],
+  };
+
+  const rawPoses: DraftRawEventPose[] = [];
+  events.push(event);
+  eventPoseNodes.set(id, rawPoses);
+  eventIds.add(id);
+
+  return {
+    kind: "event",
+    event,
+    sourceSchemaVersion,
+    diagnostics,
+    seenFields: new Set<string>(),
+    rawPoses,
+    inPositions: false,
+    positionsIndent: null,
+    activePose: null,
+    poseIndent: null,
+    activePoseSeenFields: new Set<string>(),
+  };
+}
+
 function startObjectSection(
   tokens: LineToken[],
   line: number,
@@ -802,6 +926,9 @@ function handleSectionLine(
       return;
     case "relation":
       applyRelationField(section, tokens, line);
+      return;
+    case "event":
+      applyEventField(section, indent, tokens, line);
       return;
     case "object":
       applyObjectField(section, indent, tokens, line);
@@ -982,7 +1109,19 @@ function applyViewpointField(
       );
       return;
     case "layers":
-      section.viewpoint.layers = parseLayerTokens(tokens.slice(1), line);
+      section.viewpoint.layers = parseLayerTokens(
+        tokens.slice(1),
+        line,
+        section.sourceSchemaVersion,
+        section.diagnostics,
+      );
+      return;
+    case "events":
+      warnIfSchema21Feature(section.sourceSchemaVersion, section.diagnostics, "viewpoint.events", {
+        line,
+        column: tokens[0].column,
+      });
+      section.viewpoint.events = parseTokenList(tokens.slice(1), line, "events");
       return;
     default:
       throw new WorldOrbitError(
@@ -1133,6 +1272,136 @@ function applyRelationField(
   }
 }
 
+function applyEventField(
+  section: Extract<DraftSectionState, { kind: "event" }>,
+  indent: number,
+  tokens: LineToken[],
+  line: number,
+): void {
+  if (section.activePose && indent <= (section.poseIndent ?? 0)) {
+    section.activePose = null;
+    section.poseIndent = null;
+    section.activePoseSeenFields.clear();
+  }
+
+  if (!section.activePose && section.inPositions && indent <= (section.positionsIndent ?? 0)) {
+    section.inPositions = false;
+    section.positionsIndent = null;
+  }
+
+  if (section.activePose) {
+    section.activePose.fields.push(parseEventPoseField(tokens, line, section.activePoseSeenFields));
+    return;
+  }
+
+  if (section.inPositions) {
+    if (tokens.length !== 2 || tokens[0].value.toLowerCase() !== "pose") {
+      throw new WorldOrbitError(
+        `Unknown event positions field "${tokens[0].value}"`,
+        line,
+        tokens[0]?.column ?? 1,
+      );
+    }
+
+    const objectId = tokens[1].value;
+    if (!objectId.trim()) {
+      throw new WorldOrbitError("Event pose object id must not be empty", line, tokens[1].column);
+    }
+
+    const rawPose: DraftRawEventPose = {
+      objectId,
+      fields: [],
+      location: { line, column: tokens[0].column },
+    };
+    section.rawPoses.push(rawPose);
+    section.activePose = rawPose;
+    section.poseIndent = indent;
+    section.activePoseSeenFields = new Set<string>();
+    return;
+  }
+
+  if (tokens.length === 1 && tokens[0].value.toLowerCase() === "positions") {
+    if (section.seenFields.has("positions")) {
+      throw new WorldOrbitError('Duplicate event field "positions"', line, tokens[0].column);
+    }
+    section.seenFields.add("positions");
+    section.inPositions = true;
+    section.positionsIndent = indent;
+    return;
+  }
+
+  const key = requireUniqueField(tokens, section.seenFields, line);
+
+  switch (key) {
+    case "kind":
+      section.event.kind = joinFieldValue(tokens, line);
+      return;
+    case "label":
+      section.event.label = joinFieldValue(tokens, line);
+      return;
+    case "summary":
+      section.event.summary = joinFieldValue(tokens, line);
+      return;
+    case "target":
+      section.event.targetObjectId = joinFieldValue(tokens, line);
+      return;
+    case "participants":
+      section.event.participantObjectIds = parseTokenList(tokens.slice(1), line, "participants");
+      return;
+    case "timing":
+      section.event.timing = joinFieldValue(tokens, line);
+      return;
+    case "visibility":
+      section.event.visibility = joinFieldValue(tokens, line);
+      return;
+    case "tags":
+      section.event.tags = parseTokenList(tokens.slice(1), line, "tags");
+      return;
+    case "color":
+      section.event.color = joinFieldValue(tokens, line);
+      return;
+    case "hidden":
+      section.event.hidden = parseAtlasBoolean(joinFieldValue(tokens, line), "hidden", {
+        line,
+        column: tokens[0].column,
+      });
+      return;
+    default:
+      throw new WorldOrbitError(
+        `Unknown event field "${tokens[0].value}"`,
+        line,
+        tokens[0].column,
+      );
+  }
+}
+
+function parseEventPoseField(
+  tokens: LineToken[],
+  line: number,
+  seenFields: Set<string>,
+): AstFieldNode {
+  if (tokens.length < 2) {
+    throw new WorldOrbitError("Invalid event pose field line", line, tokens[0]?.column ?? 1);
+  }
+
+  const key = tokens[0].value;
+  if (!EVENT_POSE_FIELD_KEYS.has(key)) {
+    throw new WorldOrbitError(`Unknown event pose field "${key}"`, line, tokens[0].column);
+  }
+
+  if (seenFields.has(key)) {
+    throw new WorldOrbitError(`Duplicate event pose field "${key}"`, line, tokens[0].column);
+  }
+  seenFields.add(key);
+
+  return {
+    type: "field",
+    key,
+    values: tokens.slice(1).map((token) => token.value),
+    location: { line, column: tokens[0].column },
+  };
+}
+
 function applyObjectField(
   section: Extract<DraftSectionState, { kind: "object" }>,
   indent: number,
@@ -1254,6 +1523,8 @@ function parseObjectTypeTokens(
 function parseLayerTokens(
   tokens: LineToken[],
   line: number,
+  sourceSchemaVersion?: SourceSchemaVersion,
+  diagnostics?: WorldOrbitDiagnostic[],
 ): Partial<Record<RenderSceneLayer["id"], boolean>> {
   const layers: Partial<Record<RenderSceneLayer["id"], boolean>> = {};
 
@@ -1273,10 +1544,17 @@ function parseLayerTokens(
       raw === "orbits-back" ||
       raw === "orbits-front" ||
       raw === "relations" ||
+      raw === "events" ||
       raw === "objects" ||
       raw === "labels" ||
       raw === "metadata"
     ) {
+      if (raw === "events" && sourceSchemaVersion && diagnostics) {
+        warnIfSchema21Feature(sourceSchemaVersion, diagnostics, "layers.events", {
+          line,
+          column: tokens[0]?.column ?? 1,
+        });
+      }
       layers[raw] = enabled;
     }
   }
@@ -1497,7 +1775,7 @@ function normalizeDraftObject(
   diagnostics: WorldOrbitDiagnostic[],
 ): WorldOrbitObject {
   const fieldMap = collectDraftFields(node.fields);
-  const placement = extractDraftPlacement(node.objectType, fieldMap);
+  const placement = extractPlacementFromFieldMap(fieldMap);
   const properties = normalizeDraftProperties(node.objectType, fieldMap);
   const groups = parseOptionalTokenList(fieldMap.get("groups")?.[0]);
   const epoch = parseOptionalJoinedValue(fieldMap.get("epoch")?.[0]);
@@ -1561,6 +1839,31 @@ function normalizeDraftObject(
   return object;
 }
 
+function normalizeDraftEvent(
+  event: WorldOrbitEvent,
+  rawPoses: DraftRawEventPose[],
+): WorldOrbitEvent {
+  return {
+    ...event,
+    participantObjectIds: [...new Set(event.participantObjectIds)],
+    tags: [...new Set(event.tags)],
+    positions: rawPoses.map((pose) => normalizeDraftEventPose(pose)),
+  };
+}
+
+function normalizeDraftEventPose(
+  rawPose: DraftRawEventPose,
+): WorldOrbitEventPose {
+  const fieldMap = collectDraftFields(rawPose.fields);
+  const placement = extractPlacementFromFieldMap(fieldMap);
+  return {
+    objectId: rawPose.objectId,
+    placement,
+    inner: parseOptionalUnitField(fieldMap.get("inner")?.[0], "inner"),
+    outer: parseOptionalUnitField(fieldMap.get("outer")?.[0], "outer"),
+  };
+}
+
 function collectDraftFields(fields: AstFieldNode[]): Map<string, AstFieldNode[]> {
   const grouped = new Map<string, AstFieldNode[]>();
 
@@ -1582,8 +1885,7 @@ function collectDraftFields(fields: AstFieldNode[]): Map<string, AstFieldNode[]>
   return grouped;
 }
 
-function extractDraftPlacement(
-  objectType: Exclude<WorldOrbitObjectType, "system">,
+function extractPlacementFromFieldMap(
   fieldMap: Map<string, AstFieldNode[]>,
 ): WorldOrbitObject["placement"] {
   const orbitField = fieldMap.get("orbit")?.[0];

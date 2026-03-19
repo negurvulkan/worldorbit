@@ -160,6 +160,101 @@ object belt Outer-Belt
   distance 5au
 `.trim();
 
+const schema21EventSource = `
+schema 2.1
+
+system Iyath
+  title "Iyath System"
+  epoch "JY-0001.0"
+
+defaults
+  view topdown
+  preset atlas-card
+
+viewpoint eclipse
+  label "Eclipse View"
+  projection topdown
+  layers background guides orbits-back events objects labels metadata
+  events naar-eclipse
+
+object star Iyath
+  mass 1sol
+
+object planet Naar
+  orbit Iyath
+  semiMajor 1au
+  phase 15deg
+
+object moon Seyra
+  orbit Naar
+  distance 384400km
+  phase 40deg
+
+event naar-eclipse
+  kind solar-eclipse
+  label "Naar Eclipse"
+  target Naar
+  participants Iyath Naar Seyra
+
+  positions
+    pose Naar
+      orbit Iyath
+      semiMajor 1au
+      phase 90deg
+
+    pose Seyra
+      orbit Naar
+      distance 384400km
+      phase 90deg
+`.trim();
+
+const labelPlacementSource = `
+schema 2.0
+
+system Iyath
+  title "Iyath System"
+
+defaults
+  view topdown
+  scale presentation
+  preset atlas-card
+
+viewpoint overview
+  label "Overview"
+  projection topdown
+  preset atlas-card
+
+object star Iyath
+  radius 0.85sol
+
+object planet Naar
+  orbit Iyath
+  semiMajor 0.92au
+  phase 260deg
+  radius 1.036re
+  atmosphere "nitrogen-oxygen humid"
+
+object moon Orun
+  orbit Naar
+  distance 515000km
+  phase 180deg
+  radius 0.153re
+
+object moon Seyra
+  orbit Naar
+  distance 310000km
+  phase 25deg
+  radius 0.248re
+
+object structure Naar-Orbitale
+  at Naar:L1
+  kind station
+
+object structure Seyra-Basen
+  surface Seyra
+  kind outpost
+`.trim();
+
 test("scene creation exposes objects, visuals, visible-content bounds, and metadata", () => {
   const result = parse(source);
   const scene = renderDocumentToScene(result.document, {
@@ -335,6 +430,49 @@ planet Far
   assert.ok(farRadius - midRadius >= 80, "10au should continue spreading instead of pinning");
 });
 
+test("label placement keeps orbiting body names readable near local infrastructure", () => {
+  const scene = renderDocumentToScene(loadWorldOrbitSource(labelPlacementSource).document, {
+    preset: "atlas-card",
+  });
+
+  const naar = scene.objects.find((object) => object.objectId === "Naar");
+  const orun = scene.objects.find((object) => object.objectId === "Orun");
+  const orbitale = scene.objects.find((object) => object.objectId === "Naar-Orbitale");
+  const naarLabel = scene.labels.find((label) => label.objectId === "Naar");
+  const orunLabel = scene.labels.find((label) => label.objectId === "Orun");
+  const orbitaleLabel = scene.labels.find((label) => label.objectId === "Naar-Orbitale");
+
+  assert.ok(naar);
+  assert.ok(orun);
+  assert.ok(orbitale);
+  assert.ok(naarLabel);
+  assert.ok(orunLabel);
+  assert.ok(orbitaleLabel);
+
+  if (!naar || !orun || !orbitale || !naarLabel || !orunLabel || !orbitaleLabel) {
+    assert.fail("Expected all relevant objects and labels to exist");
+  }
+
+  const expectedNaarLabelY = naar.y + naar.radius + 18 * scene.scaleModel.labelMultiplier;
+  const expectedOrunLabelY = orun.y + orun.radius + 18 * scene.scaleModel.labelMultiplier;
+  const closenessThreshold = 40 * scene.scaleModel.labelMultiplier;
+
+  assert.equal(naarLabel.direction, "below");
+  assert.equal(orunLabel.direction, "below");
+  assert.ok(
+    Math.abs(naarLabel.y - expectedNaarLabelY) < closenessThreshold,
+    "Planet labels should remain near the planet instead of being displaced by station labels",
+  );
+  assert.ok(
+    Math.abs(orunLabel.y - expectedOrunLabelY) < closenessThreshold,
+    "Moon labels should follow the moon's outward direction instead of flipping above it",
+  );
+  assert.ok(
+    orbitaleLabel.y < naarLabel.y - 20 || Math.abs(orbitaleLabel.x - orbitale.x) > 20,
+    "Nearby structure labels should no longer occupy the same slot that pushes the planet label away",
+  );
+});
+
 test("scene svg keeps a dedicated transformable world layer, image clips, and configurable layers", () => {
   const result = parse(source);
   const scene = renderDocumentToScene(result.document, { preset: "markdown" });
@@ -407,4 +545,32 @@ test("schema 2.1 scenes expose semantic groups, relations, and render hints with
   assert.equal(scene.orbitVisuals.some((orbit) => orbit.objectId === "Orun" && !orbit.hidden), false);
   assert.match(svg, /data-layer-id="relations"/);
   assert.match(svg, /data-relation-id="supply-route"/);
+});
+
+test("schema 2.1 event scenes expose event overlays and pose-based scene overrides", () => {
+  const loaded = loadWorldOrbitSource(schema21EventSource);
+  const baseScene = renderDocumentToScene(loaded.document, {
+    width: 960,
+    height: 640,
+  });
+  const eventScene = renderDocumentToScene(loaded.document, {
+    width: 960,
+    height: 640,
+    activeEventId: "naar-eclipse",
+  });
+  const eventSvg = renderSceneToSvg(eventScene);
+  const eclipseView = eventScene.viewpoints.find((viewpoint) => viewpoint.id === "eclipse");
+  const baseNaar = baseScene.objects.find((object) => object.objectId === "Naar");
+  const eventNaar = eventScene.objects.find((object) => object.objectId === "Naar");
+  const eventSeyra = eventScene.objects.find((object) => object.objectId === "Seyra");
+
+  assert.deepEqual(eclipseView?.eventIds, ["naar-eclipse"]);
+  assert.equal(eventScene.activeEventId, "naar-eclipse");
+  assert.ok(eventScene.layers.some((layer) => layer.id === "events"));
+  assert.ok(eventScene.events.some((entry) => entry.eventId === "naar-eclipse"));
+  assert.ok(eventScene.events[0]?.participantIds.includes("Seyra"));
+  assert.notEqual(eventNaar?.x, baseNaar?.x);
+  assert.notEqual(eventSeyra?.x, baseScene.objects.find((object) => object.objectId === "Seyra")?.x);
+  assert.match(eventSvg, /data-layer-id="events"/);
+  assert.match(eventSvg, /data-event-id="naar-eclipse"/);
 });

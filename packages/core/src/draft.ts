@@ -1,11 +1,14 @@
 import { renderDocumentToScene } from "./scene.js";
 import type {
+  Placement,
   RenderPresetName,
   SceneRenderOptions,
   ViewProjection,
   WorldOrbitAtlasAnnotation,
   WorldOrbitAtlasDefaults,
   WorldOrbitAtlasDocument,
+  WorldOrbitEvent,
+  WorldOrbitEventPose,
   WorldOrbitAtlasSystem,
   WorldOrbitAtlasViewpoint,
   WorldOrbitDiagnostic,
@@ -60,6 +63,7 @@ export function upgradeDocumentToV2(
     system,
     groups: structuredClone(document.groups ?? []),
     relations: structuredClone(document.relations ?? []),
+    events: structuredClone(document.events ?? []),
     objects: document.objects.map(cloneWorldOrbitObject),
     diagnostics,
   };
@@ -74,6 +78,7 @@ export function upgradeDocumentToDraftV2(
 
 export function materializeAtlasDocument(
   document: WorldOrbitAtlasDocument,
+  options: { activeEventId?: string | null } = {},
 ): WorldOrbitDocument {
   const system = document.system
     ? {
@@ -88,6 +93,9 @@ export function materializeAtlasDocument(
       }
     : null;
 
+  const objects = document.objects.map(cloneWorldOrbitObject);
+  applyEventPoseOverrides(objects, document.events ?? [], options.activeEventId ?? null);
+
   return {
     format: "worldorbit",
     version: "1.0",
@@ -95,7 +103,8 @@ export function materializeAtlasDocument(
     system,
     groups: structuredClone(document.groups ?? []),
     relations: structuredClone(document.relations ?? []),
-    objects: document.objects.map(cloneWorldOrbitObject),
+    events: document.events.map(cloneWorldOrbitEvent),
+    objects,
   };
 }
 
@@ -284,6 +293,7 @@ function mapSceneViewpointToDraftViewpoint(
     summary: viewpoint.summary,
     focusObjectId: viewpoint.objectId,
     selectedObjectId: viewpoint.selectedObjectId,
+    events: [...viewpoint.eventIds],
     projection: viewpoint.projection,
     preset: viewpoint.preset,
     zoom: viewpoint.scale,
@@ -331,6 +341,65 @@ function cloneWorldOrbitObject(object: WorldOrbitObject): WorldOrbitObject {
     placement: object.placement ? structuredClone(object.placement) : null,
     info: { ...object.info },
   };
+}
+
+function cloneWorldOrbitEvent(event: WorldOrbitEvent): WorldOrbitEvent {
+  return {
+    ...event,
+    participantObjectIds: [...event.participantObjectIds],
+    tags: [...event.tags],
+    positions: event.positions.map(cloneWorldOrbitEventPose),
+  };
+}
+
+function cloneWorldOrbitEventPose(pose: WorldOrbitEventPose): WorldOrbitEventPose {
+  return {
+    objectId: pose.objectId,
+    placement: clonePlacement(pose.placement),
+    inner: pose.inner ? { ...pose.inner } : undefined,
+    outer: pose.outer ? { ...pose.outer } : undefined,
+  };
+}
+
+function clonePlacement(placement: Placement | null): Placement | null {
+  return placement ? structuredClone(placement) : null;
+}
+
+function applyEventPoseOverrides(
+  objects: WorldOrbitObject[],
+  events: WorldOrbitEvent[],
+  activeEventId: string | null,
+): void {
+  if (!activeEventId) {
+    return;
+  }
+
+  const event = events.find((entry) => entry.id === activeEventId);
+  if (!event) {
+    return;
+  }
+
+  const objectMap = new Map(objects.map((object) => [object.id, object]));
+  for (const pose of event.positions) {
+    const object = objectMap.get(pose.objectId);
+    if (!object) {
+      continue;
+    }
+
+    object.placement = clonePlacement(pose.placement);
+
+    if (pose.inner) {
+      object.properties.inner = { ...pose.inner };
+    } else {
+      delete object.properties.inner;
+    }
+
+    if (pose.outer) {
+      object.properties.outer = { ...pose.outer };
+    } else {
+      delete object.properties.outer;
+    }
+  }
 }
 
 function cloneProperties(
@@ -467,6 +536,9 @@ function materializeDraftSystemInfo(system: WorldOrbitAtlasSystem): Record<strin
     if ((viewpoint.filter?.groupIds.length ?? 0) > 0) {
       info[`${prefix}.groups`] = viewpoint.filter?.groupIds.join(" ") ?? "";
     }
+    if (viewpoint.events.length > 0) {
+      info[`${prefix}.events`] = viewpoint.events.join(" ");
+    }
   }
 
   for (const annotation of system.annotations) {
@@ -502,7 +574,7 @@ function serializeViewpointLayers(
     tokens.push(orbitFront !== false || orbitBack !== false ? "orbits" : "-orbits");
   }
 
-  for (const key of ["background", "guides", "relations", "objects", "labels", "metadata"] as const) {
+  for (const key of ["background", "guides", "relations", "events", "objects", "labels", "metadata"] as const) {
     if (layers[key] !== undefined) {
       tokens.push(layers[key] ? key : `-${key}`);
     }
