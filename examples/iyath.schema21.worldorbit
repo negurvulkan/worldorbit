@@ -30,7 +30,7 @@ viewpoint overview
   summary "Fit the full atlas with semantic groups and relation overlays."
   projection isometric
 
-viewpoint inner-system
+viewpoint inner-view
   label "Inner System"
   summary "Focus Naar, its moons, and nearby infrastructure."
   projection isometric

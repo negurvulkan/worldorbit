@@ -10,7 +10,7 @@ import {
   loadSessionState,
 } from "../studio/studio-app.js";
 
-const studioSource = `schema 2.1
+const studioSource = `schema 2.5
 
 system Studio
   title "Studio Test"
@@ -18,8 +18,15 @@ system Studio
   referencePlane ecliptic
 
 defaults
-  view isometric
+  view orthographic
   preset atlas-card
+
+viewpoint overview
+  projection perspective
+  camera
+    azimuth 30
+    elevation 18
+    distance 5
 
 group inner-system
   label "Inner System"
@@ -151,24 +158,24 @@ test("studio shells use UNPKG imports and page-specific example urls", () => {
   const studioHtml = readFileSync(new URL("../studio/index.html", import.meta.url), "utf8");
   const docsStudioHtml = readFileSync(new URL("../docs/studio/index.html", import.meta.url), "utf8");
 
-  assert.match(studioHtml, /https:\/\/unpkg\.com\/worldorbit@2\.5\.16\/packages\/viewer\/dist\/index\.js/);
-  assert.match(docsStudioHtml, /https:\/\/unpkg\.com\/worldorbit@2\.5\.16\/packages\/viewer\/dist\/index\.js/);
-  assert.match(studioHtml, /data-example-url="\.\.\/examples\/iyath\.schema21\.worldorbit"/);
-  assert.match(docsStudioHtml, /data-example-url="\.\.\/\.\.\/examples\/iyath\.schema21\.worldorbit"/);
+  assert.match(studioHtml, /https:\/\/unpkg\.com\/worldorbit@2\.6\.0\/packages\/viewer\/dist\/index\.js/);
+  assert.match(docsStudioHtml, /https:\/\/unpkg\.com\/worldorbit@2\.6\.0\/packages\/viewer\/dist\/index\.js/);
+  assert.match(studioHtml, /data-example-url="\.\.\/examples\/studio\.schema25\.worldorbit"/);
+  assert.match(docsStudioHtml, /data-example-url="\.\.\/\.\.\/examples\/studio\.schema25\.worldorbit"/);
   assert.match(
     studioHtml,
-    /"@worldorbit\/editor": "https:\/\/unpkg\.com\/worldorbit@2\.5\.16\/packages\/editor\/dist\/index\.js"/,
+    /"@worldorbit\/editor": "https:\/\/unpkg\.com\/worldorbit@2\.6\.0\/packages\/editor\/dist\/index\.js"/,
   );
   assert.match(
     docsStudioHtml,
-    /"@worldorbit\/editor": "https:\/\/unpkg\.com\/worldorbit@2\.5\.16\/packages\/editor\/dist\/index\.js"/,
+    /"@worldorbit\/editor": "https:\/\/unpkg\.com\/worldorbit@2\.6\.0\/packages\/editor\/dist\/index\.js"/,
   );
   assert.match(
     studioHtml,
-    /"@worldorbit\/viewer\/viewer-state": "https:\/\/unpkg\.com\/worldorbit@2\.5\.16\/packages\/viewer\/dist\/viewer-state\.js"/,
+    /"@worldorbit\/viewer\/viewer-state": "https:\/\/unpkg\.com\/worldorbit@2\.6\.0\/packages\/viewer\/dist\/viewer-state\.js"/,
   );
   assert.match(
     docsStudioHtml,
-    /"@worldorbit\/viewer\/viewer-state": "https:\/\/unpkg\.com\/worldorbit@2\.5\.16\/packages\/viewer\/dist\/viewer-state\.js"/,
+    /"@worldorbit\/viewer\/viewer-state": "https:\/\/unpkg\.com\/worldorbit@2\.6\.0\/packages\/viewer\/dist\/viewer-state\.js"/,
   );
 });

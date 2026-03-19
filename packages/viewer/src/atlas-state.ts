@@ -104,13 +104,14 @@ export function createAtlasStateSnapshot(
   viewpointId: string | null,
 ): ViewerAtlasState {
   return {
-    version: "2.0",
+    version: "2.5",
     viewpointId,
     activeEventId: renderOptions.activeEventId ?? null,
     viewerState: { ...viewerState },
     renderOptions: {
       preset: renderOptions.preset,
       projection: renderOptions.projection,
+      camera: renderOptions.camera ? { ...renderOptions.camera } : null,
       layers: renderOptions.layers ? { ...renderOptions.layers } : undefined,
       scaleModel: renderOptions.scaleModel ? { ...renderOptions.scaleModel } : undefined,
       activeEventId: renderOptions.activeEventId ?? null,
@@ -129,7 +130,7 @@ export function deserializeViewerAtlasState(serialized: string): ViewerAtlasStat
   };
 
   return {
-    version: "2.0",
+    version: raw.version === "2.0" ? "2.0" : "2.5",
     viewpointId: raw.viewpointId ?? null,
     activeEventId: raw.activeEventId ?? raw.renderOptions?.activeEventId ?? null,
     viewerState: {
@@ -142,6 +143,7 @@ export function deserializeViewerAtlasState(serialized: string): ViewerAtlasStat
     renderOptions: {
       preset: raw.renderOptions?.preset,
       projection: raw.renderOptions?.projection,
+      camera: raw.renderOptions?.camera ? { ...raw.renderOptions.camera } : null,
       layers: raw.renderOptions?.layers ? { ...raw.renderOptions.layers } : undefined,
       scaleModel: raw.renderOptions?.scaleModel
         ? { ...raw.renderOptions.scaleModel }
@@ -169,6 +171,7 @@ export function createViewerBookmark(
       viewerState: { ...atlasState.viewerState },
       renderOptions: {
         ...atlasState.renderOptions,
+        camera: atlasState.renderOptions.camera ? { ...atlasState.renderOptions.camera } : null,
         layers: atlasState.renderOptions.layers ? { ...atlasState.renderOptions.layers } : undefined,
         scaleModel: atlasState.renderOptions.scaleModel
           ? { ...atlasState.renderOptions.scaleModel }

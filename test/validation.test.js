@@ -366,3 +366,59 @@ object planet Naar
     ),
   );
 });
+
+test("schema 2.5 validation reports camera ambiguity and missing event context", () => {
+  const result = loadWorldOrbitSourceWithDiagnostics(`
+schema 2.5
+
+system Helion
+
+defaults
+  view orthographic
+
+viewpoint overview
+  projection perspective
+  rotation 20
+  camera
+    azimuth 30
+    elevation 18
+    distance 6
+
+object star Helion
+  mass 1sol
+
+object planet Aster
+  orbit Helion
+  semiMajor 1au
+
+object moon Beryl
+  orbit Aster
+  distance 300000km
+
+event partial-eclipse
+  kind solar-eclipse
+  target Aster
+  participants Helion Aster Beryl
+
+  positions
+    pose Beryl
+      orbit Aster
+      distance 300000km
+      phase 90deg
+      inclination 3deg
+`.trim());
+
+  assert.equal(result.ok, true);
+  assert.ok(
+    result.diagnostics.some((diagnostic) => /camera\.azimuth/i.test(diagnostic.field ?? "")),
+  );
+  assert.ok(
+    result.diagnostics.some((diagnostic) => /effective epoch/i.test(diagnostic.message)),
+  );
+  assert.ok(
+    result.diagnostics.some((diagnostic) => /effective reference plane/i.test(diagnostic.message)),
+  );
+  assert.ok(
+    result.diagnostics.some((diagnostic) => /base placement/i.test(diagnostic.message)),
+  );
+});

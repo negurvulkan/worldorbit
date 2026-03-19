@@ -611,18 +611,24 @@
         <div class="hero-card">
           <div class="code-title">
             <span>Example source</span>
-            <span>schema 2.1</span>
+            <span>schema 2.5</span>
           </div>
-          <div class="code-view">schema 2.1
+          <div class="code-view">schema 2.5
 
             system Iyath
             title "Iyath System"
 
             defaults
-            view isometric
+            view orthographic
             scale presentation
             preset atlas-card
             theme atlas
+
+            viewpoint overview
+            projection orthographic
+            camera
+            azimuth 24
+            elevation 18
 
             group inner-system
             label "Inner System"
@@ -666,7 +672,7 @@
           <p>
             Generic diagram tools can draw connections. WorldOrbit is built specifically for fictional orbital systems,
             Markdown-based lore repositories, codices, browser viewers, and content-first worldbuilding workflows.
-            Schema 2.1 now adds comments, semantic groups, relations, declarative events with pose snapshots, and light validation metadata without breaking Schema 2.0 atlases.
+            Schema 2.5 now adds orthographic and perspective viewpoints, camera blocks, clearer event snapshot context, comments, semantic groups, relations, and light validation metadata without breaking Schema 2.1 or Schema 2.0 atlases.
           </p>
         </div>
 
@@ -727,16 +733,23 @@
               </div>
 
               <div class="editor-shell">
-                <textarea id="playground-source" spellcheck="false">schema 2.1
+                <textarea id="playground-source" spellcheck="false">schema 2.5
 
 system Iyath
   title "Iyath System"
 
 defaults
-  view isometric
+  view orthographic
   scale presentation
   preset atlas-card
   theme atlas
+
+viewpoint overview
+  projection perspective
+  camera
+    azimuth 34
+    elevation 22
+    distance 5
 
 group inner-system
   label "Inner System"
@@ -872,7 +885,7 @@ event naar-eclipse
           <article class="showcase-card">
             <h3>Use in the browser</h3>
             <div class="terminal">&lt;script
-                      src="https://unpkg.com/worldorbit@2.5.17/dist/unpkg/worldorbit.min.js"&gt;&lt;/script&gt;</div>
+                      src="https://unpkg.com/worldorbit@2.6.0/dist/unpkg/worldorbit.min.js"&gt;&lt;/script&gt;</div>
             <p style="margin-top: 14px;">
               Ideal for quick experiments, standalone demos, or embedding WorldOrbit in static and CMS-driven pages.
             </p>
@@ -895,24 +908,31 @@ event naar-eclipse
       <div class="footer-links">
         <a href="https://github.com/negurvulkan/worldorbit" target="_blank" rel="noreferrer">GitHub</a>
         <a href="https://www.npmjs.com/package/worldorbit" target="_blank" rel="noreferrer">npm</a>
-          <a href="https://unpkg.com/worldorbit@2.5.17/dist/unpkg/worldorbit.min.js" target="_blank"
+          <a href="https://unpkg.com/worldorbit@2.6.0/dist/unpkg/worldorbit.min.js" target="_blank"
           rel="noreferrer">UNPKG</a>
       </div>
     </div>
   </footer>
 
-  <script src="https://unpkg.com/worldorbit@2.5.17/dist/unpkg/worldorbit.min.js"></script>
+  <script src="https://unpkg.com/worldorbit@2.6.0/dist/unpkg/worldorbit.min.js"></script>
   <script>
-    const heroSource = `schema 2.1
+    const heroSource = `schema 2.5
 
 system Iyath
   title "Iyath System"
 
 defaults
-  view isometric
+  view orthographic
   scale presentation
   preset atlas-card
   theme atlas
+
+viewpoint overview
+  projection perspective
+  camera
+    azimuth 24
+    elevation 18
+    distance 5
 
 group inner-system
   label "Inner System"
@@ -938,16 +958,23 @@ event naar-eclipse
   target Naar
   participants Iyath Naar Seyra`;
 
-    const playgroundDefaultSource = `schema 2.1
+    const playgroundDefaultSource = `schema 2.5
 
 system Iyath
   title "Iyath System"
 
 defaults
-  view isometric
+  view orthographic
   scale presentation
   preset atlas-card
   theme atlas
+
+viewpoint overview
+  projection perspective
+  camera
+    azimuth 34
+    elevation 22
+    distance 5
 
 group inner-system
   label "Inner System"

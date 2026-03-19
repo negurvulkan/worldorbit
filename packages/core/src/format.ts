@@ -63,9 +63,11 @@ export function formatDocument(
   const useDraft =
     schema === "2.0" ||
     schema === "2.1" ||
+    schema === "2.5" ||
     schema === "2.0-draft" ||
     document.version === "2.0" ||
     document.version === "2.1" ||
+    document.version === "2.5" ||
     document.version === "2.0-draft";
 
   if (useDraft) {
@@ -73,7 +75,7 @@ export function formatDocument(
       const legacyDraftDocument =
         document.version === "2.0-draft"
           ? document
-          : document.version === "2.0" || document.version === "2.1"
+          : document.version === "2.0" || document.version === "2.1" || document.version === "2.5"
             ? {
                 ...document,
                 version: "2.0-draft" as const,
@@ -84,7 +86,7 @@ export function formatDocument(
     }
 
     const atlasDocument =
-      document.version === "2.0" || document.version === "2.1"
+      document.version === "2.0" || document.version === "2.1" || document.version === "2.5"
         ? document
         : document.version === "2.0-draft"
           ? {
@@ -93,11 +95,11 @@ export function formatDocument(
               schemaVersion: "2.0" as const,
             }
           : upgradeDocumentToV2(document as WorldOrbitDocument);
-    if (schema === "2.1" && atlasDocument.version !== "2.1") {
+    if ((schema === "2.0" || schema === "2.1" || schema === "2.5") && atlasDocument.version !== schema) {
       return formatAtlasDocument({
         ...atlasDocument,
-        version: "2.1",
-        schemaVersion: "2.1",
+        version: schema,
+        schemaVersion: schema,
       });
     }
     return formatAtlasDocument(atlasDocument);
@@ -441,6 +443,21 @@ function formatAtlasViewpoint(viewpoint: WorldOrbitAtlasViewpoint): string[] {
   if (viewpoint.rotationDeg !== 0) {
     lines.push(`  rotation ${viewpoint.rotationDeg}`);
   }
+  if (viewpoint.camera && hasCameraValues(viewpoint.camera)) {
+    lines.push("  camera");
+    if (viewpoint.camera.azimuth !== null) {
+      lines.push(`    azimuth ${viewpoint.camera.azimuth}`);
+    }
+    if (viewpoint.camera.elevation !== null) {
+      lines.push(`    elevation ${viewpoint.camera.elevation}`);
+    }
+    if (viewpoint.camera.roll !== null) {
+      lines.push(`    roll ${viewpoint.camera.roll}`);
+    }
+    if (viewpoint.camera.distance !== null) {
+      lines.push(`    distance ${viewpoint.camera.distance}`);
+    }
+  }
 
   const layerTokens = formatDraftLayers(viewpoint.layers);
   if (layerTokens.length > 0) {
@@ -550,6 +567,12 @@ function formatAtlasEvent(event: WorldOrbitEvent): string[] {
   if (event.visibility) {
     lines.push(`  visibility ${quoteIfNeeded(event.visibility)}`);
   }
+  if (event.epoch) {
+    lines.push(`  epoch ${quoteIfNeeded(event.epoch)}`);
+  }
+  if (event.referencePlane) {
+    lines.push(`  referencePlane ${quoteIfNeeded(event.referencePlane)}`);
+  }
   if (event.tags.length > 0) {
     lines.push(`  tags ${event.tags.map(quoteIfNeeded).join(" ")}`);
   }
@@ -576,9 +599,20 @@ function formatAtlasEvent(event: WorldOrbitEvent): string[] {
 function formatEventPoseFields(pose: WorldOrbitEventPose): string[] {
   return [
     ...formatPlacement(pose.placement),
+    ...(pose.epoch ? [`epoch ${quoteIfNeeded(pose.epoch)}`] : []),
+    ...(pose.referencePlane ? [`referencePlane ${quoteIfNeeded(pose.referencePlane)}`] : []),
     ...formatOptionalUnit("inner", pose.inner),
     ...formatOptionalUnit("outer", pose.outer),
   ];
+}
+
+function hasCameraValues(camera: NonNullable<WorldOrbitAtlasViewpoint["camera"]>): boolean {
+  return (
+    camera.azimuth !== null ||
+    camera.elevation !== null ||
+    camera.roll !== null ||
+    camera.distance !== null
+  );
 }
 
 function formatValue(value: NormalizedValue): string {

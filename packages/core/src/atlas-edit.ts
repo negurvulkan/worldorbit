@@ -18,7 +18,7 @@ import type {
 
 export function createEmptyAtlasDocument(
   systemId = "WorldOrbit",
-  version: WorldOrbitAtlasDocumentVersion = "2.0",
+  version: WorldOrbitAtlasDocumentVersion = "2.5",
 ): WorldOrbitAtlasDocument {
   return {
     format: "worldorbit",

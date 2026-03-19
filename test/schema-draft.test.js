@@ -173,6 +173,70 @@ event naar-eclipse
       phase 90deg
 `.trim();
 
+const schema25Source = `
+schema 2.5
+
+system Helion
+  title "Helion"
+  epoch "JY-0214.0"
+  referencePlane ecliptic
+
+defaults
+  view orthographic
+  scale presentation
+  preset atlas-card
+
+viewpoint overview
+  label "Overview"
+  projection orthographic
+  camera
+    azimuth 30
+    elevation 18
+
+viewpoint eclipse
+  label "Perspective Eclipse"
+  focus Aster
+  projection perspective
+  events aster-eclipse
+  camera
+    azimuth 42
+    elevation 24
+    distance 6
+
+object star Helion
+  mass 1sol
+
+object planet Aster
+  orbit Helion
+  semiMajor 0.86au
+  phase 40deg
+
+object moon Beryl
+  orbit Aster
+  distance 310000km
+  phase 30deg
+
+event aster-eclipse
+  kind solar-eclipse
+  target Aster
+  participants Helion Aster Beryl
+  epoch "JY-0214.0"
+  referencePlane ecliptic
+
+  positions
+    pose Aster
+      orbit Helion
+      semiMajor 0.86au
+      phase 90deg
+
+    pose Beryl
+      orbit Aster
+      distance 310000km
+      phase 90deg
+      epoch "JY-0214.0"
+      referencePlane aster-equatorial
+`.trim();
+
 const source = `
 system Iyath
   title "Iyath System"
@@ -245,7 +309,8 @@ test("upgradeDocumentToV2 promotes viewpoints, metadata, and annotations into th
   const result = parse(source);
   const atlas = upgradeDocumentToV2(result.document, { preset: "atlas-card" });
 
-  assert.equal(atlas.version, "2.0");
+  assert.equal(atlas.version, "2.5");
+  assert.equal(atlas.schemaVersion, "2.5");
   assert.equal(atlas.sourceVersion, "1.0");
   assert.equal(atlas.system?.defaults.view, "isometric");
   assert.equal(atlas.system?.defaults.preset, "atlas-card");
@@ -446,6 +511,84 @@ test("schema 2.1 events roundtrip through formatting without losing poses or vie
   assert.match(formatted, /^    pose Seyra$/m);
   assert.equal(eventEntry?.positions.find((entry) => entry.objectId === "Seyra")?.placement?.phase?.value, 90);
   assert.deepEqual(eclipseView?.events, ["naar-eclipse"]);
+});
+
+test("schema 2.5 parses camera blocks, new projections, and event context fields", () => {
+  const atlas = parseWorldOrbitAtlas(schema25Source);
+  const overview = atlas.system?.viewpoints.find((viewpoint) => viewpoint.id === "overview");
+  const eclipse = atlas.system?.viewpoints.find((viewpoint) => viewpoint.id === "eclipse");
+  const eventEntry = atlas.events.find((entry) => entry.id === "aster-eclipse");
+  const pose = eventEntry?.positions.find((entry) => entry.objectId === "Beryl");
+
+  assert.equal(atlas.version, "2.5");
+  assert.equal(overview?.projection, "orthographic");
+  assert.deepEqual(overview?.camera, {
+    azimuth: 30,
+    elevation: 18,
+    roll: null,
+    distance: null,
+  });
+  assert.equal(eclipse?.projection, "perspective");
+  assert.equal(eclipse?.camera?.distance, 6);
+  assert.equal(eventEntry?.epoch, "JY-0214.0");
+  assert.equal(eventEntry?.referencePlane, "ecliptic");
+  assert.equal(pose?.epoch, "JY-0214.0");
+  assert.equal(pose?.referencePlane, "aster-equatorial");
+});
+
+test("schema 2.5 documents roundtrip through formatting without losing camera or event context", () => {
+  const atlas = parseWorldOrbitAtlas(schema25Source);
+  const formatted = formatDocument(atlas, { schema: "2.5" });
+  const reparsed = parseWorldOrbitAtlas(formatted);
+  const overview = reparsed.system?.viewpoints.find((viewpoint) => viewpoint.id === "overview");
+  const eclipse = reparsed.system?.viewpoints.find((viewpoint) => viewpoint.id === "eclipse");
+  const pose = reparsed.events
+    .find((entry) => entry.id === "aster-eclipse")
+    ?.positions.find((entry) => entry.objectId === "Beryl");
+
+  assert.match(formatted, /^schema 2\.5/m);
+  assert.match(formatted, /^  camera$/m);
+  assert.match(formatted, /^    azimuth 30$/m);
+  assert.match(formatted, /^  epoch JY-0214\.0$/m);
+  assert.equal(reparsed.version, "2.5");
+  assert.equal(overview?.camera?.azimuth, 30);
+  assert.equal(eclipse?.camera?.distance, 6);
+  assert.equal(pose?.referencePlane, "aster-equatorial");
+});
+
+test("schema 2.1 input reports compatibility diagnostics for schema 2.5 camera and projection features", () => {
+  const result = loadWorldOrbitSourceWithDiagnostics(`
+schema 2.1
+
+system Helion
+
+defaults
+  view orthographic
+
+viewpoint overview
+  projection perspective
+  camera
+    azimuth 30
+    elevation 18
+
+object star Helion
+`.trim());
+
+  assert.equal(result.ok, true);
+  assert.ok(
+    result.diagnostics.some(
+      (diagnostic) =>
+        diagnostic.source === "parse" &&
+        /Feature "projection" requires schema 2\.5/i.test(diagnostic.message),
+    ),
+  );
+  assert.ok(
+    result.diagnostics.some(
+      (diagnostic) =>
+        diagnostic.source === "parse" &&
+        /Feature "viewpoint\.camera" requires schema 2\.5/i.test(diagnostic.message),
+    ),
+  );
 });
 
 test("formatDocument can upgrade schema 2.0 atlas source to schema 2.1 without changing content", () => {

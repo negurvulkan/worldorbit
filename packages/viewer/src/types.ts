@@ -1,6 +1,7 @@
 import type {
   CoordinatePoint,
   RenderOrbitVisual,
+  RenderProjectionFallback,
   RenderPresetName,
   RenderSceneEvent,
   RenderSceneGroup,
@@ -13,6 +14,7 @@ import type {
   ViewProjection,
   WorldOrbitObject,
   WorldOrbitDocument,
+  WorldOrbitViewCamera,
 } from "@worldorbit/core";
 
 export type WorldOrbitThemeName = "atlas" | "nightglass" | "ember";
@@ -132,13 +134,14 @@ export interface ViewerTooltipDetails {
 }
 
 export interface ViewerAtlasState {
-  version: "2.0";
+  version: "2.0" | "2.5";
   viewpointId: string | null;
   activeEventId?: string | null;
   viewerState: ViewerState;
   renderOptions: {
     preset?: RenderPresetName;
     projection?: "document" | ViewProjection;
+    camera?: WorldOrbitViewCamera | null;
     layers?: ViewerLayerOptions;
     scaleModel?: Partial<RenderScaleModel>;
     activeEventId?: string | null;
@@ -170,6 +173,8 @@ export interface AtlasInspectorSnapshot {
   scene: {
     title: string;
     projection: ViewProjection;
+    renderProjection: RenderProjectionFallback;
+    camera: WorldOrbitViewCamera | null;
     renderPreset: RenderPresetName | null;
     groupCount: number;
     semanticGroupCount: number;

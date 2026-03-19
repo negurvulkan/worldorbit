@@ -208,6 +208,63 @@ event naar-eclipse
       phase 90deg
 `.trim();
 
+const schema25Source = `
+schema 2.5
+
+system Helion
+  title "Helion"
+  epoch "JY-0214.0"
+  referencePlane ecliptic
+
+defaults
+  view orthographic
+  scale presentation
+  preset atlas-card
+
+viewpoint overview
+  label "Overview"
+  projection orthographic
+  camera
+    azimuth 28
+    elevation 18
+
+viewpoint eclipse
+  label "Perspective Eclipse"
+  focus Aster
+  projection perspective
+  events aster-eclipse
+  camera
+    azimuth 42
+    elevation 24
+    distance 6
+
+object star Helion
+  mass 1sol
+
+object planet Aster
+  orbit Helion
+  semiMajor 1au
+  phase 20deg
+
+object moon Beryl
+  orbit Aster
+  distance 300000km
+  phase 40deg
+
+event aster-eclipse
+  kind solar-eclipse
+  target Aster
+  participants Helion Aster Beryl
+  epoch "JY-0214.0"
+  referencePlane ecliptic
+
+  positions
+    pose Beryl
+      orbit Aster
+      distance 300000km
+      phase 90deg
+`.trim();
+
 const labelPlacementSource = `
 schema 2.0
 
@@ -573,4 +630,39 @@ test("schema 2.1 event scenes expose event overlays and pose-based scene overrid
   assert.notEqual(eventSeyra?.x, baseScene.objects.find((object) => object.objectId === "Seyra")?.x);
   assert.match(eventSvg, /data-layer-id="events"/);
   assert.match(eventSvg, /data-event-id="naar-eclipse"/);
+});
+
+test("schema 2.5 scenes preserve projection intent, camera metadata, and 2D fallback rendering", () => {
+  const loaded = loadWorldOrbitSource(schema25Source);
+  const baseScene = renderDocumentToScene(loaded.document, {
+    width: 960,
+    height: 640,
+  });
+  const eventScene = renderDocumentToScene(loaded.document, {
+    width: 960,
+    height: 640,
+    activeEventId: "aster-eclipse",
+  });
+  const eclipseView = eventScene.viewpoints.find((viewpoint) => viewpoint.id === "eclipse");
+  const overviewView = eventScene.viewpoints.find((viewpoint) => viewpoint.id === "overview");
+  const svg = renderSceneToSvg(eventScene);
+
+  assert.equal(baseScene.projection, "orthographic");
+  assert.equal(baseScene.renderProjection, "topdown");
+  assert.equal(overviewView?.projection, "orthographic");
+  assert.equal(overviewView?.renderProjection, "isometric");
+  assert.equal(overviewView?.camera?.azimuth, 28);
+  assert.equal(eclipseView?.projection, "perspective");
+  assert.equal(eclipseView?.renderProjection, "isometric");
+  assert.equal(eclipseView?.camera?.distance, 6);
+  assert.match(eventScene.subtitle, /2D topdown fallback/i);
+  assert.match(svg, /Orthographic view/i);
+  assert.equal(
+    eventScene.objects.find((object) => object.objectId === "Beryl")?.object.epoch,
+    "JY-0214.0",
+  );
+  assert.equal(
+    eventScene.objects.find((object) => object.objectId === "Beryl")?.object.referencePlane,
+    "ecliptic",
+  );
 });

@@ -2,6 +2,7 @@ import type {
   AtReference,
   CoordinatePoint,
   NormalizedValue,
+  RenderProjectionFallback,
   RenderBounds,
   RenderLeaderLine,
   RenderPresetName,
@@ -24,6 +25,7 @@ import type {
   WorldOrbitDocument,
   WorldOrbitEvent,
   WorldOrbitObject,
+  WorldOrbitViewCamera,
 } from "./types.js";
 
 interface PositionedObject {
@@ -78,7 +80,7 @@ interface PlacementContext {
   surfaceChildren: Map<string, WorldOrbitObject[]>;
   objectMap: Map<string, WorldOrbitObject>;
   spacingFactor: number;
-  projection: ViewProjection;
+  projection: RenderProjectionFallback;
   scaleModel: RenderScaleModel;
 }
 
@@ -116,6 +118,7 @@ interface ViewpointConfigDraft {
   select?: string;
   eventIds?: string[];
   projection?: ViewProjection;
+  camera?: WorldOrbitViewCamera | null;
   preset?: RenderPresetName | null;
   rotationDeg?: number;
   scale?: number | null;
@@ -143,7 +146,9 @@ export function renderDocumentToScene(
   const height = frame.height;
   const padding = frame.padding;
   const layoutPreset = resolveLayoutPreset(document);
-  const projection = resolveProjection(document, options.projection);
+  const schemaProjection = resolveProjection(document, options.projection);
+  const camera = normalizeViewCamera(options.camera ?? null);
+  const renderProjection = resolveRenderProjection(schemaProjection, camera);
   const scaleModel = resolveScaleModel(layoutPreset, options.scaleModel);
   const spacingFactor = layoutPresetSpacing(layoutPreset);
   const systemId = document.system?.id ?? null;
@@ -195,7 +200,7 @@ export function renderDocumentToScene(
     surfaceChildren,
     objectMap,
     spacingFactor,
-    projection,
+    projection: renderProjection,
     scaleModel,
   };
   const primaryRoot =
@@ -215,7 +220,7 @@ export function renderDocumentToScene(
 
     secondaryRoots.forEach((object, index) => {
       const angle = angleForIndex(index, secondaryRoots.length, -Math.PI / 2);
-      const offset = projectPolarOffset(angle, rootRingRadius, projection, 1);
+      const offset = projectPolarOffset(angle, rootRingRadius, renderProjection, 1);
       placeObject(
         object,
         centerX + offset.x,
@@ -330,7 +335,7 @@ export function renderDocumentToScene(
   const semanticGroups = createSceneSemanticGroups(document, objects);
   const viewpoints = createSceneViewpoints(
     document,
-    projection,
+    schemaProjection,
     frame.preset,
     relationships,
     objectMap,
@@ -350,22 +355,29 @@ export function renderDocumentToScene(
     height,
     padding,
     renderPreset: frame.preset,
-    projection,
+    projection: schemaProjection,
+    renderProjection,
+    camera,
     scaleModel,
     title:
       String(document.system?.title ?? document.system?.properties.title ?? document.system?.id ?? "WorldOrbit") ||
       "WorldOrbit",
-    subtitle: `${capitalizeLabel(projection)} view - ${capitalizeLabel(layoutPreset)} layout`,
+    subtitle: buildSceneSubtitle(schemaProjection, renderProjection, layoutPreset, camera),
     systemId,
-    viewMode: projection,
+    viewMode: schemaProjection,
     layoutPreset,
     metadata: {
       format: document.format,
       version: document.version,
-      view: projection,
+      view: schemaProjection,
+      renderProjection,
       scale: String(document.system?.properties.scale ?? layoutPreset),
       units: String(document.system?.properties.units ?? "mixed"),
       preset: frame.preset ?? "custom",
+      ...(camera?.azimuth !== null ? { "camera.azimuth": String(camera?.azimuth) } : {}),
+      ...(camera?.elevation !== null ? { "camera.elevation": String(camera?.elevation) } : {}),
+      ...(camera?.roll !== null ? { "camera.roll": String(camera?.roll) } : {}),
+      ...(camera?.distance !== null ? { "camera.distance": String(camera?.distance) } : {}),
     },
     contentBounds,
     layers,
@@ -415,22 +427,46 @@ function createEffectiveObjects(
   }
 
   const objectMap = new Map(cloned.map((object) => [object.id, object]));
+  const referencedIds = new Set<string>([
+    ...(activeEvent.targetObjectId ? [activeEvent.targetObjectId] : []),
+    ...activeEvent.participantObjectIds,
+    ...activeEvent.positions.map((pose) => pose.objectId),
+  ]);
+
+  for (const objectId of referencedIds) {
+    const object = objectMap.get(objectId);
+    if (!object) {
+      continue;
+    }
+
+    if (activeEvent.epoch) {
+      object.epoch = activeEvent.epoch;
+    }
+    if (activeEvent.referencePlane) {
+      object.referencePlane = activeEvent.referencePlane;
+    }
+  }
+
   for (const pose of activeEvent.positions) {
     const object = objectMap.get(pose.objectId);
     if (!object) {
       continue;
     }
 
-    object.placement = pose.placement ? structuredClone(pose.placement) : null;
+    if (pose.placement) {
+      object.placement = structuredClone(pose.placement);
+    }
     if (pose.inner) {
       object.properties.inner = { ...pose.inner };
-    } else {
-      delete object.properties.inner;
     }
     if (pose.outer) {
       object.properties.outer = { ...pose.outer };
-    } else {
-      delete object.properties.outer;
+    }
+    if (pose.epoch) {
+      object.epoch = pose.epoch;
+    }
+    if (pose.referencePlane) {
+      object.referencePlane = pose.referencePlane;
     }
   }
 
@@ -482,13 +518,91 @@ function resolveProjection(
   document: WorldOrbitDocument,
   projection: SceneRenderOptions["projection"],
 ): ViewProjection {
-  if (projection === "topdown" || projection === "isometric") {
+  if (
+    projection === "topdown" ||
+    projection === "isometric" ||
+    projection === "orthographic" ||
+    projection === "perspective"
+  ) {
     return projection;
   }
 
-  return String(document.system?.properties.view ?? "topdown").toLowerCase() === "isometric"
-    ? "isometric"
-    : "topdown";
+  const documentView = String(document.system?.properties.view ?? "topdown").toLowerCase();
+  return parseViewProjection(documentView) ?? "topdown";
+}
+
+function resolveRenderProjection(
+  projection: ViewProjection,
+  camera: WorldOrbitViewCamera | null,
+): RenderProjectionFallback {
+  switch (projection) {
+    case "topdown":
+      return "topdown";
+    case "isometric":
+      return "isometric";
+    case "orthographic":
+      return camera && (camera.azimuth !== null || camera.elevation !== null || camera.roll !== null)
+        ? "isometric"
+        : "topdown";
+    case "perspective":
+      return "isometric";
+  }
+}
+
+function normalizeViewCamera(camera: WorldOrbitViewCamera | null): WorldOrbitViewCamera | null {
+  if (!camera) {
+    return null;
+  }
+
+  const normalized: WorldOrbitViewCamera = {
+    azimuth: normalizeFiniteCameraValue(camera.azimuth),
+    elevation: normalizeFiniteCameraValue(camera.elevation),
+    roll: normalizeFiniteCameraValue(camera.roll),
+    distance: normalizePositiveCameraDistance(camera.distance),
+  };
+
+  return normalized.azimuth !== null ||
+    normalized.elevation !== null ||
+    normalized.roll !== null ||
+    normalized.distance !== null
+      ? normalized
+      : null;
+}
+
+function normalizeFiniteCameraValue(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function normalizePositiveCameraDistance(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function buildSceneSubtitle(
+  projection: ViewProjection,
+  renderProjection: RenderProjectionFallback,
+  layoutPreset: SceneLayoutPreset,
+  camera: WorldOrbitViewCamera | null,
+): string {
+  const parts = [`${capitalizeLabel(projection)} view`, `${capitalizeLabel(layoutPreset)} layout`];
+
+  if (projection !== renderProjection) {
+    parts.push(`2D ${renderProjection} fallback`);
+  }
+
+  if (camera) {
+    const cameraParts = [
+      camera.azimuth !== null ? `az ${camera.azimuth}` : null,
+      camera.elevation !== null ? `el ${camera.elevation}` : null,
+      camera.roll !== null ? `roll ${camera.roll}` : null,
+      camera.distance !== null ? `dist ${camera.distance}` : null,
+    ].filter(Boolean);
+
+    if (cameraParts.length > 0) {
+      parts.push(`camera ${cameraParts.join(" / ")}`);
+    }
+  }
+
+  return parts.join(" - ");
 }
 
 function resolveScaleModel(
@@ -1125,6 +1239,8 @@ function createGeneratedOverviewViewpoint(
 ): RenderSceneViewpoint {
   const title = document.system?.title ?? document.system?.properties.title;
   const label = title ? `${String(title)} Overview` : "Overview";
+  const camera = normalizeViewCamera(null);
+  const renderProjection = resolveRenderProjection(projection, camera);
   return {
     id: "overview",
     label,
@@ -1133,6 +1249,8 @@ function createGeneratedOverviewViewpoint(
     selectedObjectId: null,
     eventIds: [],
     projection,
+    renderProjection,
+    camera,
     preset,
     rotationDeg: 0,
     scale: null,
@@ -1193,6 +1311,30 @@ function applyViewpointField(
     case "angle":
       draft.rotationDeg = parseFiniteNumber(normalizedValue) ?? draft.rotationDeg ?? 0;
       return;
+    case "camera.azimuth":
+      draft.camera = {
+        ...(draft.camera ?? createEmptyViewCamera()),
+        azimuth: parseFiniteNumber(normalizedValue),
+      };
+      return;
+    case "camera.elevation":
+      draft.camera = {
+        ...(draft.camera ?? createEmptyViewCamera()),
+        elevation: parseFiniteNumber(normalizedValue),
+      };
+      return;
+    case "camera.roll":
+      draft.camera = {
+        ...(draft.camera ?? createEmptyViewCamera()),
+        roll: parseFiniteNumber(normalizedValue),
+      };
+      return;
+    case "camera.distance":
+      draft.camera = {
+        ...(draft.camera ?? createEmptyViewCamera()),
+        distance: parsePositiveNumber(normalizedValue),
+      };
+      return;
     case "zoom":
     case "scale":
       draft.scale = parsePositiveNumber(normalizedValue);
@@ -1241,6 +1383,9 @@ function finalizeViewpointDraft(
       : objectId;
   const filter = normalizeViewpointFilter(draft.filter);
   const label = draft.label?.trim() || humanizeIdentifier(draft.id);
+  const resolvedProjection = draft.projection ?? projection;
+  const camera = normalizeViewCamera(draft.camera ?? null);
+  const renderProjection = resolveRenderProjection(resolvedProjection, camera);
 
   return {
     id: draft.id,
@@ -1249,7 +1394,9 @@ function finalizeViewpointDraft(
     objectId,
     selectedObjectId,
     eventIds: [...new Set(draft.eventIds ?? [])],
-    projection: draft.projection ?? projection,
+    projection: resolvedProjection,
+    renderProjection,
+    camera,
     preset: draft.preset ?? preset,
     rotationDeg: draft.rotationDeg ?? 0,
     scale: draft.scale ?? null,
@@ -1265,6 +1412,15 @@ function createEmptyViewpointFilter(): RenderSceneViewpointFilter {
     objectTypes: [],
     tags: [],
     groupIds: [],
+  };
+}
+
+function createEmptyViewCamera(): WorldOrbitViewCamera {
+  return {
+    azimuth: null,
+    elevation: null,
+    roll: null,
+    distance: null,
   };
 }
 
@@ -1291,11 +1447,18 @@ function normalizeViewpointFilter(
 }
 
 function parseViewProjection(value: string): ViewProjection | null {
-  return value.toLowerCase() === "isometric"
-    ? "isometric"
-    : value.toLowerCase() === "topdown"
-      ? "topdown"
-      : null;
+  switch (value.toLowerCase()) {
+    case "topdown":
+      return "topdown";
+    case "isometric":
+      return "isometric";
+    case "orthographic":
+      return "orthographic";
+    case "perspective":
+      return "perspective";
+    default:
+      return null;
+  }
 }
 
 function parseRenderPreset(value: string): RenderPresetName | null {
@@ -1380,6 +1543,7 @@ function parseViewpointGroups(
   return splitListValue(value).map((entry) => {
     if (
       document.schemaVersion === "2.1" ||
+      document.schemaVersion === "2.5" ||
       document.groups.some((group) => group.id === entry)
     ) {
       return entry;

@@ -1,4 +1,4 @@
-schema 2.1
+schema 2.5
 
 system Solara
   title "Solara"
@@ -6,11 +6,19 @@ system Solara
   referencePlane ecliptic
 
 defaults
-  view topdown
+  view orthographic
   scale balanced
+
+viewpoint overview
+  label "Overview"
+  projection orthographic
+  camera
+    azimuth 22
+    elevation 18
 
 object star Solara
 
 object planet Aster
   orbit Solara
-  distance 1au
+  semiMajor 1au
+  phase 45deg

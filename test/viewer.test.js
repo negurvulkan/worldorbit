@@ -182,6 +182,63 @@ event naar-eclipse
       phase 90deg
 `.trim();
 
+const schema25Source = `
+schema 2.5
+
+system Helion
+  title "Helion"
+  epoch "JY-0214.0"
+  referencePlane ecliptic
+
+defaults
+  view orthographic
+  scale presentation
+  preset atlas-card
+
+viewpoint overview
+  label "Overview"
+  projection orthographic
+  camera
+    azimuth 28
+    elevation 18
+
+viewpoint eclipse
+  label "Perspective Eclipse"
+  focus Aster
+  projection perspective
+  events aster-eclipse
+  camera
+    azimuth 42
+    elevation 24
+    distance 6
+
+object star Helion
+  mass 1sol
+
+object planet Aster
+  orbit Helion
+  semiMajor 1au
+  phase 20deg
+
+object moon Beryl
+  orbit Aster
+  distance 300000km
+  phase 40deg
+
+event aster-eclipse
+  kind solar-eclipse
+  target Aster
+  participants Helion Aster Beryl
+  epoch "JY-0214.0"
+  referencePlane ecliptic
+
+  positions
+    pose Beryl
+      orbit Aster
+      distance 300000km
+      phase 90deg
+`.trim();
+
 function installDomGlobals(window) {
   const previous = {
     window: globalThis.window,
@@ -446,7 +503,7 @@ test("atlas viewer exposes built-in atlas controls and inspector state", () => {
 
     const bookmark = atlasViewer.captureBookmark("overview", "Overview");
     assert.equal(atlasViewer.applyBookmark(bookmark), true);
-    assert.equal(atlasViewer.getAtlasState().version, "2.0");
+    assert.equal(atlasViewer.getAtlasState().version, "2.5");
     assert.equal(atlasViewer.getInspectorSnapshot().scene.renderPreset, "atlas-card");
     assert.ok(inspectorSnapshots.length > 0);
 
@@ -592,6 +649,53 @@ test("atlas viewer exposes a schema 2.1 group filter and relation-aware inspecto
     assert.deepEqual(atlasViewer.getAtlasState().filter?.groupIds, ["inner-system"]);
 
     atlasViewer.destroy();
+  } finally {
+    restoreGlobals();
+    dom.window.close();
+  }
+});
+
+test("interactive viewer preserves schema 2.5 camera metadata in atlas state and viewpoint changes", () => {
+  const dom = new JSDOM(`<div id="preview"></div>`, {
+    pretendToBeVisual: true,
+  });
+  const restoreGlobals = installDomGlobals(dom.window);
+  const preview = dom.window.document.getElementById("preview");
+
+  preview.getBoundingClientRect = () => ({
+    x: 0,
+    y: 0,
+    left: 0,
+    top: 0,
+    right: 960,
+    bottom: 560,
+    width: 960,
+    height: 560,
+    toJSON() {
+      return {};
+    },
+  });
+
+  try {
+    const viewer = createInteractiveViewer(preview, {
+      source: schema25Source,
+      width: 960,
+      height: 560,
+    });
+
+    assert.equal(viewer.goToViewpoint("eclipse"), true);
+    assert.equal(viewer.getScene().projection, "perspective");
+    assert.equal(viewer.getScene().renderProjection, "isometric");
+    assert.equal(viewer.getActiveViewpoint()?.camera?.distance, 6);
+    assert.equal(viewer.getRenderOptions().camera?.azimuth, 42);
+    assert.equal(viewer.getAtlasState().version, "2.5");
+    assert.equal(viewer.getAtlasState().renderOptions.camera?.distance, 6);
+    assert.equal(viewer.getAtlasState().renderOptions.projection, "perspective");
+
+    viewer.setActiveEvent("aster-eclipse");
+    assert.equal(viewer.getScene().objects.find((object) => object.objectId === "Beryl")?.object.epoch, "JY-0214.0");
+
+    viewer.destroy();
   } finally {
     restoreGlobals();
     dom.window.close();

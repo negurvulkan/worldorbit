@@ -113,6 +113,7 @@ export function createInteractiveViewer(
     padding: options.padding,
     preset: options.preset,
     projection: options.projection,
+    camera: options.camera ? { ...options.camera } : null,
     scaleModel: options.scaleModel ? { ...options.scaleModel } : undefined,
     theme: options.theme,
     layers: options.layers,
@@ -446,6 +447,11 @@ export function createInteractiveViewer(
       }
       if (currentInput.kind !== "scene" && viewpoint.projection !== scene.projection) {
         nextRenderOptions.projection = viewpoint.projection;
+      }
+      if (viewpoint.camera) {
+        nextRenderOptions.camera = { ...viewpoint.camera };
+      } else if (renderOptions.camera) {
+        nextRenderOptions.camera = null;
       }
       if (viewpointLayers) {
         nextRenderOptions.layers = viewpointLayers;
@@ -1292,6 +1298,7 @@ function renderSceneFromInput(
 function cloneRenderOptions(renderOptions: ViewerRenderOptions): ViewerRenderOptions {
   return {
     ...renderOptions,
+    camera: renderOptions.camera ? { ...renderOptions.camera } : null,
     filter: renderOptions.filter ? { ...renderOptions.filter } : undefined,
     scaleModel: renderOptions.scaleModel ? { ...renderOptions.scaleModel } : undefined,
     layers: renderOptions.layers ? { ...renderOptions.layers } : undefined,
@@ -1310,6 +1317,14 @@ function mergeRenderOptions(
   return {
     ...current,
     ...next,
+    camera:
+      next.camera !== undefined
+        ? next.camera
+          ? { ...next.camera }
+          : null
+        : current.camera
+          ? { ...current.camera }
+          : null,
     filter:
       next.filter !== undefined
         ? normalizeViewerFilter(next.filter)
@@ -1346,6 +1361,7 @@ function hasSceneAffectingRenderOptions(options: Partial<ViewerRenderOptions>): 
     options.padding !== undefined ||
     options.preset !== undefined ||
     options.projection !== undefined ||
+    options.camera !== undefined ||
     options.scaleModel !== undefined ||
     options.activeEventId !== undefined
   );

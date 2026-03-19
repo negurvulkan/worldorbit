@@ -1,10 +1,10 @@
 # API Inventory
 
-This inventory highlights the public WorldOrbit APIs that matter most for authoring, loading, validating, rendering, and editing Schema 2.1 documents. Schema 1.0, canonical Schema 2.0, and legacy `schema 2.0-draft` remain supported compatibility paths.
+This inventory highlights the public WorldOrbit APIs that matter most for authoring, loading, validating, rendering, and editing Schema 2.5 documents. Schema 2.1, canonical Schema 2.0, Schema 1.0, and legacy `schema 2.0-draft` remain supported compatibility paths.
 
 ## `@worldorbit/core`
 
-Stable v2.5 APIs:
+Stable v2.6 APIs:
 
 - `parse(source)`
 - `parseSafe(source)`
@@ -54,6 +54,7 @@ Core public types include:
 - `WorldOrbitRelation`
 - `WorldOrbitEvent`
 - `WorldOrbitEventPose`
+- `WorldOrbitViewCamera`
 - `WorldOrbitResonance`
 - `WorldOrbitRenderHints`
 - `WorldOrbitDeriveRule`
@@ -80,7 +81,7 @@ Core public types include:
 
 ## `@worldorbit/viewer`
 
-Stable v2.5 APIs:
+Stable v2.6 APIs:
 
 - `renderSceneToSvg(scene, options?)`
 - `renderDocumentToSvg(document, options?)`
@@ -113,11 +114,11 @@ Viewer public types include:
 - `WorldOrbitAtlasViewer`
 - `WorldOrbitEmbedPayload`
 
-Viewer behavior now includes Schema 2.1-specific semantic groups, relation overlays, event overlays, active event scene snapshots, render hints, and detail payloads for `epoch`, `referencePlane`, `tidalLock`, `resonance`, events, and typed lore blocks.
+Viewer behavior now includes Schema 2.5 semantic projections, camera metadata, semantic groups, relation overlays, event overlays, active event scene snapshots, render hints, and detail payloads for `epoch`, `referencePlane`, `tidalLock`, `resonance`, events, and typed lore blocks.
 
 ## `@worldorbit/editor`
 
-Stable v2.5 APIs:
+Stable v2.6 APIs:
 
 - `createWorldOrbitEditor(container, options)`
 
@@ -139,15 +140,15 @@ Editor public types include:
 - `onDirtyChange?(dirty)`
 - `shortcuts?`
 
-The editor and Studio now load, preserve, and roundtrip Schema 2.1 documents instead of assuming Schema 2.0 as the only canonical atlas form, including event sections, event poses, and stage edits that write back into `event.positions` rather than base object placement.
+The editor and Studio now load, preserve, and roundtrip Schema 2.5 documents instead of assuming Schema 2.0 as the only canonical atlas form, including event sections, event poses, viewpoint camera blocks, and stage edits that write back into `event.positions` rather than base object placement.
 
 ## `@worldorbit/markdown`
 
-Stable v2.5 APIs:
+Stable v2.6 APIs:
 
 - `renderWorldOrbitBlock(source, options?)`
 - `renderWorldOrbitError(message)`
 - `remarkWorldOrbit(options?)`
 - `rehypeWorldOrbit(options?)`
 
-Markdown rendering accepts Schema 2.1 source directly through the same high-level loading path as the viewer and editor.
+Markdown rendering accepts Schema 2.5 source directly through the same high-level loading path as the viewer and editor.

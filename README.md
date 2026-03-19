@@ -29,7 +29,7 @@ WorldOrbit is not intended to be a real-world astronomy simulator or a high-prec
 ## Quick Example
 
 ```worldorbit
-schema 2.1
+schema 2.5
 
 system Iyath
   title "Iyath System"
@@ -37,7 +37,7 @@ system Iyath
   referencePlane ecliptic
 
 defaults
-  view isometric
+  view orthographic
   scale presentation
   preset atlas-card
   theme atlas
@@ -48,7 +48,11 @@ group inner-system
 
 viewpoint eclipse
   label "Eclipse View"
-  projection isometric
+  projection perspective
+  camera
+    azimuth 36
+    elevation 22
+    distance 6
   layers background guides orbits-back events objects labels metadata
   events naar-eclipse
 
@@ -114,7 +118,7 @@ For direct browser usage, use the browser bundle:
 <html>
   <head>
     <meta charset="utf-8" />
-<script src="https://unpkg.com/worldorbit@2.5.17/dist/unpkg/worldorbit.min.js"></script>
+<script src="https://unpkg.com/worldorbit@2.6.0/dist/unpkg/worldorbit.min.js"></script>
     <style>
       html, body {
         margin: 0;
@@ -133,7 +137,7 @@ For direct browser usage, use the browser bundle:
 
     <script>
       const source = `
-schema 2.1
+schema 2.5
 
 system Iyath
   epoch "JY-0001.0"
@@ -191,13 +195,13 @@ The editor is optional. The core format remains text-first.
 New atlas authoring should start with:
 
 ```worldorbit
-schema 2.1
+schema 2.5
 ```
 
 Example:
 
 ```worldorbit
-schema 2.1
+schema 2.5
 
 system Iyath
   title "Iyath System"
@@ -205,7 +209,7 @@ system Iyath
   referencePlane ecliptic
 
 defaults
-  view isometric
+  view orthographic
   scale presentation
   preset atlas-card
   theme atlas
@@ -218,7 +222,10 @@ group inner-system
 viewpoint overview
   label "Atlas Overview"
   summary "Fit the whole system."
-  projection isometric
+  projection orthographic
+  camera
+    azimuth 24
+    elevation 18
   layers background guides orbits-back events objects labels metadata
   events naar-eclipse
   filter
@@ -253,6 +260,8 @@ event naar-eclipse
   label "Naar Eclipse"
   target Naar
   participants Iyath Naar Seyra
+  epoch "JY-0001.0"
+  referencePlane ecliptic
 
   positions
     pose Naar
@@ -266,7 +275,21 @@ event naar-eclipse
       phase 90deg
 ```
 
-Schema `2.1` adds comments, semantic `group` and `relation` sections, declarative `event` sections with per-event `positions`/`pose` snapshots, viewpoint-linked `events`, object-level `epoch` and `referencePlane`, declarative resonance and validation hints, and optional structured lore blocks such as `climate`, `habitability`, and `settlement`.
+## What's New In Schema 2.5
+
+Schema `2.5` keeps Schema `2.1` fully readable and adds a clearer 3D-ready authoring surface without turning WorldOrbit into a full 3D engine.
+
+It adds:
+
+* new viewpoint projections: `orthographic` and `perspective`
+* a Schema-level `camera` block with `azimuth`, `elevation`, optional `roll`, and optional `distance`
+* clearer inheritance for `epoch` and `referencePlane` across system, object, event, and pose contexts
+* more stable event snapshots, where missing pose fields fall back to object, event, and system context instead of implying empty values
+* stronger validation around viewpoints, camera fields, event/pose consistency, and ambiguous authoring combinations
+
+Schema `2.5` still does **not** add full 3D coordinates, meshes, materials, quaternions, lighting, or simulation-heavy orbital solving.
+
+Schema `2.1` already added comments, semantic `group` and `relation` sections, declarative `event` sections with per-event `positions`/`pose` snapshots, viewpoint-linked `events`, object-level `epoch` and `referencePlane`, declarative resonance and validation hints, and optional structured lore blocks such as `climate`, `habitability`, and `settlement`.
 
 Stable `1.0` source is still accepted. Canonical `schema 2.0` source remains fully supported, and legacy `schema 2.0-draft` files stay readable as a compatibility path with a deprecation diagnostic.
 
@@ -287,7 +310,7 @@ planet Naar orbit Iyath distance 1.18au
 `.trim());
 
 const loaded = loadWorldOrbitSource(`
-schema 2.1
+schema 2.5
 
 system Iyath
 object star Iyath
@@ -390,7 +413,7 @@ const atlasDocument = upgradeDocumentToV2(stable.document, {
   preset: "atlas-card",
 });
 
-const atlasSource = formatDocument(atlasDocument, { schema: "2.1" });
+const atlasSource = formatDocument(atlasDocument, { schema: "2.5" });
 const loaded = loadWorldOrbitSource(atlasSource);
 const parsedAtlas = parseWorldOrbitAtlas(atlasSource);
 const scene = renderDocumentToScene(loaded.document, {
@@ -404,10 +427,10 @@ const scene = renderDocumentToScene(loaded.document, {
 
 ## Viewer Capabilities
 
-Viewer features in `v2.5` include:
+Viewer features in `v2.6` include:
 
 * scene-based SVG rendering
-* projections: `topdown` and `isometric`
+* projections: `topdown`, `isometric`, `orthographic`, and `perspective`
 * theme presets: `atlas`, `nightglass`, `ember`
 * layer controls for background, guides, orbits, events, objects, labels, metadata, and relations
 * selection, hover, focus, fit, pan, zoom, and rotate
@@ -415,7 +438,7 @@ Viewer features in `v2.5` include:
 * viewpoints, filters, search, and bookmark capture
 * deep-linkable atlas state
 * embeddable viewer custom elements
-* semantic group filters, relation and event overlays, active event scenes, and schema 2.1 detail metadata
+* semantic group filters, relation and event overlays, active event scenes, Schema 2.5 camera metadata, and event/object reference-context detail metadata
 
 ## Markdown Integration
 
@@ -454,6 +477,9 @@ mountWorldOrbitEmbeds(document, {
 Examples live in:
 
 * [examples/minimal.worldorbit](./examples/minimal.worldorbit)
+* [examples/schema25-camera.worldorbit](./examples/schema25-camera.worldorbit)
+* [examples/schema25-event-snapshot.worldorbit](./examples/schema25-event-snapshot.worldorbit)
+* [examples/studio.schema25.worldorbit](./examples/studio.schema25.worldorbit)
 * [examples/iyath.worldorbit](./examples/iyath.worldorbit)
 * [examples/iyath.schema2.worldorbit](./examples/iyath.schema2.worldorbit)
 * [examples/iyath.schema21.worldorbit](./examples/iyath.schema21.worldorbit)
@@ -469,6 +495,7 @@ Browser-facing examples and demos live in the repository under `demo/`, `studio/
 * [migration guide: v0.8 to v1.0](./docs/migration-v0.8-to-v1.0.md)
 * [migration guide: v1 to v2](./docs/migration-v1-to-v2.md)
 * [migration guide: v2.0 to v2.1](./docs/migration-v2-to-v2.1.md)
+* [migration guide: v2.1 to v2.5](./docs/migration-v2.1-to-v2.5.md)
 * [language reference](./docs/language-reference.md)
 * [language reference (DE)](./docs/language-reference.de.md)
 * [API inventory](./docs/api-inventory.md)

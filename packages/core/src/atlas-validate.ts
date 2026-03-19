@@ -1,8 +1,10 @@
 import type {
   RenderSceneViewpointFilter,
   UnitValue,
+  ViewProjection,
   WorldOrbitAnyDocumentVersion,
   WorldOrbitAtlasDocument,
+  WorldOrbitAtlasViewpoint,
   WorldOrbitDiagnostic,
   WorldOrbitDraftDocument,
   WorldOrbitDraftSystem,
@@ -10,6 +12,7 @@ import type {
   WorldOrbitEventPose,
   WorldOrbitObject,
   WorldOrbitRelation,
+  WorldOrbitViewCamera,
 } from "./types.js";
 
 const SURFACE_TARGET_TYPES = new Set(["star", "planet", "moon", "asteroid", "comet"]);
@@ -60,13 +63,12 @@ export function collectAtlasDiagnostics(
 
   for (const viewpoint of document.system?.viewpoints ?? []) {
     validateViewpoint(
-      viewpoint.filter,
-      viewpoint.events ?? [],
+      viewpoint,
       groupIds,
       eventIds,
       sourceSchemaVersion,
       diagnostics,
-      viewpoint.id,
+      objectMap,
     );
   }
 
@@ -75,7 +77,7 @@ export function collectAtlasDiagnostics(
   }
 
   for (const event of document.events) {
-    validateEvent(event, objectMap, diagnostics);
+    validateEvent(event, document.system, objectMap, diagnostics);
   }
 
   return diagnostics;
@@ -104,29 +106,43 @@ function validateRelation(
 }
 
 function validateViewpoint(
-  filter: RenderSceneViewpointFilter | null,
-  eventRefs: string[],
+  viewpoint: WorldOrbitAtlasViewpoint,
   groupIds: Set<string>,
   eventIds: Set<string>,
   sourceSchemaVersion: WorldOrbitAnyDocumentVersion | undefined,
   diagnostics: WorldOrbitDiagnostic[],
-  viewpointId: string,
+  objectMap: Map<string, WorldOrbitObject>,
 ): void {
-  if (sourceSchemaVersion === "2.1") {
+  const filter = viewpoint.filter;
+
+  if (sourceSchemaVersion === "2.1" || sourceSchemaVersion === "2.5") {
     if (filter) {
       for (const groupId of filter.groupIds) {
         if (!groupIds.has(groupId)) {
-          diagnostics.push(warn("validate.viewpoint.group.unknown", `Unknown group "${groupId}" in viewpoint "${viewpointId}".`, undefined, `viewpoint.${viewpointId}.groups`));
+          diagnostics.push(warn("validate.viewpoint.group.unknown", `Unknown group "${groupId}" in viewpoint "${viewpoint.id}".`, undefined, `viewpoint.${viewpoint.id}.groups`));
         }
       }
     }
 
-    for (const eventId of eventRefs) {
+    for (const eventId of viewpoint.events ?? []) {
       if (!eventIds.has(eventId)) {
-        diagnostics.push(warn("validate.viewpoint.event.unknown", `Unknown event "${eventId}" in viewpoint "${viewpointId}".`, undefined, `viewpoint.${viewpointId}.events`));
+        diagnostics.push(warn("validate.viewpoint.event.unknown", `Unknown event "${eventId}" in viewpoint "${viewpoint.id}".`, undefined, `viewpoint.${viewpoint.id}.events`));
       }
     }
   }
+
+  validateProjection(viewpoint.projection, diagnostics, `viewpoint.${viewpoint.id}.projection`, viewpoint.id);
+  validateCamera(
+    viewpoint.camera,
+    viewpoint.projection,
+    viewpoint.rotationDeg,
+    diagnostics,
+    viewpoint.id,
+    viewpoint.focusObjectId,
+    viewpoint.selectedObjectId,
+    filter,
+    objectMap,
+  );
 }
 
 function validateObject(
@@ -146,6 +162,14 @@ function validateObject(
         diagnostics.push(warn("validate.group.unknown", `Unknown group "${groupId}" on "${object.id}".`, object.id, "groups"));
       }
     }
+  }
+
+  if (typeof object.epoch === "string" && !object.epoch.trim()) {
+    diagnostics.push(warn("validate.epoch.empty", `Object "${object.id}" defines an empty epoch string.`, object.id, "epoch"));
+  }
+
+  if (typeof object.referencePlane === "string" && !object.referencePlane.trim()) {
+    diagnostics.push(warn("validate.referencePlane.empty", `Object "${object.id}" defines an empty reference plane string.`, object.id, "referencePlane"));
   }
 
   if (orbitPlacement) {
@@ -235,6 +259,7 @@ function validateObject(
 
 function validateEvent(
   event: WorldOrbitEvent,
+  system: WorldOrbitAtlasDocument["system"] | WorldOrbitDraftSystem | null,
   objectMap: Map<string, WorldOrbitObject>,
   diagnostics: WorldOrbitDiagnostic[],
 ): void {
@@ -243,6 +268,14 @@ function validateEvent(
 
   if (!event.kind.trim()) {
     diagnostics.push(error("validate.event.kind.required", `Event "${event.id}" is missing a "kind" value.`, undefined, `${fieldPrefix}.kind`));
+  }
+
+  if (typeof event.epoch === "string" && !event.epoch.trim()) {
+    diagnostics.push(warn("validate.event.epoch.empty", `Event "${event.id}" defines an empty epoch string.`, undefined, `${fieldPrefix}.epoch`));
+  }
+
+  if (typeof event.referencePlane === "string" && !event.referencePlane.trim()) {
+    diagnostics.push(warn("validate.event.referencePlane.empty", `Event "${event.id}" defines an empty reference plane string.`, undefined, `${fieldPrefix}.referencePlane`));
   }
 
   if (!event.targetObjectId && event.participantObjectIds.length === 0) {
@@ -304,13 +337,20 @@ function validateEvent(
       diagnostics.push(warn("validate.event.pose.unreferenced", `Event pose "${pose.objectId}" on "${event.id}" is not listed in target/participants.`, undefined, poseFieldPrefix));
     }
 
-    validateEventPose(pose, object, objectMap, diagnostics, poseFieldPrefix, event.id);
+    validateEventPose(pose, object, event, system, objectMap, diagnostics, poseFieldPrefix, event.id);
+  }
+
+  const missingPoseIds = [...referencedIds].filter((objectId) => !poseIds.has(objectId));
+  if (event.positions.length > 0 && missingPoseIds.length > 0) {
+    diagnostics.push(warn("validate.event.positions.partial", `Event "${event.id}" leaves ${missingPoseIds.length} referenced object(s) on their base placement.`, undefined, `${fieldPrefix}.positions`));
   }
 }
 
 function validateEventPose(
   pose: WorldOrbitEventPose,
   object: WorldOrbitObject,
+  event: WorldOrbitEvent,
+  system: WorldOrbitAtlasDocument["system"] | WorldOrbitDraftSystem | null,
   objectMap: Map<string, WorldOrbitObject>,
   diagnostics: WorldOrbitDiagnostic[],
   fieldPrefix: string,
@@ -328,6 +368,15 @@ function validateEventPose(
     }
     if (placement.distance && placement.semiMajor) {
       diagnostics.push(error("validate.event.pose.orbit.distanceConflict", `Event "${eventId}" pose "${pose.objectId}" cannot declare both "distance" and "semiMajor".`, undefined, `${fieldPrefix}.distance`));
+    }
+    if (placement.phase && !resolveEffectiveEpoch(system, object, event, pose)) {
+      diagnostics.push(warn("validate.event.pose.phase.epochMissing", `Event "${eventId}" pose "${pose.objectId}" sets "phase" without an effective epoch.`, undefined, `${fieldPrefix}.phase`));
+    }
+    if (placement.inclination && !resolveEffectiveReferencePlane(system, object, event, pose)) {
+      diagnostics.push(warn("validate.event.pose.inclination.referencePlaneMissing", `Event "${eventId}" pose "${pose.objectId}" sets "inclination" without an effective reference plane.`, undefined, `${fieldPrefix}.inclination`));
+    }
+    if (placement.period && !massInSolar(objectMap.get(placement.target)?.properties.mass)) {
+      diagnostics.push(warn("validate.event.pose.period.massMissing", `Event "${eventId}" pose "${pose.objectId}" sets "period" but its central mass cannot be derived.`, undefined, `${fieldPrefix}.period`));
     }
     return;
   }
@@ -477,6 +526,110 @@ function durationInDays(value: UnitValue | undefined): number | null {
     default:
       return null;
   }
+}
+
+function validateProjection(
+  projection: ViewProjection | null | undefined,
+  diagnostics: WorldOrbitDiagnostic[],
+  field: string,
+  viewpointId: string,
+): void {
+  if (
+    projection !== "topdown" &&
+    projection !== "isometric" &&
+    projection !== "orthographic" &&
+    projection !== "perspective"
+  ) {
+    diagnostics.push(error("validate.viewpoint.projection.invalid", `Unknown projection "${String(projection)}" in viewpoint "${viewpointId}".`, undefined, field));
+  }
+}
+
+function validateCamera(
+  camera: WorldOrbitViewCamera | null,
+  projection: ViewProjection,
+  rotationDeg: number,
+  diagnostics: WorldOrbitDiagnostic[],
+  viewpointId: string,
+  focusObjectId: string | null,
+  selectedObjectId: string | null,
+  filter: RenderSceneViewpointFilter | null,
+  objectMap: Map<string, WorldOrbitObject>,
+): void {
+  if (!camera) {
+    return;
+  }
+
+  const prefix = `viewpoint.${viewpointId}.camera`;
+  for (const [key, value] of [
+    ["azimuth", camera.azimuth],
+    ["elevation", camera.elevation],
+    ["roll", camera.roll],
+    ["distance", camera.distance],
+  ] as const) {
+    if (value !== null && (!Number.isFinite(value) || (key === "distance" && value <= 0))) {
+      diagnostics.push(error("validate.viewpoint.camera.invalid", `Invalid camera ${key} "${String(value)}" in viewpoint "${viewpointId}".`, undefined, `${prefix}.${key}`));
+    }
+  }
+
+  if (camera.distance !== null && projection !== "perspective") {
+    diagnostics.push(warn("validate.viewpoint.camera.distance.partialEffect", `Camera "distance" only has a semantic effect in perspective viewpoints; "${viewpointId}" uses "${projection}".`, undefined, `${prefix}.distance`));
+  }
+
+  if (
+    projection === "topdown" &&
+    (camera.elevation !== null || camera.roll !== null)
+  ) {
+    diagnostics.push(warn("validate.viewpoint.camera.topdownPartial", `Camera elevation/roll on topdown viewpoint "${viewpointId}" are currently stored for future 3D use and only partially affect 2D rendering.`, undefined, prefix));
+  }
+
+  if (
+    projection === "isometric" &&
+    camera.elevation !== null
+  ) {
+    diagnostics.push(info("validate.viewpoint.camera.isometricStored", `Camera elevation on isometric viewpoint "${viewpointId}" is preserved semantically for future 3D rendering.`, undefined, `${prefix}.elevation`));
+  }
+
+  if (camera.azimuth !== null && camera.azimuth !== 0 && rotationDeg !== 0) {
+    diagnostics.push(warn("validate.viewpoint.rotation.cameraOverlap", `Viewpoint "${viewpointId}" uses camera.azimuth; keep "rotation" only for 2D screen rotation to avoid ambiguity.`, undefined, `${prefix}.azimuth`));
+  }
+
+  const hasAnchor =
+    (focusObjectId !== null && objectMap.has(focusObjectId)) ||
+    (selectedObjectId !== null && objectMap.has(selectedObjectId)) ||
+    !!filter;
+  if (!hasAnchor) {
+    diagnostics.push(info("validate.viewpoint.camera.anchorMissing", `Viewpoint "${viewpointId}" stores camera settings without a focus object, selection, or filter anchor.`, undefined, prefix));
+  }
+}
+
+function resolveEffectiveEpoch(
+  system: WorldOrbitAtlasDocument["system"] | WorldOrbitDraftSystem | null,
+  object: WorldOrbitObject,
+  event?: WorldOrbitEvent | null,
+  pose?: WorldOrbitEventPose | null,
+): string | null {
+  return normalizeOptionalContextString(pose?.epoch) ??
+    normalizeOptionalContextString(event?.epoch) ??
+    normalizeOptionalContextString(object.epoch) ??
+    normalizeOptionalContextString(system?.epoch) ??
+    null;
+}
+
+function resolveEffectiveReferencePlane(
+  system: WorldOrbitAtlasDocument["system"] | WorldOrbitDraftSystem | null,
+  object: WorldOrbitObject,
+  event?: WorldOrbitEvent | null,
+  pose?: WorldOrbitEventPose | null,
+): string | null {
+  return normalizeOptionalContextString(pose?.referencePlane) ??
+    normalizeOptionalContextString(event?.referencePlane) ??
+    normalizeOptionalContextString(object.referencePlane) ??
+    normalizeOptionalContextString(system?.referencePlane) ??
+    null;
+}
+
+function normalizeOptionalContextString(value: string | null | undefined): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function toleranceForField(object: WorldOrbitObject, field: string): number {

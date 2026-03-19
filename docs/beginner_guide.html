@@ -227,7 +227,7 @@
         <article class="card">
           <span class="pill">1</span>
           <h3>Start with the schema</h3>
-          <p>Use <code>schema 2.1</code> for new documents. <code>schema 2.0</code> still loads, but 2.1 is the clearest default going forward and adds comments, groups, relations, and events.</p>
+          <p>Use <code>schema 2.5</code> for new documents. <code>schema 2.1</code> and <code>schema 2.0</code> still load, but 2.5 is the clearest default going forward and adds camera-ready viewpoints, stronger event snapshots, comments, groups, relations, and events.</p>
         </article>
         <article class="card">
           <span class="pill">2</span>
@@ -262,7 +262,7 @@
           <div>
             <div class="code-box">
               <div class="code-box-header"><span>Source</span><span>minimal</span></div>
-              <pre class="code">schema 2.1
+              <pre class="code">schema 2.5
 
 system Sol
 
@@ -285,16 +285,23 @@ object star Sun</pre>
           <div>
             <div class="code-box">
               <div class="code-box-header"><span>Source</span><span>intermediate</span></div>
-              <pre class="code">schema 2.1
+              <pre class="code">schema 2.5
 
 system Iyath
   title "Iyath System"
 
 defaults
-  view isometric
+  view orthographic
   scale presentation
   preset atlas-card
   theme atlas
+
+viewpoint inner
+  projection perspective
+  camera
+    azimuth 28
+    elevation 20
+    distance 5
 
 group inner-system
   label "Inner System"
@@ -339,8 +346,8 @@ event eclipse-window
         <div class="section-heading">
           <h2>Example 3 — A more complete solar system</h2>
           <p>
-            This example combines most of the current Schema 2.1 atlas surface in one place: comments, groups, filtered
-            viewpoints, a relation, validation hints, typed lore blocks, render hints, and a curated eclipse event with
+            This example combines most of the current Schema 2.5 atlas surface in one place: comments, groups, filtered
+            viewpoints, orthographic and perspective camera setups, a relation, validation hints, typed lore blocks, render hints, and a curated eclipse event with
             explicit event poses. It is intentionally rich so you can see how WorldOrbit scales from tiny diagrams to
             denser orbital atlases.
           </p>
@@ -349,16 +356,16 @@ event eclipse-window
           <div>
             <div class="code-box">
               <div class="code-box-header"><span>Source</span><span>advanced</span></div>
-              <pre class="code">schema 2.1
+              <pre class="code">schema 2.5
 
 system Sol
   title "Solar System"
-  description "Reference atlas showing most Schema 2.1 authoring features in one place."
+  description "Reference atlas showing most Schema 2.5 authoring features in one place."
   epoch "J2000.0"
   referencePlane ecliptic
 
 defaults
-  view topdown
+  view orthographic
   scale presentation
   units metric
   preset atlas-card
@@ -391,14 +398,21 @@ group event-tracked
 viewpoint overview
   label "Solar System Overview"
   summary "Major planets, reference moons, rings, belts, and key infrastructure."
-  projection topdown
+  projection orthographic
+  camera
+    azimuth 22
+    elevation 18
 
 viewpoint earth-system
   label "Earth and Near Space"
   focus Earth
   summary "Earth, the Moon, and nearby infrastructure with a curated eclipse snapshot."
-  projection topdown
+  projection perspective
   zoom 5.5
+  camera
+    azimuth 38
+    elevation 24
+    distance 6
   layers background guides orbits-back events objects labels metadata
   events total-solar-eclipse-2027
   filter
@@ -589,6 +603,8 @@ event total-solar-eclipse-2027
   participants Sun Earth Moon
   timing "2027-08-02"
   visibility "Northern Africa and the Arabian Peninsula"
+  epoch "J2000.0"
+  referencePlane ecliptic
   tags eclipse earth-system
   color "#7ecb74"
 
@@ -606,7 +622,7 @@ event total-solar-eclipse-2027
           </div>
           <div>
             <div class="preview-box"><div id="example-3-preview"></div></div>
-            <div class="status">Rendered result: a dense Schema 2.1 atlas with groups, typed lore, infrastructure links, render hints, and a named eclipse snapshot.</div>
+            <div class="status">Rendered result: a dense Schema 2.5 atlas with groups, typed lore, infrastructure links, camera-ready viewpoints, render hints, and a named eclipse snapshot.</div>
           </div>
         </div>
       </div>
@@ -623,16 +639,23 @@ event total-solar-eclipse-2027
         <div>
           <div class="code-box">
             <div class="code-box-header"><span>Editable source</span><span>live preview</span></div>
-            <textarea id="playground-source" class="code" spellcheck="false">schema 2.1
+            <textarea id="playground-source" class="code" spellcheck="false">schema 2.5
 
 system Demo
   title "Demo System"
 
 defaults
-  view isometric
+  view orthographic
   scale presentation
   preset atlas-card
   theme atlas
+
+viewpoint demo
+  projection perspective
+  camera
+    azimuth 32
+    elevation 20
+    distance 5
 
 object star Helion
 
@@ -692,7 +715,7 @@ event belis-eclipse
       <div class="tip" style="margin-top:18px;">
         <strong>What beginners usually need first</strong>
         <ul class="checks">
-          <li><code>schema 2.1</code></li>
+          <li><code>schema 2.5</code></li>
           <li><code>system Name</code></li>
           <li><code>object star Name</code></li>
           <li><code>object planet Name</code> with <code>orbit</code> and <code>semiMajor</code></li>
@@ -710,8 +733,8 @@ event belis-eclipse
       </div>
       <div class="faq-list">
         <div class="faq-item">
-          <h3>Do I always need <code>schema 2.1</code>?</h3>
-          <p>For new documents, yes. Older <code>schema 2.0</code> atlases still work, but 2.1 is the recommended explicit header.</p>
+          <h3>Do I always need <code>schema 2.5</code>?</h3>
+          <p>For new documents, yes. Older <code>schema 2.1</code> and <code>schema 2.0</code> atlases still work, but 2.5 is the recommended explicit header.</p>
         </div>
         <div class="faq-item">
           <h3>Do I have to use every parameter?</h3>
@@ -723,7 +746,7 @@ event belis-eclipse
         </div>
         <div class="faq-item">
           <h3>How do I describe eclipses or other special moments?</h3>
-          <p>Use a Schema 2.1 <code>event</code> section. Add <code>target</code> and <code>participants</code>, then optionally add a <code>positions</code> block with one or more <code>pose &lt;objectId&gt;</code> entries when you want a curated viewer or Studio snapshot.</p>
+          <p>Use a Schema 2.5 <code>event</code> section. Add <code>target</code> and <code>participants</code>, then optionally add a <code>positions</code> block with one or more <code>pose &lt;objectId&gt;</code> entries when you want a curated viewer or Studio snapshot.</p>
         </div>
         <div class="faq-item">
           <h3>Can I use WorldOrbit in Markdown?</h3>
@@ -740,17 +763,24 @@ event belis-eclipse
     </div>
   </footer>
 
-  <script src="https://unpkg.com/worldorbit@2.5.17/dist/unpkg/worldorbit.min.js"></script>
+  <script src="https://unpkg.com/worldorbit@2.6.0/dist/unpkg/worldorbit.min.js"></script>
   <script>
-    const heroSource = `schema 2.1
+    const heroSource = `schema 2.5
 
 system Iyath
 
 defaults
-  view isometric
+  view orthographic
   scale presentation
   preset atlas-card
   theme atlas
+
+viewpoint overview
+  projection perspective
+  camera
+    azimuth 24
+    elevation 18
+    distance 5
 
 object star Iyath
 
@@ -771,22 +801,29 @@ event naar-eclipse
   target Naar
   participants Iyath Naar Seyra`;
 
-    const example1Source = `schema 2.1
+    const example1Source = `schema 2.5
 
 system Sol
 
 object star Sun`;
 
-    const example2Source = `schema 2.1
+    const example2Source = `schema 2.5
 
 system Iyath
   title "Iyath System"
 
 defaults
-  view isometric
+  view orthographic
   scale presentation
   preset atlas-card
   theme atlas
+
+viewpoint inner
+  projection perspective
+  camera
+    azimuth 28
+    elevation 20
+    distance 5
 
 group inner-system
   label "Inner System"
@@ -819,16 +856,16 @@ event eclipse-window
   target Naar
   participants Iyath Naar Leth`;
 
-    const example3Source = `schema 2.1
+    const example3Source = `schema 2.5
 
 system Sol
   title "Solar System"
-  description "Reference atlas showing most Schema 2.1 authoring features in one place."
+  description "Reference atlas showing most Schema 2.5 authoring features in one place."
   epoch "J2000.0"
   referencePlane ecliptic
 
 defaults
-  view topdown
+  view orthographic
   scale presentation
   units metric
   preset atlas-card
@@ -861,14 +898,21 @@ group event-tracked
 viewpoint overview
   label "Solar System Overview"
   summary "Major planets, reference moons, rings, belts, and key infrastructure."
-  projection topdown
+  projection orthographic
+  camera
+    azimuth 22
+    elevation 18
 
 viewpoint earth-system
   label "Earth and Near Space"
   focus Earth
   summary "Earth, the Moon, and nearby infrastructure with a curated eclipse snapshot."
-  projection topdown
+  projection perspective
   zoom 5.5
+  camera
+    azimuth 38
+    elevation 24
+    distance 6
   layers background guides orbits-back events objects labels metadata
   events total-solar-eclipse-2027
   filter
@@ -1059,6 +1103,8 @@ event total-solar-eclipse-2027
   participants Sun Earth Moon
   timing "2027-08-02"
   visibility "Northern Africa and the Arabian Peninsula"
+  epoch "J2000.0"
+  referencePlane ecliptic
   tags eclipse earth-system
   color "#7ecb74"
 
@@ -1073,16 +1119,23 @@ event total-solar-eclipse-2027
       distance 384400km
       phase 132deg`;
 
-    const playgroundDefaultSource = `schema 2.1
+    const playgroundDefaultSource = `schema 2.5
 
 system Demo
   title "Demo System"
 
 defaults
-  view isometric
+  view orthographic
   scale presentation
   preset atlas-card
   theme atlas
+
+viewpoint demo
+  projection perspective
+  camera
+    azimuth 32
+    elevation 20
+    distance 5
 
 object star Helion
 

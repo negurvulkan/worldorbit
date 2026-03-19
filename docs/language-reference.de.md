@@ -1,18 +1,33 @@
 # WorldOrbit Sprachreferenz
 
-WorldOrbit ist eine text-first DSL fuer fiktionale orbitale Systeme. Diese Referenz beschreibt das aktuell empfohlene Atlasformat Schema 2.1 und nennt zugleich die weiterhin unterstuetzten Kompatibilitaetspfade.
+WorldOrbit ist eine text-first DSL fuer fiktionale orbitale Systeme. Diese Referenz beschreibt das aktuell empfohlene Atlasformat Schema 2.5 und nennt zugleich die weiterhin unterstuetzten Kompatibilitaetspfade.
 
 ## Versionsueberblick
 
-- `schema 2.1` ist der empfohlene Header fuer neue Atlas-Dokumente.
+- `schema 2.5` ist der empfohlene Header fuer neue Atlas-Dokumente.
+- `schema 2.1` bleibt voll lesbar und ist die direkte Kompatibilitaetsbasis fuer Schema 2.5.
 - `schema 2.0` bleibt voll unterstuetzt.
 - `schema 2.0-draft` bleibt als Legacy-Kompatibilitaetspfad lesbar und erzeugt eine Deprecation-Diagnose.
 - Schema-1.0-Quellen ohne Header werden weiterhin ueber die aeltere Parser-/Normalisierungsstrecke unterstuetzt.
 
+## Neu in Schema 2.5
+
+Schema 2.5 ist eine rueckwaertskompatible Erweiterung von Schema 2.1 mit Fokus auf klarer 3D-Vorbereitung, nicht auf einem vollwertigen 3D- oder Simulationsschema.
+
+Schema 2.5 fuegt hinzu:
+
+- zwei weitere Viewpoint-Projektionen: `orthographic` und `perspective`
+- einen optionalen `camera`-Block auf `viewpoint`
+- explizite Vererbungsregeln fuer `epoch` und `referencePlane` ueber System-, Objekt-, Event- und Pose-Kontext
+- robustere Event-/Pose-Snapshot-Semantik fuer reproduzierbare kuratierte Szenen
+- staerkere Validierung fuer Viewpoints, Kamera-Felder und Event-/Pose-Kontext
+
+Schema 2.5 fuegt weiterhin bewusst **nicht** allgemeine XYZ-Koordinaten, Meshes, Materialien, Quaternionen, Lichtsysteme oder einen vollen Orbitalsolver hinzu.
+
 ## Dokumentgeruest
 
 ```worldorbit
-schema 2.1
+schema 2.5
 
 system Iyath
   title "The Iyath System"
@@ -21,7 +36,7 @@ system Iyath
   referencePlane ecliptic
 
 defaults
-  view isometric
+  view orthographic
   scale presentation
   preset atlas-card
   theme atlas
@@ -39,6 +54,8 @@ event naar-eclipse
   kind solar-eclipse
   target Naar
   participants Iyath Naar Seyra
+  epoch "JY-0001.0"
+  referencePlane ecliptic
 
 object star Iyath
 
@@ -50,7 +67,7 @@ object planet Naar
 
 ## Kommentare
 
-Schema 2.1 fuegt echte Kommentare hinzu.
+Schema 2.1 fuegt echte Kommentare hinzu, und Schema 2.5 behaelt sie unveraendert bei.
 
 - `# ...` startet einen Zeilenkommentar bis zum Zeilenende.
 - `/* ... */` startet einen Blockkommentar ueber mehrere Zeilen.
@@ -61,7 +78,7 @@ Schema 2.1 fuegt echte Kommentare hinzu.
 Beispiel:
 
 ```worldorbit
-schema 2.1
+schema 2.5
 
 # Hauptatlas
 system Iyath
@@ -119,6 +136,13 @@ Unterstuetzte Felder:
 - `preset`
 - `theme`
 
+`view` akzeptiert:
+
+- `topdown`
+- `isometric`
+- `orthographic`, Schema 2.5+
+- `perspective`, Schema 2.5+
+
 ### `atlas`
 
 Optionale Metadaten-Sektion.
@@ -143,9 +167,26 @@ Unterstuetzte Felder:
 - `preset`
 - `zoom`
 - `rotation`
+- `camera`
 - `layers`
 - `events`
 - `filter`
+
+`projection` akzeptiert:
+
+- `topdown`
+- `isometric`
+- `orthographic`, Schema 2.5+
+- `perspective`, Schema 2.5+
+
+`rotation` bleibt der bestehende 2D-Screen-Rotate-Hinweis. Es bleibt in Schema 2.5 unterstuetzt und ist **kein** Alias fuer `camera.azimuth`.
+
+`camera` ist in Schema 2.5 ein Block mit:
+
+- `azimuth`
+- `elevation`
+- `roll`, optional
+- `distance`, optional
 
 `filter` unterstuetzt:
 
@@ -154,11 +195,11 @@ Unterstuetzte Felder:
 - `tags`
 - `groups`
 
-In Schema 2.1 verweist `filter.groups` auf semantische `group`-IDs. Bei aelteren Atlanten faellt das Verhalten weiter auf die bisherige Render-Gruppierung zurueck.
+In Schema 2.1 und Schema 2.5 verweist `filter.groups` auf semantische `group`-IDs. Bei aelteren Atlanten faellt das Verhalten weiter auf die bisherige Render-Gruppierung zurueck.
 
-`events` ist in Schema 2.1 eine Liste von Event-IDs, die ein Viewpoint in seinem Panel oder Event-Picker hervorheben soll.
+`events` ist ab Schema 2.1 eine Liste von Event-IDs, die ein Viewpoint in seinem Panel oder Event-Picker hervorheben soll.
 
-`layers` darf in Schema 2.1 auch `events` enthalten, um Event-Overlays in unterstuetzenden Viewern einzublenden.
+`layers` darf ab Schema 2.1 auch `events` enthalten, um Event-Overlays in unterstuetzenden Viewern einzublenden.
 
 ### `annotation`
 
@@ -204,7 +245,7 @@ Relationen sind keine Orbital-Platzierung. Sie modellieren Logistik, Politik, In
 
 ### `event`
 
-Deklarative Event-Sektion ab Schema 2.1.
+Deklarative Event-Sektion ab Schema 2.1. Schema 2.5 erweitert sie um expliziten Event-Kontext.
 
 Unterstuetzte Felder:
 
@@ -215,6 +256,8 @@ Unterstuetzte Felder:
 - `participants` Liste von Objekt-IDs
 - `timing` string
 - `visibility` string
+- `epoch` string, Schema 2.5+
+- `referencePlane` string, Schema 2.5+
 - `tags` list
 - `color` string
 - `hidden` boolean
@@ -226,7 +269,7 @@ Mindestens eines von `target` oder `participants` sollte gesetzt sein.
 
 #### `positions` und `pose`
 
-Innerhalb eines `event` unterstuetzt Schema 2.1 optional einen `positions`-Block mit wiederholbaren `pose <objectId>`-Bloecken.
+Innerhalb eines `event` unterstuetzt Schema 2.1 optional einen `positions`-Block mit wiederholbaren `pose <objectId>`-Bloecken. Schema 2.5 behaelt diese Form bei und praezisiert, wie fehlende Pose-Daten auf Objekt-, Event- und Systemkontext zurueckfallen.
 
 Beispiel:
 
@@ -252,8 +295,17 @@ Jedes `pose` verwendet die Placement-Sprache erneut fuer einen kuratierten Ereig
 
 - genau eines von `orbit`, `at`, `surface` oder `free`
 - optionale Placement-Geometrie wie `distance`, `semiMajor`, `eccentricity`, `period`, `angle`, `inclination`, `phase`, `inner` und `outer`
+- optional `epoch`, Schema 2.5+
+- optional `referencePlane`, Schema 2.5+
 
 `pose`-Bloecke sind nur fuer Position und Geometrie gedacht. Sie sind kein zweiter Ort fuer `mass`, `radius`, `info`, typisierte Lore-Bloecke oder andere nicht-platzierungsbezogene Objektmetadaten.
+
+Kontextvererbung fuer Event-Snapshots:
+
+- `pose.epoch -> event.epoch -> object.epoch -> system.epoch -> unset`
+- `pose.referencePlane -> event.referencePlane -> object.referencePlane -> system.referencePlane -> impliziter Renderer-Default`
+
+Fehlende Pose-Placement-Felder fallen auf das Basisobjekt zurueck. Fehlende Pose-Bloecke machen ein Event nicht ungueltig; sie bedeuten nur, dass fuer diese referenzierten Koerper die normale Dokument-Platzierung verwendet wird.
 
 ### `object`
 

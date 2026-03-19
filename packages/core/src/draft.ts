@@ -57,8 +57,8 @@ export function upgradeDocumentToV2(
 
   return {
     format: "worldorbit",
-    version: "2.0",
-    schemaVersion: "2.0",
+    version: "2.5",
+    schemaVersion: "2.5",
     sourceVersion: document.version,
     system,
     groups: structuredClone(document.groups ?? []),
@@ -146,11 +146,16 @@ function createDraftDefaults(
   preset: RenderPresetName | null,
   projection: ViewProjection,
 ): WorldOrbitAtlasDefaults {
+  const rawView = typeof document.system?.properties.view === "string"
+    ? document.system.properties.view.toLowerCase()
+    : null;
   return {
     view:
-      typeof document.system?.properties.view === "string" &&
-      document.system.properties.view.toLowerCase() === "topdown"
-        ? "topdown"
+      rawView === "topdown" ||
+      rawView === "isometric" ||
+      rawView === "orthographic" ||
+      rawView === "perspective"
+        ? rawView
         : projection,
     scale:
       typeof document.system?.properties.scale === "string"
@@ -298,6 +303,7 @@ function mapSceneViewpointToDraftViewpoint(
     preset: viewpoint.preset,
     zoom: viewpoint.scale,
     rotationDeg: viewpoint.rotationDeg,
+    camera: viewpoint.camera ? { ...viewpoint.camera } : null,
     layers: { ...viewpoint.layers },
     filter: viewpoint.filter
       ? {
@@ -358,6 +364,8 @@ function cloneWorldOrbitEventPose(pose: WorldOrbitEventPose): WorldOrbitEventPos
     placement: clonePlacement(pose.placement),
     inner: pose.inner ? { ...pose.inner } : undefined,
     outer: pose.outer ? { ...pose.outer } : undefined,
+    epoch: pose.epoch ?? null,
+    referencePlane: pose.referencePlane ?? null,
   };
 }
 
@@ -380,24 +388,50 @@ function applyEventPoseOverrides(
   }
 
   const objectMap = new Map(objects.map((object) => [object.id, object]));
+  const referencedIds = new Set<string>([
+    ...(event.targetObjectId ? [event.targetObjectId] : []),
+    ...event.participantObjectIds,
+    ...event.positions.map((pose) => pose.objectId),
+  ]);
+
+  for (const objectId of referencedIds) {
+    const object = objectMap.get(objectId);
+    if (!object) {
+      continue;
+    }
+
+    if (event.epoch) {
+      object.epoch = event.epoch;
+    }
+    if (event.referencePlane) {
+      object.referencePlane = event.referencePlane;
+    }
+  }
+
   for (const pose of event.positions) {
     const object = objectMap.get(pose.objectId);
     if (!object) {
       continue;
     }
 
-    object.placement = clonePlacement(pose.placement);
+    if (pose.placement) {
+      object.placement = clonePlacement(pose.placement);
+    }
 
     if (pose.inner) {
       object.properties.inner = { ...pose.inner };
-    } else {
-      delete object.properties.inner;
     }
 
     if (pose.outer) {
       object.properties.outer = { ...pose.outer };
-    } else {
-      delete object.properties.outer;
+    }
+
+    if (pose.epoch) {
+      object.epoch = pose.epoch;
+    }
+
+    if (pose.referencePlane) {
+      object.referencePlane = pose.referencePlane;
     }
   }
 }
@@ -517,6 +551,18 @@ function materializeDraftSystemInfo(system: WorldOrbitAtlasSystem): Record<strin
     }
     if (viewpoint.rotationDeg !== 0) {
       info[`${prefix}.rotation`] = String(viewpoint.rotationDeg);
+    }
+    if (viewpoint.camera?.azimuth !== null) {
+      info[`${prefix}.camera.azimuth`] = String(viewpoint.camera?.azimuth);
+    }
+    if (viewpoint.camera?.elevation !== null) {
+      info[`${prefix}.camera.elevation`] = String(viewpoint.camera?.elevation);
+    }
+    if (viewpoint.camera?.roll !== null) {
+      info[`${prefix}.camera.roll`] = String(viewpoint.camera?.roll);
+    }
+    if (viewpoint.camera?.distance !== null) {
+      info[`${prefix}.camera.distance`] = String(viewpoint.camera?.distance);
     }
 
     const serializedLayers = serializeViewpointLayers(viewpoint.layers);

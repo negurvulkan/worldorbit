@@ -2,7 +2,7 @@
 
 This guide covers the stable `v2.0` migration path.
 
-If you are already on canonical `schema 2.0`, see [migration-v2-to-v2.1.md](./migration-v2-to-v2.1.md) for the backward-compatible Schema 2.1 upgrade path.
+If you are already on canonical `schema 2.0`, see [migration-v2-to-v2.1.md](./migration-v2-to-v2.1.md) for the backward-compatible Schema 2.1 upgrade path, then [migration-v2.1-to-v2.5.md](./migration-v2.1-to-v2.5.md) for the current Schema 2.5 upgrade path.
 
 ## What changed
 

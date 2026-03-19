@@ -1,7 +1,7 @@
 import { createWorldOrbitEditor } from "@worldorbit/editor";
 
-const RECOVERY_STORAGE_KEY = "worldorbit.studio.recovery.v2.5";
-const SESSION_STORAGE_KEY = "worldorbit.studio.session.v2.5";
+const RECOVERY_STORAGE_KEY = "worldorbit.studio.recovery.v2.6";
+const SESSION_STORAGE_KEY = "worldorbit.studio.session.v2.6";
 const DEFAULT_FILE_NAME = "untitled.worldorbit";
 const DEFAULT_SESSION_STATE = {
   panels: {
@@ -15,16 +15,16 @@ const DEFAULT_SESSION_STATE = {
     sourceHeight: 280,
   },
 };
-const FALLBACK_SOURCE = `schema 2.1
+const FALLBACK_SOURCE = `schema 2.5
 
 system New-Atlas
   title "New Atlas"
-  description "Starter atlas for Schema 2.1 authoring"
+  description "Starter atlas for Schema 2.5 authoring"
   epoch "JY-0001.0"
   referencePlane ecliptic
 
 defaults
-  view isometric
+  view orthographic
   scale presentation
   preset atlas-card
 
@@ -35,7 +35,20 @@ group inner-system
 
 viewpoint overview
   label "Overview"
-  projection isometric
+  projection orthographic
+  camera
+    azimuth 28
+    elevation 20
+
+viewpoint eclipse
+  label "Perspective Eclipse"
+  projection perspective
+  focus Homeworld
+  events homeworld-eclipse
+  camera
+    azimuth 42
+    elevation 24
+    distance 6
 
 relation supply-route
   from Homeworld
@@ -68,6 +81,31 @@ object structure Relay
   at Homeworld:L4
   kind relay
   groups inner-system
+
+event homeworld-eclipse
+  kind solar-eclipse
+  label "Homeworld Eclipse"
+  target Homeworld
+  participants Primary Homeworld Moonlet
+  epoch "JY-0001.0"
+  referencePlane ecliptic
+
+  positions
+    pose Homeworld
+      orbit Primary
+      semiMajor 1au
+      phase 90deg
+
+    pose Moonlet
+      orbit Homeworld
+      distance 384400km
+      phase 90deg
+
+object moon Moonlet
+  orbit Homeworld
+  distance 384400km
+  phase 12deg
+  radius 0.27re
 `;
 
 export async function createWorldOrbitStudio(root, options = {}) {
@@ -142,7 +180,7 @@ export async function createWorldOrbitStudio(root, options = {}) {
         : deriveFileNameFromUrl(exampleUrl));
     editor.markSaved();
     currentDirty = editor.isDirty();
-    setMessage("Studio ready. Working with schema 2.1 atlases.", "info");
+    setMessage("Studio ready. Working with schema 2.5 atlases.", "info");
   }
 
   toolbar.addEventListener("click", handleToolbarClick);
@@ -182,7 +220,7 @@ export async function createWorldOrbitStudio(root, options = {}) {
       case "new":
         loadIntoEditor(FALLBACK_SOURCE, DEFAULT_FILE_NAME, {
           markSaved: true,
-          message: "Started a new schema 2.1 atlas.",
+          message: "Started a new schema 2.5 atlas.",
         });
         return;
       case "open":

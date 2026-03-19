@@ -26,6 +26,7 @@ import type {
   WorldOrbitObjectType,
   WorldOrbitRelation,
   WorldOrbitTypedBlockName,
+  WorldOrbitViewCamera,
 } from "./types.js";
 import {
   ensureAtlasFieldSupported,
@@ -87,6 +88,8 @@ type DraftSectionState =
   | {
       kind: "defaults";
       system: WorldOrbitDraftSystem;
+      sourceSchemaVersion: SourceSchemaVersion;
+      diagnostics: WorldOrbitDiagnostic[];
       seenFields: Set<string>;
     }
   | {
@@ -104,6 +107,9 @@ type DraftSectionState =
       inFilter: boolean;
       filterIndent: number | null;
       seenFilterFields: Set<string>;
+      inCamera: boolean;
+      cameraIndent: number | null;
+      seenCameraFields: Set<string>;
     }
   | {
       kind: "annotation";
@@ -146,7 +152,7 @@ type DraftSectionState =
 
 interface DraftObjectFieldSpec {
   key: string;
-  version: "2.0" | "2.1";
+  version: "2.0" | "2.1" | "2.5";
   inlineMode: "single" | "multiple" | "pair";
   allowRepeat: boolean;
   legacySchema?: WorldOrbitFieldSchema;
@@ -241,6 +247,8 @@ const EVENT_POSE_FIELD_KEYS = new Set([
   "free",
   "inner",
   "outer",
+  "epoch",
+  "referencePlane",
 ]);
 
 export function parseWorldOrbitAtlas(source: string): WorldOrbitAtlasDocument {
@@ -296,7 +304,7 @@ function parseAtlasSource(
     if (!sawSchemaHeader) {
       sourceSchemaVersion = assertDraftSchemaHeader(tokens, lineNumber);
       sawSchemaHeader = true;
-      if (prepared.comments.length > 0 && sourceSchemaVersion !== "2.1") {
+      if (prepared.comments.length > 0 && isSchemaOlderThan(sourceSchemaVersion, "2.1")) {
         diagnostics.push({
           code: "parse.schema21.commentCompatibility",
           severity: "warning",
@@ -414,17 +422,19 @@ function assertDraftSchemaHeader(
   if (
     tokens.length !== 2 ||
     tokens[0].value.toLowerCase() !== "schema" ||
-    !["2.0-draft", "2.0", "2.1"].includes(tokens[1].value.toLowerCase())
+    !["2.0-draft", "2.0", "2.1", "2.5"].includes(tokens[1].value.toLowerCase())
   ) {
     throw new WorldOrbitError(
-      'Expected atlas header "schema 2.0", "schema 2.1", or legacy "schema 2.0-draft"',
+      'Expected atlas header "schema 2.0", "schema 2.1", "schema 2.5", or legacy "schema 2.0-draft"',
       line,
       tokens[0]?.column ?? 1,
     );
   }
 
   const version = tokens[1].value.toLowerCase();
-  return version === "2.1"
+  return version === "2.5"
+    ? "2.5"
+    : version === "2.1"
     ? "2.1"
     : version === "2.0-draft"
       ? "2.0-draft"
@@ -482,6 +492,8 @@ function startTopLevelSection(
       return {
         kind: "defaults",
         system,
+        sourceSchemaVersion,
+        diagnostics,
         seenFields: new Set<string>(),
       };
     case "atlas":
@@ -635,6 +647,7 @@ function startViewpointSection(
     preset: system.defaults.preset,
     zoom: null,
     rotationDeg: 0,
+    camera: null,
     layers: {},
     filter: null,
   };
@@ -651,6 +664,9 @@ function startViewpointSection(
     inFilter: false,
     filterIndent: null,
     seenFilterFields: new Set<string>(),
+    inCamera: false,
+    cameraIndent: null,
+    seenCameraFields: new Set<string>(),
   };
 }
 
@@ -814,6 +830,8 @@ function startEventSection(
     participantObjectIds: [],
     timing: null,
     visibility: null,
+    epoch: null,
+    referencePlane: null,
     tags: [],
     color: null,
     hidden: false,
@@ -988,6 +1006,12 @@ function applyDefaultsField(
 
   switch (key) {
     case "view":
+      if (isSchema25Projection(value)) {
+        warnIfSchema25Feature(section.sourceSchemaVersion, section.diagnostics, "defaults.view", {
+          line,
+          column: tokens[0].column,
+        });
+      }
       section.system.defaults.view = parseProjectionValue(value, line, tokens[0].column);
       return;
     case "scale":
@@ -1055,13 +1079,38 @@ function applyViewpointField(
   tokens: LineToken[],
   line: number,
 ): void {
+  if (section.inCamera && indent <= (section.cameraIndent ?? 0)) {
+    section.inCamera = false;
+    section.cameraIndent = null;
+  }
+
   if (section.inFilter && indent <= (section.filterIndent ?? 0)) {
     section.inFilter = false;
     section.filterIndent = null;
   }
 
+  if (section.inCamera) {
+    applyViewpointCameraField(section, tokens, line);
+    return;
+  }
+
   if (section.inFilter) {
     applyViewpointFilterField(section, tokens, line);
+    return;
+  }
+
+  if (tokens.length === 1 && tokens[0].value.toLowerCase() === "camera") {
+    warnIfSchema25Feature(section.sourceSchemaVersion, section.diagnostics, "viewpoint.camera", {
+      line,
+      column: tokens[0].column,
+    });
+    if (section.seenFields.has("camera")) {
+      throw new WorldOrbitError('Duplicate viewpoint field "camera"', line, tokens[0].column);
+    }
+    section.seenFields.add("camera");
+    section.inCamera = true;
+    section.cameraIndent = indent;
+    section.viewpoint.camera = section.viewpoint.camera ?? createEmptyViewCamera();
     return;
   }
 
@@ -1092,6 +1141,12 @@ function applyViewpointField(
       section.viewpoint.selectedObjectId = value;
       return;
     case "projection":
+      if (isSchema25Projection(value)) {
+        warnIfSchema25Feature(section.sourceSchemaVersion, section.diagnostics, "projection", {
+          line,
+          column: tokens[0].column,
+        });
+      }
       section.viewpoint.projection = parseProjectionValue(value, line, tokens[0].column);
       return;
     case "preset":
@@ -1106,6 +1161,17 @@ function applyViewpointField(
         line,
         tokens[0].column,
         "rotation",
+      );
+      return;
+    case "camera":
+      warnIfSchema25Feature(section.sourceSchemaVersion, section.diagnostics, "viewpoint.camera", {
+        line,
+        column: tokens[0].column,
+      });
+      section.viewpoint.camera = parseInlineViewCamera(
+        tokens.slice(1),
+        line,
+        section.viewpoint.camera,
       );
       return;
     case "layers":
@@ -1130,6 +1196,39 @@ function applyViewpointField(
         tokens[0].column,
       );
   }
+}
+
+function applyViewpointCameraField(
+  section: Extract<DraftSectionState, { kind: "viewpoint" }>,
+  tokens: LineToken[],
+  line: number,
+): void {
+  const key = requireUniqueField(tokens, section.seenCameraFields, line);
+  const value = joinFieldValue(tokens, line);
+  const camera = section.viewpoint.camera ?? createEmptyViewCamera();
+
+  switch (key) {
+    case "azimuth":
+      camera.azimuth = parseFiniteNumber(value, line, tokens[0].column, "camera.azimuth");
+      break;
+    case "elevation":
+      camera.elevation = parseFiniteNumber(value, line, tokens[0].column, "camera.elevation");
+      break;
+    case "roll":
+      camera.roll = parseFiniteNumber(value, line, tokens[0].column, "camera.roll");
+      break;
+    case "distance":
+      camera.distance = parsePositiveNumber(value, line, tokens[0].column, "camera.distance");
+      break;
+    default:
+      throw new WorldOrbitError(
+        `Unknown viewpoint camera field "${tokens[0].value}"`,
+        line,
+        tokens[0].column,
+      );
+  }
+
+  section.viewpoint.camera = camera;
 }
 
 function applyViewpointFilterField(
@@ -1290,6 +1389,15 @@ function applyEventField(
   }
 
   if (section.activePose) {
+    if (
+      tokens[0]?.value === "epoch" ||
+      tokens[0]?.value === "referencePlane"
+    ) {
+      warnIfSchema25Feature(section.sourceSchemaVersion, section.diagnostics, `pose.${tokens[0].value}`, {
+        line,
+        column: tokens[0]?.column ?? 1,
+      });
+    }
     section.activePose.fields.push(parseEventPoseField(tokens, line, section.activePoseSeenFields));
     return;
   }
@@ -1353,6 +1461,20 @@ function applyEventField(
       return;
     case "visibility":
       section.event.visibility = joinFieldValue(tokens, line);
+      return;
+    case "epoch":
+      warnIfSchema25Feature(section.sourceSchemaVersion, section.diagnostics, "event.epoch", {
+        line,
+        column: tokens[0].column,
+      });
+      section.event.epoch = joinFieldValue(tokens, line);
+      return;
+    case "referenceplane":
+      warnIfSchema25Feature(section.sourceSchemaVersion, section.diagnostics, "event.referencePlane", {
+        line,
+        column: tokens[0].column,
+      });
+      section.event.referencePlane = joinFieldValue(tokens, line);
       return;
     case "tags":
       section.event.tags = parseTokenList(tokens.slice(1), line, "tags");
@@ -1581,11 +1703,21 @@ function parseProjectionValue(
   column: number,
 ): ViewProjection {
   const normalized = value.toLowerCase();
-  if (normalized !== "topdown" && normalized !== "isometric") {
+  if (
+    normalized !== "topdown" &&
+    normalized !== "isometric" &&
+    normalized !== "orthographic" &&
+    normalized !== "perspective"
+  ) {
     throw new WorldOrbitError(`Unknown projection "${value}"`, line, column);
   }
 
   return normalized;
+}
+
+function isSchema25Projection(value: string): boolean {
+  const normalized = value.toLowerCase();
+  return normalized === "orthographic" || normalized === "perspective";
 }
 
 function parsePresetValue(
@@ -1642,6 +1774,62 @@ function createEmptyViewpointFilter(): RenderSceneViewpointFilter {
     tags: [],
     groupIds: [],
   };
+}
+
+function createEmptyViewCamera(): WorldOrbitViewCamera {
+  return {
+    azimuth: null,
+    elevation: null,
+    roll: null,
+    distance: null,
+  };
+}
+
+function parseInlineViewCamera(
+  tokens: LineToken[],
+  line: number,
+  current: WorldOrbitDraftViewpoint["camera"],
+): WorldOrbitDraftViewpoint["camera"] {
+  if (tokens.length === 0 || tokens.length % 2 !== 0) {
+    throw new WorldOrbitError(
+      'Field "camera" expects "<field> <value>" pairs',
+      line,
+      tokens[0]?.column ?? 1,
+    );
+  }
+
+  const camera = current ? { ...current } : createEmptyViewCamera();
+  const seen = new Set<string>();
+
+  for (let index = 0; index < tokens.length; index += 2) {
+    const fieldToken = tokens[index];
+    const valueToken = tokens[index + 1];
+    const key = fieldToken.value.toLowerCase();
+    if (seen.has(key)) {
+      throw new WorldOrbitError(`Duplicate viewpoint camera field "${fieldToken.value}"`, line, fieldToken.column);
+    }
+    seen.add(key);
+    const value = valueToken.value;
+
+    switch (key) {
+      case "azimuth":
+        camera.azimuth = parseFiniteNumber(value, line, fieldToken.column, "camera.azimuth");
+        break;
+      case "elevation":
+        camera.elevation = parseFiniteNumber(value, line, fieldToken.column, "camera.elevation");
+        break;
+      case "roll":
+        camera.roll = parseFiniteNumber(value, line, fieldToken.column, "camera.roll");
+        break;
+      case "distance":
+        camera.distance = parsePositiveNumber(value, line, fieldToken.column, "camera.distance");
+        break;
+      default:
+        throw new WorldOrbitError(`Unknown viewpoint camera field "${fieldToken.value}"`, line, fieldToken.column);
+    }
+  }
+
+  return camera;
 }
 
 function parseInlineObjectFields(
@@ -1818,7 +2006,7 @@ function normalizeDraftObject(
   if (tolerances?.length) object.tolerances = tolerances;
   if (typedBlocks && Object.keys(typedBlocks).length > 0) object.typedBlocks = typedBlocks;
 
-  if (sourceSchemaVersion !== "2.1") {
+  if (isSchemaOlderThan(sourceSchemaVersion, "2.1")) {
     if (
       object.groups ||
       object.epoch ||
@@ -1854,26 +2042,31 @@ function normalizeDraftEvent(
 function normalizeDraftEventPose(
   rawPose: DraftRawEventPose,
 ): WorldOrbitEventPose {
-  const fieldMap = collectDraftFields(rawPose.fields);
+  const fieldMap = collectDraftFields(rawPose.fields, "event-pose");
   const placement = extractPlacementFromFieldMap(fieldMap);
   return {
     objectId: rawPose.objectId,
     placement,
     inner: parseOptionalUnitField(fieldMap.get("inner")?.[0], "inner"),
     outer: parseOptionalUnitField(fieldMap.get("outer")?.[0], "outer"),
+    epoch: parseOptionalJoinedValue(fieldMap.get("epoch")?.[0]),
+    referencePlane: parseOptionalJoinedValue(fieldMap.get("referencePlane")?.[0]),
   };
 }
 
-function collectDraftFields(fields: AstFieldNode[]): Map<string, AstFieldNode[]> {
+function collectDraftFields(
+  fields: AstFieldNode[],
+  _mode: "object" | "event-pose" = "object",
+): Map<string, AstFieldNode[]> {
   const grouped = new Map<string, AstFieldNode[]>();
 
   for (const field of fields) {
     const spec = getDraftObjectFieldSpec(field.key);
-    if (!spec) {
+    if (!spec && !EVENT_POSE_FIELD_KEYS.has(field.key)) {
       throw WorldOrbitError.fromLocation(`Unknown field "${field.key}"`, field.location);
     }
 
-    if (!spec.allowRepeat && grouped.has(field.key)) {
+    if (!spec?.allowRepeat && grouped.has(field.key)) {
       throw WorldOrbitError.fromLocation(`Duplicate field "${field.key}"`, field.location);
     }
 
@@ -2139,7 +2332,7 @@ function warnIfSchema21Feature(
   featureName: string,
   location: AstSourceLocation,
 ): void {
-  if (sourceSchemaVersion === "2.1") {
+  if (!isSchemaOlderThan(sourceSchemaVersion, "2.1")) {
     return;
   }
 
@@ -2151,6 +2344,48 @@ function warnIfSchema21Feature(
     line: location.line,
     column: location.column,
   });
+}
+
+function warnIfSchema25Feature(
+  sourceSchemaVersion: SourceSchemaVersion,
+  diagnostics: WorldOrbitDiagnostic[],
+  featureName: string,
+  location: AstSourceLocation,
+): void {
+  if (!isSchemaOlderThan(sourceSchemaVersion, "2.5")) {
+    return;
+  }
+
+  diagnostics.push({
+    code: "parse.schema25.featureCompatibility",
+    severity: "warning",
+    source: "parse",
+    message: `Feature "${featureName}" requires schema 2.5; parsed in compatibility mode because the document header is "schema ${sourceSchemaVersion}".`,
+    line: location.line,
+    column: location.column,
+  });
+}
+
+function isSchemaOlderThan(
+  sourceSchemaVersion: SourceSchemaVersion,
+  requiredVersion: "2.1" | "2.5",
+): boolean {
+  return schemaVersionRank(sourceSchemaVersion) < schemaVersionRank(requiredVersion);
+}
+
+function schemaVersionRank(
+  version: SourceSchemaVersion | "2.1" | "2.5",
+): number {
+  switch (version) {
+    case "2.0-draft":
+      return 0;
+    case "2.0":
+      return 1;
+    case "2.1":
+      return 2;
+    case "2.5":
+      return 3;
+  }
 }
 
 function preprocessAtlasSource(source: string): PreparedAtlasSource {

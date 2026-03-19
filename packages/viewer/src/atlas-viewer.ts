@@ -402,6 +402,8 @@ export function createAtlasViewer(
 
   function buildInspectorSnapshot(): AtlasInspectorSnapshot {
     const activeViewer = requireViewer();
+    const scene = activeViewer.getScene();
+    const camera = scene.camera;
     return {
       selection: activeViewer.getSelectionDetails(),
       activeViewpoint: activeViewer.getActiveViewpoint(),
@@ -409,14 +411,23 @@ export function createAtlasViewer(
       atlasState: activeViewer.getAtlasState(),
       visibleObjectIds: activeViewer.getVisibleObjects().map((object) => object.objectId),
       scene: {
-        title: activeViewer.getScene().title,
-        projection: activeViewer.getScene().projection,
-        renderPreset: activeViewer.getScene().renderPreset,
-        groupCount: activeViewer.getScene().groups.length,
-        semanticGroupCount: activeViewer.getScene().semanticGroups.length,
-        relationCount: activeViewer.getScene().relations.length,
-        eventCount: activeViewer.getScene().events.length,
-        viewpointCount: activeViewer.getScene().viewpoints.length,
+        title: scene.title,
+        projection: scene.projection,
+        renderProjection: scene.renderProjection,
+        camera: camera
+          ? {
+              azimuth: camera.azimuth,
+              elevation: camera.elevation,
+              roll: camera.roll,
+              distance: camera.distance,
+            }
+          : null,
+        renderPreset: scene.renderPreset,
+        groupCount: scene.groups.length,
+        semanticGroupCount: scene.semanticGroups.length,
+        relationCount: scene.relations.length,
+        eventCount: scene.events.length,
+        viewpointCount: scene.viewpoints.length,
       },
     };
   }

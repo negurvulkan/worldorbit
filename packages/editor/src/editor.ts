@@ -140,7 +140,11 @@ const OBJECT_NUMBER_FIELDS = ["albedo"] as const;
 const FIELD_HELP: Partial<Record<string, FieldHelpEntry>> = {
   "defaults-view": {
     description: "Sets the default camera projection for the atlas.",
-    references: ["Topdown = map-like", "Isometric = angled overview"],
+    references: [
+      "Topdown = map-like",
+      "Isometric = angled overview",
+      "Orthographic/Perspective = 3D-ready semantic views",
+    ],
   },
   "defaults-scale": {
     description: "Chooses the overall spacing/style preset used by the renderer.",
@@ -152,15 +156,35 @@ const FIELD_HELP: Partial<Record<string, FieldHelpEntry>> = {
   },
   "viewpoint-projection": {
     description: "Overrides the projection for this saved viewpoint.",
-    references: ["Topdown = flat orbital map", "Isometric = angled scene"],
+    references: [
+      "Topdown = flat orbital map",
+      "Isometric = angled scene",
+      "Orthographic/Perspective = stored with current 2D fallback",
+    ],
   },
   "viewpoint-zoom": {
     description: "Controls how closely this viewpoint frames the system.",
     references: ["1 = scene fit", "2+ = close-up"],
   },
   "viewpoint-rotation": {
-    description: "Rotates the saved camera angle in degrees.",
-    references: ["90deg = quarter turn", "180deg = flip"],
+    description: "Legacy 2D screen rotation. This is separate from the Schema 2.5 camera block.",
+    references: ["90deg = quarter turn", "Use camera.azimuth for semantic view direction"],
+  },
+  "viewpoint-camera-azimuth": {
+    description: "Horizontal camera direction in degrees for Schema 2.5 viewpoints.",
+    references: ["0 = forward/default", "90 = quarter orbit around the scene"],
+  },
+  "viewpoint-camera-elevation": {
+    description: "Vertical camera tilt in degrees for 3D-ready viewpoints.",
+    references: ["0 = level", "30 = gentle look down"],
+  },
+  "viewpoint-camera-roll": {
+    description: "Rolls the camera around its forward axis.",
+    references: ["0 = upright", "15 = slight bank"],
+  },
+  "viewpoint-camera-distance": {
+    description: "Semantic camera distance for perspective viewpoints.",
+    references: ["4 = close", "12 = wide framing"],
   },
   "viewpoint-events": {
     description: "Lists event IDs that this viewpoint should feature in its detail panel.",
@@ -185,6 +209,14 @@ const FIELD_HELP: Partial<Record<string, FieldHelpEntry>> = {
   "event-visibility": {
     description: "Notes where or how the event is visible.",
     references: ['"Visible from Naar"', '"Southern hemisphere only"'],
+  },
+  "event-epoch": {
+    description: "Optional event-wide epoch that event poses inherit unless they override it.",
+    references: ['"JY-0001.0"', '"Naar bloom cycle year 18"'],
+  },
+  "event-referencePlane": {
+    description: "Optional event-wide reference plane for all poses in this snapshot.",
+    references: ["ecliptic", "naar-equatorial"],
   },
   "event-viewpoints": {
     description: "Viewpoint IDs that should list this event prominently.",
@@ -225,6 +257,14 @@ const FIELD_HELP: Partial<Record<string, FieldHelpEntry>> = {
   "placement-phase": {
     description: "Starting position of the object along its orbit.",
     references: ["0deg = start position", "180deg = opposite side"],
+  },
+  "pose-epoch": {
+    description: "Overrides the effective epoch for this pose only.",
+    references: ['"JY-0001.0"', "Falls back to event, object, then system"],
+  },
+  "pose-referencePlane": {
+    description: "Overrides the effective reference plane for this pose only.",
+    references: ["naar-equatorial", "Falls back to event, object, then system"],
   },
   "prop-radius": {
     description: "Visual body size or real-world-inspired radius value.",
@@ -440,6 +480,8 @@ export function createWorldOrbitEditor(
         participantObjectIds: [],
         timing: null,
         visibility: null,
+        epoch: null,
+        referencePlane: null,
         tags: [],
         color: null,
         hidden: false,
@@ -467,6 +509,7 @@ export function createWorldOrbitEditor(
         preset: atlasDocument.system?.defaults.preset ?? null,
         zoom: null,
         rotationDeg: 0,
+        camera: null,
         layers: {},
         filter: null,
       };
@@ -1686,6 +1729,7 @@ export function createWorldOrbitEditor(
         null,
       zoom: parseNullableNumber(readOptionalTextInput(form, "viewpoint-zoom")),
       rotationDeg: parseNullableNumber(readOptionalTextInput(form, "viewpoint-rotation")) ?? 0,
+      camera: buildViewCameraFromForm(form),
       layers: {
         background: readCheckbox(form, "layer-background"),
         guides: readCheckbox(form, "layer-guides"),
@@ -1734,6 +1778,8 @@ export function createWorldOrbitEditor(
       participantObjectIds: splitTokens(readOptionalTextInput(form, "event-participants")),
       timing: readOptionalTextInput(form, "event-timing"),
       visibility: readOptionalTextInput(form, "event-visibility"),
+      epoch: readOptionalTextInput(form, "event-epoch"),
+      referencePlane: readOptionalTextInput(form, "event-referencePlane"),
       tags: splitTokens(readOptionalTextInput(form, "event-tags")),
       color: readOptionalTextInput(form, "event-color"),
       hidden: readCheckbox(form, "event-hidden"),
@@ -1773,6 +1819,8 @@ export function createWorldOrbitEditor(
     const replacement: WorldOrbitEventPose = {
       objectId: nextObjectId,
       placement: buildPlacementFromPoseForm(form, currentPose),
+      epoch: readOptionalTextInput(form, "pose-epoch"),
+      referencePlane: readOptionalTextInput(form, "pose-referencePlane"),
     };
     const inner = parseOptionalUnit(readOptionalTextInput(form, "prop-inner"));
     const outer = parseOptionalUnit(readOptionalTextInput(form, "prop-outer"));
@@ -2324,6 +2372,8 @@ function renderDefaultsInspector(formState: WorldOrbitEditorFormState): string {
       `${renderSelectField("Projection", "defaults-view", [
         ["topdown", "Topdown"],
         ["isometric", "Isometric"],
+        ["orthographic", "Orthographic"],
+        ["perspective", "Perspective"],
       ], defaults?.view ?? "topdown")}
       ${renderTextField("Scale preset", "defaults-scale", defaults?.scale ?? "")}
       ${renderTextField("Units", "defaults-units", defaults?.units ?? "")}
@@ -2381,6 +2431,8 @@ function renderViewpointInspector(
       ${renderSelectField("Projection", "viewpoint-projection", [
         ["topdown", "Topdown"],
         ["isometric", "Isometric"],
+        ["orthographic", "Orthographic"],
+        ["perspective", "Perspective"],
       ], viewpoint.projection)}
       ${renderSelectField("Preset", "viewpoint-preset", [
         ["", "Document default"],
@@ -2392,6 +2444,16 @@ function renderViewpointInspector(
       ${renderTextField("Zoom", "viewpoint-zoom", viewpoint.zoom === null ? "" : String(viewpoint.zoom))}
       ${renderTextField("Rotation", "viewpoint-rotation", String(viewpoint.rotationDeg))}`,
       true,
+    )}
+    ${renderInspectorSection(
+      "viewpoint",
+      "camera",
+      "Camera",
+      `${renderTextField("Azimuth", "viewpoint-camera-azimuth", viewpoint.camera?.azimuth === null || viewpoint.camera?.azimuth === undefined ? "" : String(viewpoint.camera.azimuth))}
+      ${renderTextField("Elevation", "viewpoint-camera-elevation", viewpoint.camera?.elevation === null || viewpoint.camera?.elevation === undefined ? "" : String(viewpoint.camera.elevation))}
+      ${renderTextField("Roll", "viewpoint-camera-roll", viewpoint.camera?.roll === null || viewpoint.camera?.roll === undefined ? "" : String(viewpoint.camera.roll))}
+      ${renderTextField("Distance", "viewpoint-camera-distance", viewpoint.camera?.distance === null || viewpoint.camera?.distance === undefined ? "" : String(viewpoint.camera.distance))}
+      <p class="wo-editor-inline-note">Rotation stays a 2D screen-rotation hint. The camera block stores Schema 2.5 view direction and framing.</p>`,
     )}
     ${renderInspectorSection(
       "viewpoint",
@@ -2450,6 +2512,8 @@ function renderEventInspector(
       ${renderTextField("Participants", "event-participants", eventEntry.participantObjectIds.join(" "))}
       ${renderTextField("Timing", "event-timing", eventEntry.timing ?? "")}
       ${renderTextField("Visibility", "event-visibility", eventEntry.visibility ?? "")}
+      ${renderTextField("Epoch", "event-epoch", eventEntry.epoch ?? "")}
+      ${renderTextField("Reference plane", "event-referencePlane", eventEntry.referencePlane ?? "")}
       ${renderTextField("Tags", "event-tags", eventEntry.tags.join(" "))}
       ${renderTextField("Color", "event-color", eventEntry.color ?? "")}
       ${renderCheckboxField("Hidden", "event-hidden", eventEntry.hidden === true)}`,
@@ -2544,6 +2608,14 @@ function renderEventPoseInspector(
       ${renderTextField("Inner", "prop-inner", pose.inner ? formatUnitValue(pose.inner) : "")}
       ${renderTextField("Outer", "prop-outer", pose.outer ? formatUnitValue(pose.outer) : "")}`,
       true,
+    )}
+    ${renderInspectorSection(
+      "event-pose",
+      "context",
+      "Context",
+      `${renderTextField("Epoch", "pose-epoch", pose.epoch ?? "")}
+      ${renderTextField("Reference plane", "pose-referencePlane", pose.referencePlane ?? "")}
+      <p class="wo-editor-inline-note">Falls back to event, then object, then system context when left empty.</p>`,
     )}
   </form>`;
 }
@@ -2829,6 +2901,24 @@ function parseNullableNumber(value: string | null): number | null {
 
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function buildViewCameraFromForm(
+  form: HTMLFormElement,
+): WorldOrbitAtlasViewpoint["camera"] {
+  const camera = {
+    azimuth: parseNullableNumber(readOptionalTextInput(form, "viewpoint-camera-azimuth")),
+    elevation: parseNullableNumber(readOptionalTextInput(form, "viewpoint-camera-elevation")),
+    roll: parseNullableNumber(readOptionalTextInput(form, "viewpoint-camera-roll")),
+    distance: parseNullableNumber(readOptionalTextInput(form, "viewpoint-camera-distance")),
+  };
+
+  return camera.azimuth !== null ||
+    camera.elevation !== null ||
+    camera.roll !== null ||
+    camera.distance !== null
+    ? camera
+    : null;
 }
 
 function parseObjectTypes(value: string | null): WorldOrbitObject["type"][] {
@@ -3646,6 +3736,21 @@ function mapDiagnosticFieldToInputNames(
           return ["viewpoint-zoom"];
         case "rotationDeg":
           return ["viewpoint-rotation"];
+        case "camera":
+          return [
+            "viewpoint-camera-azimuth",
+            "viewpoint-camera-elevation",
+            "viewpoint-camera-roll",
+            "viewpoint-camera-distance",
+          ];
+        case "camera.azimuth":
+          return ["viewpoint-camera-azimuth"];
+        case "camera.elevation":
+          return ["viewpoint-camera-elevation"];
+        case "camera.roll":
+          return ["viewpoint-camera-roll"];
+        case "camera.distance":
+          return ["viewpoint-camera-distance"];
         case "events":
           return ["viewpoint-events"];
         default:
@@ -3671,6 +3776,10 @@ function mapDiagnosticFieldToInputNames(
           return ["event-timing"];
         case "visibility":
           return ["event-visibility"];
+        case "epoch":
+          return ["event-epoch"];
+        case "referencePlane":
+          return ["event-referencePlane"];
         case "tags":
           return ["event-tags"];
         case "color":
@@ -3698,6 +3807,12 @@ function mapDiagnosticFieldToInputNames(
       }
       if (field === "inner" || field === "outer") {
         return [`prop-${field}`];
+      }
+      if (field === "epoch") {
+        return ["pose-epoch"];
+      }
+      if (field === "referencePlane") {
+        return ["pose-referencePlane"];
       }
       return [];
     case "annotation":

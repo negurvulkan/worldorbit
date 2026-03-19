@@ -945,7 +945,9 @@ var WorldOrbit = (() => {
     const height = frame.height;
     const padding = frame.padding;
     const layoutPreset = resolveLayoutPreset(document2);
-    const projection = resolveProjection(document2, options.projection);
+    const schemaProjection = resolveProjection(document2, options.projection);
+    const camera = normalizeViewCamera(options.camera ?? null);
+    const renderProjection = resolveRenderProjection(schemaProjection, camera);
     const scaleModel = resolveScaleModel(layoutPreset, options.scaleModel);
     const spacingFactor = layoutPresetSpacing(layoutPreset);
     const systemId = document2.system?.id ?? null;
@@ -988,7 +990,7 @@ var WorldOrbit = (() => {
       surfaceChildren,
       objectMap,
       spacingFactor,
-      projection,
+      projection: renderProjection,
       scaleModel
     };
     const primaryRoot = rootObjects.find((object) => object.type === "star") ?? rootObjects[0] ?? null;
@@ -1000,7 +1002,7 @@ var WorldOrbit = (() => {
       const rootRingRadius = Math.min(width, height) * 0.28 * spacingFactor * scaleModel.orbitDistanceMultiplier;
       secondaryRoots.forEach((object, index) => {
         const angle = angleForIndex(index, secondaryRoots.length, -Math.PI / 2);
-        const offset = projectPolarOffset(angle, rootRingRadius, projection, 1);
+        const offset = projectPolarOffset(angle, rootRingRadius, renderProjection, 1);
         placeObject(object, centerX + offset.x, centerY + offset.y, 0, positions, orbitDrafts, leaderDrafts, context);
       });
     }
@@ -1062,27 +1064,34 @@ var WorldOrbit = (() => {
     const layers = createSceneLayers(orbitVisuals, relations, events, leaders, objects, labels);
     const groups = createSceneGroups(objects, orbitVisuals, leaders, labels, relationships, scaleModel.labelMultiplier);
     const semanticGroups = createSceneSemanticGroups(document2, objects);
-    const viewpoints = createSceneViewpoints(document2, projection, frame.preset, relationships, objectMap);
+    const viewpoints = createSceneViewpoints(document2, schemaProjection, frame.preset, relationships, objectMap);
     const contentBounds = calculateContentBounds(width, height, objects, orbitVisuals, leaders, labels, scaleModel.labelMultiplier);
     return {
       width,
       height,
       padding,
       renderPreset: frame.preset,
-      projection,
+      projection: schemaProjection,
+      renderProjection,
+      camera,
       scaleModel,
       title: String(document2.system?.title ?? document2.system?.properties.title ?? document2.system?.id ?? "WorldOrbit") || "WorldOrbit",
-      subtitle: `${capitalizeLabel(projection)} view - ${capitalizeLabel(layoutPreset)} layout`,
+      subtitle: buildSceneSubtitle(schemaProjection, renderProjection, layoutPreset, camera),
       systemId,
-      viewMode: projection,
+      viewMode: schemaProjection,
       layoutPreset,
       metadata: {
         format: document2.format,
         version: document2.version,
-        view: projection,
+        view: schemaProjection,
+        renderProjection,
         scale: String(document2.system?.properties.scale ?? layoutPreset),
         units: String(document2.system?.properties.units ?? "mixed"),
-        preset: frame.preset ?? "custom"
+        preset: frame.preset ?? "custom",
+        ...camera?.azimuth !== null ? { "camera.azimuth": String(camera?.azimuth) } : {},
+        ...camera?.elevation !== null ? { "camera.elevation": String(camera?.elevation) } : {},
+        ...camera?.roll !== null ? { "camera.roll": String(camera?.roll) } : {},
+        ...camera?.distance !== null ? { "camera.distance": String(camera?.distance) } : {}
       },
       contentBounds,
       layers,
@@ -1119,21 +1128,42 @@ var WorldOrbit = (() => {
       return cloned;
     }
     const objectMap = new Map(cloned.map((object) => [object.id, object]));
+    const referencedIds = /* @__PURE__ */ new Set([
+      ...activeEvent.targetObjectId ? [activeEvent.targetObjectId] : [],
+      ...activeEvent.participantObjectIds,
+      ...activeEvent.positions.map((pose) => pose.objectId)
+    ]);
+    for (const objectId of referencedIds) {
+      const object = objectMap.get(objectId);
+      if (!object) {
+        continue;
+      }
+      if (activeEvent.epoch) {
+        object.epoch = activeEvent.epoch;
+      }
+      if (activeEvent.referencePlane) {
+        object.referencePlane = activeEvent.referencePlane;
+      }
+    }
     for (const pose of activeEvent.positions) {
       const object = objectMap.get(pose.objectId);
       if (!object) {
         continue;
       }
-      object.placement = pose.placement ? structuredClone(pose.placement) : null;
+      if (pose.placement) {
+        object.placement = structuredClone(pose.placement);
+      }
       if (pose.inner) {
         object.properties.inner = { ...pose.inner };
-      } else {
-        delete object.properties.inner;
       }
       if (pose.outer) {
         object.properties.outer = { ...pose.outer };
-      } else {
-        delete object.properties.outer;
+      }
+      if (pose.epoch) {
+        object.epoch = pose.epoch;
+      }
+      if (pose.referencePlane) {
+        object.referencePlane = pose.referencePlane;
       }
     }
     return cloned;
@@ -1174,10 +1204,59 @@ var WorldOrbit = (() => {
     }
   }
   function resolveProjection(document2, projection) {
-    if (projection === "topdown" || projection === "isometric") {
+    if (projection === "topdown" || projection === "isometric" || projection === "orthographic" || projection === "perspective") {
       return projection;
     }
-    return String(document2.system?.properties.view ?? "topdown").toLowerCase() === "isometric" ? "isometric" : "topdown";
+    const documentView = String(document2.system?.properties.view ?? "topdown").toLowerCase();
+    return parseViewProjection(documentView) ?? "topdown";
+  }
+  function resolveRenderProjection(projection, camera) {
+    switch (projection) {
+      case "topdown":
+        return "topdown";
+      case "isometric":
+        return "isometric";
+      case "orthographic":
+        return camera && (camera.azimuth !== null || camera.elevation !== null || camera.roll !== null) ? "isometric" : "topdown";
+      case "perspective":
+        return "isometric";
+    }
+  }
+  function normalizeViewCamera(camera) {
+    if (!camera) {
+      return null;
+    }
+    const normalized = {
+      azimuth: normalizeFiniteCameraValue(camera.azimuth),
+      elevation: normalizeFiniteCameraValue(camera.elevation),
+      roll: normalizeFiniteCameraValue(camera.roll),
+      distance: normalizePositiveCameraDistance(camera.distance)
+    };
+    return normalized.azimuth !== null || normalized.elevation !== null || normalized.roll !== null || normalized.distance !== null ? normalized : null;
+  }
+  function normalizeFiniteCameraValue(value) {
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+  }
+  function normalizePositiveCameraDistance(value) {
+    return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+  }
+  function buildSceneSubtitle(projection, renderProjection, layoutPreset, camera) {
+    const parts = [`${capitalizeLabel(projection)} view`, `${capitalizeLabel(layoutPreset)} layout`];
+    if (projection !== renderProjection) {
+      parts.push(`2D ${renderProjection} fallback`);
+    }
+    if (camera) {
+      const cameraParts = [
+        camera.azimuth !== null ? `az ${camera.azimuth}` : null,
+        camera.elevation !== null ? `el ${camera.elevation}` : null,
+        camera.roll !== null ? `roll ${camera.roll}` : null,
+        camera.distance !== null ? `dist ${camera.distance}` : null
+      ].filter(Boolean);
+      if (cameraParts.length > 0) {
+        parts.push(`camera ${cameraParts.join(" / ")}`);
+      }
+    }
+    return parts.join(" - ");
   }
   function resolveScaleModel(layoutPreset, overrides) {
     const defaults = defaultScaleModel(layoutPreset);
@@ -1613,6 +1692,8 @@ var WorldOrbit = (() => {
   function createGeneratedOverviewViewpoint(document2, projection, preset) {
     const title = document2.system?.title ?? document2.system?.properties.title;
     const label = title ? `${String(title)} Overview` : "Overview";
+    const camera = normalizeViewCamera(null);
+    const renderProjection = resolveRenderProjection(projection, camera);
     return {
       id: "overview",
       label,
@@ -1621,6 +1702,8 @@ var WorldOrbit = (() => {
       selectedObjectId: null,
       eventIds: [],
       projection,
+      renderProjection,
+      camera,
       preset,
       rotationDeg: 0,
       scale: null,
@@ -1670,6 +1753,30 @@ var WorldOrbit = (() => {
       case "angle":
         draft.rotationDeg = parseFiniteNumber(normalizedValue) ?? draft.rotationDeg ?? 0;
         return;
+      case "camera.azimuth":
+        draft.camera = {
+          ...draft.camera ?? createEmptyViewCamera(),
+          azimuth: parseFiniteNumber(normalizedValue)
+        };
+        return;
+      case "camera.elevation":
+        draft.camera = {
+          ...draft.camera ?? createEmptyViewCamera(),
+          elevation: parseFiniteNumber(normalizedValue)
+        };
+        return;
+      case "camera.roll":
+        draft.camera = {
+          ...draft.camera ?? createEmptyViewCamera(),
+          roll: parseFiniteNumber(normalizedValue)
+        };
+        return;
+      case "camera.distance":
+        draft.camera = {
+          ...draft.camera ?? createEmptyViewCamera(),
+          distance: parsePositiveNumber(normalizedValue)
+        };
+        return;
       case "zoom":
       case "scale":
         draft.scale = parsePositiveNumber(normalizedValue);
@@ -1709,6 +1816,9 @@ var WorldOrbit = (() => {
     const selectedObjectId = draft.select && objectMap.has(draft.select) ? draft.select : objectId;
     const filter = normalizeViewpointFilter(draft.filter);
     const label = draft.label?.trim() || humanizeIdentifier(draft.id);
+    const resolvedProjection = draft.projection ?? projection;
+    const camera = normalizeViewCamera(draft.camera ?? null);
+    const renderProjection = resolveRenderProjection(resolvedProjection, camera);
     return {
       id: draft.id,
       label,
@@ -1716,7 +1826,9 @@ var WorldOrbit = (() => {
       objectId,
       selectedObjectId,
       eventIds: [...new Set(draft.eventIds ?? [])],
-      projection: draft.projection ?? projection,
+      projection: resolvedProjection,
+      renderProjection,
+      camera,
       preset: draft.preset ?? preset,
       rotationDeg: draft.rotationDeg ?? 0,
       scale: draft.scale ?? null,
@@ -1733,6 +1845,14 @@ var WorldOrbit = (() => {
       groupIds: []
     };
   }
+  function createEmptyViewCamera() {
+    return {
+      azimuth: null,
+      elevation: null,
+      roll: null,
+      distance: null
+    };
+  }
   function normalizeViewpointFilter(filter) {
     if (!filter) {
       return null;
@@ -1746,7 +1866,18 @@ var WorldOrbit = (() => {
     return normalized.query || normalized.objectTypes.length > 0 || normalized.tags.length > 0 || normalized.groupIds.length > 0 ? normalized : null;
   }
   function parseViewProjection(value) {
-    return value.toLowerCase() === "isometric" ? "isometric" : value.toLowerCase() === "topdown" ? "topdown" : null;
+    switch (value.toLowerCase()) {
+      case "topdown":
+        return "topdown";
+      case "isometric":
+        return "isometric";
+      case "orthographic":
+        return "orthographic";
+      case "perspective":
+        return "perspective";
+      default:
+        return null;
+    }
   }
   function parseRenderPreset(value) {
     const normalized = value.toLowerCase();
@@ -1784,7 +1915,7 @@ var WorldOrbit = (() => {
   }
   function parseViewpointGroups(value, document2, relationships, objectMap) {
     return splitListValue(value).map((entry) => {
-      if (document2.schemaVersion === "2.1" || document2.groups.some((group) => group.id === entry)) {
+      if (document2.schemaVersion === "2.1" || document2.schemaVersion === "2.5" || document2.groups.some((group) => group.id === entry)) {
         return entry;
       }
       if (entry.startsWith("wo-") && entry.endsWith("-group")) {
@@ -2577,8 +2708,8 @@ var WorldOrbit = (() => {
     }
     return {
       format: "worldorbit",
-      version: "2.0",
-      schemaVersion: "2.0",
+      version: "2.5",
+      schemaVersion: "2.5",
       sourceVersion: document2.version,
       system,
       groups: structuredClone(document2.groups ?? []),
@@ -2634,8 +2765,9 @@ var WorldOrbit = (() => {
     };
   }
   function createDraftDefaults(document2, preset, projection) {
+    const rawView = typeof document2.system?.properties.view === "string" ? document2.system.properties.view.toLowerCase() : null;
     return {
-      view: typeof document2.system?.properties.view === "string" && document2.system.properties.view.toLowerCase() === "topdown" ? "topdown" : projection,
+      view: rawView === "topdown" || rawView === "isometric" || rawView === "orthographic" || rawView === "perspective" ? rawView : projection,
       scale: typeof document2.system?.properties.scale === "string" ? document2.system.properties.scale : null,
       units: typeof document2.system?.properties.units === "string" ? document2.system.properties.units : null,
       preset,
@@ -2742,6 +2874,7 @@ var WorldOrbit = (() => {
       preset: viewpoint.preset,
       zoom: viewpoint.scale,
       rotationDeg: viewpoint.rotationDeg,
+      camera: viewpoint.camera ? { ...viewpoint.camera } : null,
       layers: { ...viewpoint.layers },
       filter: viewpoint.filter ? {
         query: viewpoint.filter.query,
@@ -2783,7 +2916,9 @@ var WorldOrbit = (() => {
       objectId: pose.objectId,
       placement: clonePlacement(pose.placement),
       inner: pose.inner ? { ...pose.inner } : void 0,
-      outer: pose.outer ? { ...pose.outer } : void 0
+      outer: pose.outer ? { ...pose.outer } : void 0,
+      epoch: pose.epoch ?? null,
+      referencePlane: pose.referencePlane ?? null
     };
   }
   function clonePlacement(placement) {
@@ -2798,21 +2933,42 @@ var WorldOrbit = (() => {
       return;
     }
     const objectMap = new Map(objects.map((object) => [object.id, object]));
+    const referencedIds = /* @__PURE__ */ new Set([
+      ...event.targetObjectId ? [event.targetObjectId] : [],
+      ...event.participantObjectIds,
+      ...event.positions.map((pose) => pose.objectId)
+    ]);
+    for (const objectId of referencedIds) {
+      const object = objectMap.get(objectId);
+      if (!object) {
+        continue;
+      }
+      if (event.epoch) {
+        object.epoch = event.epoch;
+      }
+      if (event.referencePlane) {
+        object.referencePlane = event.referencePlane;
+      }
+    }
     for (const pose of event.positions) {
       const object = objectMap.get(pose.objectId);
       if (!object) {
         continue;
       }
-      object.placement = clonePlacement(pose.placement);
+      if (pose.placement) {
+        object.placement = clonePlacement(pose.placement);
+      }
       if (pose.inner) {
         object.properties.inner = { ...pose.inner };
-      } else {
-        delete object.properties.inner;
       }
       if (pose.outer) {
         object.properties.outer = { ...pose.outer };
-      } else {
-        delete object.properties.outer;
+      }
+      if (pose.epoch) {
+        object.epoch = pose.epoch;
+      }
+      if (pose.referencePlane) {
+        object.referencePlane = pose.referencePlane;
       }
     }
   }
@@ -2896,6 +3052,18 @@ var WorldOrbit = (() => {
       }
       if (viewpoint.rotationDeg !== 0) {
         info2[`${prefix}.rotation`] = String(viewpoint.rotationDeg);
+      }
+      if (viewpoint.camera?.azimuth !== null) {
+        info2[`${prefix}.camera.azimuth`] = String(viewpoint.camera?.azimuth);
+      }
+      if (viewpoint.camera?.elevation !== null) {
+        info2[`${prefix}.camera.elevation`] = String(viewpoint.camera?.elevation);
+      }
+      if (viewpoint.camera?.roll !== null) {
+        info2[`${prefix}.camera.roll`] = String(viewpoint.camera?.roll);
+      }
+      if (viewpoint.camera?.distance !== null) {
+        info2[`${prefix}.camera.distance`] = String(viewpoint.camera?.distance);
       }
       const serializedLayers = serializeViewpointLayers(viewpoint.layers);
       if (serializedLayers) {
@@ -2993,26 +3161,26 @@ var WorldOrbit = (() => {
   ];
   function formatDocument(document2, options = {}) {
     const schema = options.schema ?? "auto";
-    const useDraft = schema === "2.0" || schema === "2.1" || schema === "2.0-draft" || document2.version === "2.0" || document2.version === "2.1" || document2.version === "2.0-draft";
+    const useDraft = schema === "2.0" || schema === "2.1" || schema === "2.5" || schema === "2.0-draft" || document2.version === "2.0" || document2.version === "2.1" || document2.version === "2.5" || document2.version === "2.0-draft";
     if (useDraft) {
       if (schema === "2.0-draft") {
-        const legacyDraftDocument = document2.version === "2.0-draft" ? document2 : document2.version === "2.0" || document2.version === "2.1" ? {
+        const legacyDraftDocument = document2.version === "2.0-draft" ? document2 : document2.version === "2.0" || document2.version === "2.1" || document2.version === "2.5" ? {
           ...document2,
           version: "2.0-draft",
           schemaVersion: "2.0-draft"
         } : upgradeDocumentToDraftV2(document2);
         return formatDraftDocument(legacyDraftDocument);
       }
-      const atlasDocument = document2.version === "2.0" || document2.version === "2.1" ? document2 : document2.version === "2.0-draft" ? {
+      const atlasDocument = document2.version === "2.0" || document2.version === "2.1" || document2.version === "2.5" ? document2 : document2.version === "2.0-draft" ? {
         ...document2,
         version: "2.0",
         schemaVersion: "2.0"
       } : upgradeDocumentToV2(document2);
-      if (schema === "2.1" && atlasDocument.version !== "2.1") {
+      if ((schema === "2.0" || schema === "2.1" || schema === "2.5") && atlasDocument.version !== schema) {
         return formatAtlasDocument({
           ...atlasDocument,
-          version: "2.1",
-          schemaVersion: "2.1"
+          version: schema,
+          schemaVersion: schema
         });
       }
       return formatAtlasDocument(atlasDocument);
@@ -3289,6 +3457,21 @@ var WorldOrbit = (() => {
     if (viewpoint.rotationDeg !== 0) {
       lines.push(`  rotation ${viewpoint.rotationDeg}`);
     }
+    if (viewpoint.camera && hasCameraValues(viewpoint.camera)) {
+      lines.push("  camera");
+      if (viewpoint.camera.azimuth !== null) {
+        lines.push(`    azimuth ${viewpoint.camera.azimuth}`);
+      }
+      if (viewpoint.camera.elevation !== null) {
+        lines.push(`    elevation ${viewpoint.camera.elevation}`);
+      }
+      if (viewpoint.camera.roll !== null) {
+        lines.push(`    roll ${viewpoint.camera.roll}`);
+      }
+      if (viewpoint.camera.distance !== null) {
+        lines.push(`    distance ${viewpoint.camera.distance}`);
+      }
+    }
     const layerTokens = formatDraftLayers(viewpoint.layers);
     if (layerTokens.length > 0) {
       lines.push(`  layers ${layerTokens.join(" ")}`);
@@ -3388,6 +3571,12 @@ var WorldOrbit = (() => {
     if (event.visibility) {
       lines.push(`  visibility ${quoteIfNeeded(event.visibility)}`);
     }
+    if (event.epoch) {
+      lines.push(`  epoch ${quoteIfNeeded(event.epoch)}`);
+    }
+    if (event.referencePlane) {
+      lines.push(`  referencePlane ${quoteIfNeeded(event.referencePlane)}`);
+    }
     if (event.tags.length > 0) {
       lines.push(`  tags ${event.tags.map(quoteIfNeeded).join(" ")}`);
     }
@@ -3412,9 +3601,14 @@ var WorldOrbit = (() => {
   function formatEventPoseFields(pose) {
     return [
       ...formatPlacement(pose.placement),
+      ...pose.epoch ? [`epoch ${quoteIfNeeded(pose.epoch)}`] : [],
+      ...pose.referencePlane ? [`referencePlane ${quoteIfNeeded(pose.referencePlane)}`] : [],
       ...formatOptionalUnit("inner", pose.inner),
       ...formatOptionalUnit("outer", pose.outer)
     ];
+  }
+  function hasCameraValues(camera) {
+    return camera.azimuth !== null || camera.elevation !== null || camera.roll !== null || camera.distance !== null;
   }
   function formatValue(value) {
     if (Array.isArray(value)) {
@@ -3709,13 +3903,13 @@ var WorldOrbit = (() => {
       validateRelation(relation, objectMap, diagnostics);
     }
     for (const viewpoint of document2.system?.viewpoints ?? []) {
-      validateViewpoint(viewpoint.filter, viewpoint.events ?? [], groupIds, eventIds, sourceSchemaVersion, diagnostics, viewpoint.id);
+      validateViewpoint(viewpoint, groupIds, eventIds, sourceSchemaVersion, diagnostics, objectMap);
     }
     for (const object of document2.objects) {
       validateObject(object, document2.system, objectMap, groupIds, diagnostics);
     }
     for (const event of document2.events) {
-      validateEvent(event, objectMap, diagnostics);
+      validateEvent(event, document2.system, objectMap, diagnostics);
     }
     return diagnostics;
   }
@@ -3734,21 +3928,24 @@ var WorldOrbit = (() => {
       diagnostics.push(error("validate.relation.kind.required", `Relation "${relation.id}" is missing a "kind" value.`));
     }
   }
-  function validateViewpoint(filter, eventRefs, groupIds, eventIds, sourceSchemaVersion, diagnostics, viewpointId) {
-    if (sourceSchemaVersion === "2.1") {
+  function validateViewpoint(viewpoint, groupIds, eventIds, sourceSchemaVersion, diagnostics, objectMap) {
+    const filter = viewpoint.filter;
+    if (sourceSchemaVersion === "2.1" || sourceSchemaVersion === "2.5") {
       if (filter) {
         for (const groupId of filter.groupIds) {
           if (!groupIds.has(groupId)) {
-            diagnostics.push(warn("validate.viewpoint.group.unknown", `Unknown group "${groupId}" in viewpoint "${viewpointId}".`, void 0, `viewpoint.${viewpointId}.groups`));
+            diagnostics.push(warn("validate.viewpoint.group.unknown", `Unknown group "${groupId}" in viewpoint "${viewpoint.id}".`, void 0, `viewpoint.${viewpoint.id}.groups`));
           }
         }
       }
-      for (const eventId of eventRefs) {
+      for (const eventId of viewpoint.events ?? []) {
         if (!eventIds.has(eventId)) {
-          diagnostics.push(warn("validate.viewpoint.event.unknown", `Unknown event "${eventId}" in viewpoint "${viewpointId}".`, void 0, `viewpoint.${viewpointId}.events`));
+          diagnostics.push(warn("validate.viewpoint.event.unknown", `Unknown event "${eventId}" in viewpoint "${viewpoint.id}".`, void 0, `viewpoint.${viewpoint.id}.events`));
         }
       }
     }
+    validateProjection(viewpoint.projection, diagnostics, `viewpoint.${viewpoint.id}.projection`, viewpoint.id);
+    validateCamera(viewpoint.camera, viewpoint.projection, viewpoint.rotationDeg, diagnostics, viewpoint.id, viewpoint.focusObjectId, viewpoint.selectedObjectId, filter, objectMap);
   }
   function validateObject(object, system, objectMap, groupIds, diagnostics) {
     const placement = object.placement;
@@ -3760,6 +3957,12 @@ var WorldOrbit = (() => {
           diagnostics.push(warn("validate.group.unknown", `Unknown group "${groupId}" on "${object.id}".`, object.id, "groups"));
         }
       }
+    }
+    if (typeof object.epoch === "string" && !object.epoch.trim()) {
+      diagnostics.push(warn("validate.epoch.empty", `Object "${object.id}" defines an empty epoch string.`, object.id, "epoch"));
+    }
+    if (typeof object.referencePlane === "string" && !object.referencePlane.trim()) {
+      diagnostics.push(warn("validate.referencePlane.empty", `Object "${object.id}" defines an empty reference plane string.`, object.id, "referencePlane"));
     }
     if (orbitPlacement) {
       if (!objectMap.has(orbitPlacement.target)) {
@@ -3832,11 +4035,17 @@ var WorldOrbit = (() => {
       }
     }
   }
-  function validateEvent(event, objectMap, diagnostics) {
+  function validateEvent(event, system, objectMap, diagnostics) {
     const fieldPrefix = `event.${event.id}`;
     const referencedIds = /* @__PURE__ */ new Set();
     if (!event.kind.trim()) {
       diagnostics.push(error("validate.event.kind.required", `Event "${event.id}" is missing a "kind" value.`, void 0, `${fieldPrefix}.kind`));
+    }
+    if (typeof event.epoch === "string" && !event.epoch.trim()) {
+      diagnostics.push(warn("validate.event.epoch.empty", `Event "${event.id}" defines an empty epoch string.`, void 0, `${fieldPrefix}.epoch`));
+    }
+    if (typeof event.referencePlane === "string" && !event.referencePlane.trim()) {
+      diagnostics.push(warn("validate.event.referencePlane.empty", `Event "${event.id}" defines an empty reference plane string.`, void 0, `${fieldPrefix}.referencePlane`));
     }
     if (!event.targetObjectId && event.participantObjectIds.length === 0) {
       diagnostics.push(error("validate.event.references.required", `Event "${event.id}" must define a "target" or at least one participant.`, void 0, `${fieldPrefix}.participants`));
@@ -3884,10 +4093,14 @@ var WorldOrbit = (() => {
       if (!referencedIds.has(pose.objectId)) {
         diagnostics.push(warn("validate.event.pose.unreferenced", `Event pose "${pose.objectId}" on "${event.id}" is not listed in target/participants.`, void 0, poseFieldPrefix));
       }
-      validateEventPose(pose, object, objectMap, diagnostics, poseFieldPrefix, event.id);
+      validateEventPose(pose, object, event, system, objectMap, diagnostics, poseFieldPrefix, event.id);
+    }
+    const missingPoseIds = [...referencedIds].filter((objectId) => !poseIds.has(objectId));
+    if (event.positions.length > 0 && missingPoseIds.length > 0) {
+      diagnostics.push(warn("validate.event.positions.partial", `Event "${event.id}" leaves ${missingPoseIds.length} referenced object(s) on their base placement.`, void 0, `${fieldPrefix}.positions`));
     }
   }
-  function validateEventPose(pose, object, objectMap, diagnostics, fieldPrefix, eventId) {
+  function validateEventPose(pose, object, event, system, objectMap, diagnostics, fieldPrefix, eventId) {
     const placement = pose.placement;
     if (!placement) {
       diagnostics.push(error("validate.event.pose.placement.required", `Event "${eventId}" pose "${pose.objectId}" is missing a placement mode.`, void 0, fieldPrefix));
@@ -3899,6 +4112,15 @@ var WorldOrbit = (() => {
       }
       if (placement.distance && placement.semiMajor) {
         diagnostics.push(error("validate.event.pose.orbit.distanceConflict", `Event "${eventId}" pose "${pose.objectId}" cannot declare both "distance" and "semiMajor".`, void 0, `${fieldPrefix}.distance`));
+      }
+      if (placement.phase && !resolveEffectiveEpoch(system, object, event, pose)) {
+        diagnostics.push(warn("validate.event.pose.phase.epochMissing", `Event "${eventId}" pose "${pose.objectId}" sets "phase" without an effective epoch.`, void 0, `${fieldPrefix}.phase`));
+      }
+      if (placement.inclination && !resolveEffectiveReferencePlane(system, object, event, pose)) {
+        diagnostics.push(warn("validate.event.pose.inclination.referencePlaneMissing", `Event "${eventId}" pose "${pose.objectId}" sets "inclination" without an effective reference plane.`, void 0, `${fieldPrefix}.inclination`));
+      }
+      if (placement.period && !massInSolar(objectMap.get(placement.target)?.properties.mass)) {
+        diagnostics.push(warn("validate.event.pose.period.massMissing", `Event "${eventId}" pose "${pose.objectId}" sets "period" but its central mass cannot be derived.`, void 0, `${fieldPrefix}.period`));
       }
       return;
     }
@@ -4034,6 +4256,52 @@ var WorldOrbit = (() => {
         return null;
     }
   }
+  function validateProjection(projection, diagnostics, field, viewpointId) {
+    if (projection !== "topdown" && projection !== "isometric" && projection !== "orthographic" && projection !== "perspective") {
+      diagnostics.push(error("validate.viewpoint.projection.invalid", `Unknown projection "${String(projection)}" in viewpoint "${viewpointId}".`, void 0, field));
+    }
+  }
+  function validateCamera(camera, projection, rotationDeg, diagnostics, viewpointId, focusObjectId, selectedObjectId, filter, objectMap) {
+    if (!camera) {
+      return;
+    }
+    const prefix = `viewpoint.${viewpointId}.camera`;
+    for (const [key, value] of [
+      ["azimuth", camera.azimuth],
+      ["elevation", camera.elevation],
+      ["roll", camera.roll],
+      ["distance", camera.distance]
+    ]) {
+      if (value !== null && (!Number.isFinite(value) || key === "distance" && value <= 0)) {
+        diagnostics.push(error("validate.viewpoint.camera.invalid", `Invalid camera ${key} "${String(value)}" in viewpoint "${viewpointId}".`, void 0, `${prefix}.${key}`));
+      }
+    }
+    if (camera.distance !== null && projection !== "perspective") {
+      diagnostics.push(warn("validate.viewpoint.camera.distance.partialEffect", `Camera "distance" only has a semantic effect in perspective viewpoints; "${viewpointId}" uses "${projection}".`, void 0, `${prefix}.distance`));
+    }
+    if (projection === "topdown" && (camera.elevation !== null || camera.roll !== null)) {
+      diagnostics.push(warn("validate.viewpoint.camera.topdownPartial", `Camera elevation/roll on topdown viewpoint "${viewpointId}" are currently stored for future 3D use and only partially affect 2D rendering.`, void 0, prefix));
+    }
+    if (projection === "isometric" && camera.elevation !== null) {
+      diagnostics.push(info("validate.viewpoint.camera.isometricStored", `Camera elevation on isometric viewpoint "${viewpointId}" is preserved semantically for future 3D rendering.`, void 0, `${prefix}.elevation`));
+    }
+    if (camera.azimuth !== null && camera.azimuth !== 0 && rotationDeg !== 0) {
+      diagnostics.push(warn("validate.viewpoint.rotation.cameraOverlap", `Viewpoint "${viewpointId}" uses camera.azimuth; keep "rotation" only for 2D screen rotation to avoid ambiguity.`, void 0, `${prefix}.azimuth`));
+    }
+    const hasAnchor = focusObjectId !== null && objectMap.has(focusObjectId) || selectedObjectId !== null && objectMap.has(selectedObjectId) || !!filter;
+    if (!hasAnchor) {
+      diagnostics.push(info("validate.viewpoint.camera.anchorMissing", `Viewpoint "${viewpointId}" stores camera settings without a focus object, selection, or filter anchor.`, void 0, prefix));
+    }
+  }
+  function resolveEffectiveEpoch(system, object, event, pose) {
+    return normalizeOptionalContextString(pose?.epoch) ?? normalizeOptionalContextString(event?.epoch) ?? normalizeOptionalContextString(object.epoch) ?? normalizeOptionalContextString(system?.epoch) ?? null;
+  }
+  function resolveEffectiveReferencePlane(system, object, event, pose) {
+    return normalizeOptionalContextString(pose?.referencePlane) ?? normalizeOptionalContextString(event?.referencePlane) ?? normalizeOptionalContextString(object.referencePlane) ?? normalizeOptionalContextString(system?.referencePlane) ?? null;
+  }
+  function normalizeOptionalContextString(value) {
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+  }
   function toleranceForField(object, field) {
     const tolerance = object.tolerances?.find((entry) => entry.field === field)?.value;
     if (typeof tolerance === "number") {
@@ -4142,7 +4410,9 @@ var WorldOrbit = (() => {
     "surface",
     "free",
     "inner",
-    "outer"
+    "outer",
+    "epoch",
+    "referencePlane"
   ]);
   function parseWorldOrbitAtlas(source) {
     return parseAtlasSource(source);
@@ -4184,7 +4454,7 @@ var WorldOrbit = (() => {
       if (!sawSchemaHeader) {
         sourceSchemaVersion = assertDraftSchemaHeader(tokens, lineNumber);
         sawSchemaHeader = true;
-        if (prepared.comments.length > 0 && sourceSchemaVersion !== "2.1") {
+        if (prepared.comments.length > 0 && isSchemaOlderThan(sourceSchemaVersion, "2.1")) {
           diagnostics.push({
             code: "parse.schema21.commentCompatibility",
             severity: "warning",
@@ -4254,11 +4524,11 @@ var WorldOrbit = (() => {
     return document2;
   }
   function assertDraftSchemaHeader(tokens, line) {
-    if (tokens.length !== 2 || tokens[0].value.toLowerCase() !== "schema" || !["2.0-draft", "2.0", "2.1"].includes(tokens[1].value.toLowerCase())) {
-      throw new WorldOrbitError('Expected atlas header "schema 2.0", "schema 2.1", or legacy "schema 2.0-draft"', line, tokens[0]?.column ?? 1);
+    if (tokens.length !== 2 || tokens[0].value.toLowerCase() !== "schema" || !["2.0-draft", "2.0", "2.1", "2.5"].includes(tokens[1].value.toLowerCase())) {
+      throw new WorldOrbitError('Expected atlas header "schema 2.0", "schema 2.1", "schema 2.5", or legacy "schema 2.0-draft"', line, tokens[0]?.column ?? 1);
     }
     const version = tokens[1].value.toLowerCase();
-    return version === "2.1" ? "2.1" : version === "2.0-draft" ? "2.0-draft" : "2.0";
+    return version === "2.5" ? "2.5" : version === "2.1" ? "2.1" : version === "2.0-draft" ? "2.0-draft" : "2.0";
   }
   function startTopLevelSection(tokens, line, sourceSchemaVersion, diagnostics, system, objectNodes, groups, relations, events, eventPoseNodes, viewpointIds, annotationIds, groupIds, relationIds, eventIds, flags) {
     const keyword = tokens[0]?.value.toLowerCase();
@@ -4278,6 +4548,8 @@ var WorldOrbit = (() => {
         return {
           kind: "defaults",
           system,
+          sourceSchemaVersion,
+          diagnostics,
           seenFields: /* @__PURE__ */ new Set()
         };
       case "atlas":
@@ -4370,6 +4642,7 @@ var WorldOrbit = (() => {
       preset: system.defaults.preset,
       zoom: null,
       rotationDeg: 0,
+      camera: null,
       layers: {},
       filter: null
     };
@@ -4383,7 +4656,10 @@ var WorldOrbit = (() => {
       seenFields: /* @__PURE__ */ new Set(),
       inFilter: false,
       filterIndent: null,
-      seenFilterFields: /* @__PURE__ */ new Set()
+      seenFilterFields: /* @__PURE__ */ new Set(),
+      inCamera: false,
+      cameraIndent: null,
+      seenCameraFields: /* @__PURE__ */ new Set()
     };
   }
   function startAnnotationSection(tokens, line, system, annotationIds) {
@@ -4490,6 +4766,8 @@ var WorldOrbit = (() => {
       participantObjectIds: [],
       timing: null,
       visibility: null,
+      epoch: null,
+      referencePlane: null,
       tags: [],
       color: null,
       hidden: false,
@@ -4614,6 +4892,12 @@ var WorldOrbit = (() => {
     const value = joinFieldValue(tokens, line);
     switch (key) {
       case "view":
+        if (isSchema25Projection(value)) {
+          warnIfSchema25Feature(section.sourceSchemaVersion, section.diagnostics, "defaults.view", {
+            line,
+            column: tokens[0].column
+          });
+        }
         section.system.defaults.view = parseProjectionValue(value, line, tokens[0].column);
         return;
       case "scale":
@@ -4653,12 +4937,34 @@ var WorldOrbit = (() => {
     throw new WorldOrbitError(`Unknown atlas field "${tokens[0].value}"`, line, tokens[0].column);
   }
   function applyViewpointField2(section, indent, tokens, line) {
+    if (section.inCamera && indent <= (section.cameraIndent ?? 0)) {
+      section.inCamera = false;
+      section.cameraIndent = null;
+    }
     if (section.inFilter && indent <= (section.filterIndent ?? 0)) {
       section.inFilter = false;
       section.filterIndent = null;
     }
+    if (section.inCamera) {
+      applyViewpointCameraField(section, tokens, line);
+      return;
+    }
     if (section.inFilter) {
       applyViewpointFilterField(section, tokens, line);
+      return;
+    }
+    if (tokens.length === 1 && tokens[0].value.toLowerCase() === "camera") {
+      warnIfSchema25Feature(section.sourceSchemaVersion, section.diagnostics, "viewpoint.camera", {
+        line,
+        column: tokens[0].column
+      });
+      if (section.seenFields.has("camera")) {
+        throw new WorldOrbitError('Duplicate viewpoint field "camera"', line, tokens[0].column);
+      }
+      section.seenFields.add("camera");
+      section.inCamera = true;
+      section.cameraIndent = indent;
+      section.viewpoint.camera = section.viewpoint.camera ?? createEmptyViewCamera2();
       return;
     }
     if (tokens.length === 1 && tokens[0].value.toLowerCase() === "filter") {
@@ -4686,6 +4992,12 @@ var WorldOrbit = (() => {
         section.viewpoint.selectedObjectId = value;
         return;
       case "projection":
+        if (isSchema25Projection(value)) {
+          warnIfSchema25Feature(section.sourceSchemaVersion, section.diagnostics, "projection", {
+            line,
+            column: tokens[0].column
+          });
+        }
         section.viewpoint.projection = parseProjectionValue(value, line, tokens[0].column);
         return;
       case "preset":
@@ -4696,6 +5008,13 @@ var WorldOrbit = (() => {
         return;
       case "rotation":
         section.viewpoint.rotationDeg = parseFiniteNumber2(value, line, tokens[0].column, "rotation");
+        return;
+      case "camera":
+        warnIfSchema25Feature(section.sourceSchemaVersion, section.diagnostics, "viewpoint.camera", {
+          line,
+          column: tokens[0].column
+        });
+        section.viewpoint.camera = parseInlineViewCamera(tokens.slice(1), line, section.viewpoint.camera);
         return;
       case "layers":
         section.viewpoint.layers = parseLayerTokens(tokens.slice(1), line, section.sourceSchemaVersion, section.diagnostics);
@@ -4710,6 +5029,28 @@ var WorldOrbit = (() => {
       default:
         throw new WorldOrbitError(`Unknown viewpoint field "${tokens[0].value}"`, line, tokens[0].column);
     }
+  }
+  function applyViewpointCameraField(section, tokens, line) {
+    const key = requireUniqueField(tokens, section.seenCameraFields, line);
+    const value = joinFieldValue(tokens, line);
+    const camera = section.viewpoint.camera ?? createEmptyViewCamera2();
+    switch (key) {
+      case "azimuth":
+        camera.azimuth = parseFiniteNumber2(value, line, tokens[0].column, "camera.azimuth");
+        break;
+      case "elevation":
+        camera.elevation = parseFiniteNumber2(value, line, tokens[0].column, "camera.elevation");
+        break;
+      case "roll":
+        camera.roll = parseFiniteNumber2(value, line, tokens[0].column, "camera.roll");
+        break;
+      case "distance":
+        camera.distance = parsePositiveNumber2(value, line, tokens[0].column, "camera.distance");
+        break;
+      default:
+        throw new WorldOrbitError(`Unknown viewpoint camera field "${tokens[0].value}"`, line, tokens[0].column);
+    }
+    section.viewpoint.camera = camera;
   }
   function applyViewpointFilterField(section, tokens, line) {
     const key = requireUniqueField(tokens, section.seenFilterFields, line);
@@ -4821,6 +5162,12 @@ var WorldOrbit = (() => {
       section.positionsIndent = null;
     }
     if (section.activePose) {
+      if (tokens[0]?.value === "epoch" || tokens[0]?.value === "referencePlane") {
+        warnIfSchema25Feature(section.sourceSchemaVersion, section.diagnostics, `pose.${tokens[0].value}`, {
+          line,
+          column: tokens[0]?.column ?? 1
+        });
+      }
       section.activePose.fields.push(parseEventPoseField(tokens, line, section.activePoseSeenFields));
       return;
     }
@@ -4874,6 +5221,20 @@ var WorldOrbit = (() => {
         return;
       case "visibility":
         section.event.visibility = joinFieldValue(tokens, line);
+        return;
+      case "epoch":
+        warnIfSchema25Feature(section.sourceSchemaVersion, section.diagnostics, "event.epoch", {
+          line,
+          column: tokens[0].column
+        });
+        section.event.epoch = joinFieldValue(tokens, line);
+        return;
+      case "referenceplane":
+        warnIfSchema25Feature(section.sourceSchemaVersion, section.diagnostics, "event.referencePlane", {
+          line,
+          column: tokens[0].column
+        });
+        section.event.referencePlane = joinFieldValue(tokens, line);
         return;
       case "tags":
         section.event.tags = parseTokenList(tokens.slice(1), line, "tags");
@@ -5002,10 +5363,14 @@ var WorldOrbit = (() => {
   }
   function parseProjectionValue(value, line, column) {
     const normalized = value.toLowerCase();
-    if (normalized !== "topdown" && normalized !== "isometric") {
+    if (normalized !== "topdown" && normalized !== "isometric" && normalized !== "orthographic" && normalized !== "perspective") {
       throw new WorldOrbitError(`Unknown projection "${value}"`, line, column);
     }
     return normalized;
+  }
+  function isSchema25Projection(value) {
+    const normalized = value.toLowerCase();
+    return normalized === "orthographic" || normalized === "perspective";
   }
   function parsePresetValue(value, line, column) {
     const normalized = value.toLowerCase();
@@ -5035,6 +5400,48 @@ var WorldOrbit = (() => {
       tags: [],
       groupIds: []
     };
+  }
+  function createEmptyViewCamera2() {
+    return {
+      azimuth: null,
+      elevation: null,
+      roll: null,
+      distance: null
+    };
+  }
+  function parseInlineViewCamera(tokens, line, current) {
+    if (tokens.length === 0 || tokens.length % 2 !== 0) {
+      throw new WorldOrbitError('Field "camera" expects "<field> <value>" pairs', line, tokens[0]?.column ?? 1);
+    }
+    const camera = current ? { ...current } : createEmptyViewCamera2();
+    const seen = /* @__PURE__ */ new Set();
+    for (let index = 0; index < tokens.length; index += 2) {
+      const fieldToken = tokens[index];
+      const valueToken = tokens[index + 1];
+      const key = fieldToken.value.toLowerCase();
+      if (seen.has(key)) {
+        throw new WorldOrbitError(`Duplicate viewpoint camera field "${fieldToken.value}"`, line, fieldToken.column);
+      }
+      seen.add(key);
+      const value = valueToken.value;
+      switch (key) {
+        case "azimuth":
+          camera.azimuth = parseFiniteNumber2(value, line, fieldToken.column, "camera.azimuth");
+          break;
+        case "elevation":
+          camera.elevation = parseFiniteNumber2(value, line, fieldToken.column, "camera.elevation");
+          break;
+        case "roll":
+          camera.roll = parseFiniteNumber2(value, line, fieldToken.column, "camera.roll");
+          break;
+        case "distance":
+          camera.distance = parsePositiveNumber2(value, line, fieldToken.column, "camera.distance");
+          break;
+        default:
+          throw new WorldOrbitError(`Unknown viewpoint camera field "${fieldToken.value}"`, line, fieldToken.column);
+      }
+    }
+    return camera;
   }
   function parseInlineObjectFields(tokens, line, objectType, sourceSchemaVersion, diagnostics) {
     const fields = [];
@@ -5168,7 +5575,7 @@ var WorldOrbit = (() => {
       object.tolerances = tolerances;
     if (typedBlocks && Object.keys(typedBlocks).length > 0)
       object.typedBlocks = typedBlocks;
-    if (sourceSchemaVersion !== "2.1") {
+    if (isSchemaOlderThan(sourceSchemaVersion, "2.1")) {
       if (object.groups || object.epoch || object.referencePlane || object.tidalLock !== void 0 || object.resonance || object.renderHints || object.deriveRules?.length || object.validationRules?.length || object.lockedFields?.length || object.tolerances?.length || object.typedBlocks) {
         warnIfSchema21Feature(sourceSchemaVersion, diagnostics, node.id, node.location);
       }
@@ -5184,23 +5591,25 @@ var WorldOrbit = (() => {
     };
   }
   function normalizeDraftEventPose(rawPose) {
-    const fieldMap = collectDraftFields(rawPose.fields);
+    const fieldMap = collectDraftFields(rawPose.fields, "event-pose");
     const placement = extractPlacementFromFieldMap(fieldMap);
     return {
       objectId: rawPose.objectId,
       placement,
       inner: parseOptionalUnitField(fieldMap.get("inner")?.[0], "inner"),
-      outer: parseOptionalUnitField(fieldMap.get("outer")?.[0], "outer")
+      outer: parseOptionalUnitField(fieldMap.get("outer")?.[0], "outer"),
+      epoch: parseOptionalJoinedValue(fieldMap.get("epoch")?.[0]),
+      referencePlane: parseOptionalJoinedValue(fieldMap.get("referencePlane")?.[0])
     };
   }
-  function collectDraftFields(fields) {
+  function collectDraftFields(fields, _mode = "object") {
     const grouped = /* @__PURE__ */ new Map();
     for (const field of fields) {
       const spec = getDraftObjectFieldSpec(field.key);
-      if (!spec) {
+      if (!spec && !EVENT_POSE_FIELD_KEYS.has(field.key)) {
         throw WorldOrbitError.fromLocation(`Unknown field "${field.key}"`, field.location);
       }
-      if (!spec.allowRepeat && grouped.has(field.key)) {
+      if (!spec?.allowRepeat && grouped.has(field.key)) {
         throw WorldOrbitError.fromLocation(`Duplicate field "${field.key}"`, field.location);
       }
       const existing = grouped.get(field.key) ?? [];
@@ -5377,7 +5786,7 @@ var WorldOrbit = (() => {
     }
   }
   function warnIfSchema21Feature(sourceSchemaVersion, diagnostics, featureName, location) {
-    if (sourceSchemaVersion === "2.1") {
+    if (!isSchemaOlderThan(sourceSchemaVersion, "2.1")) {
       return;
     }
     diagnostics.push({
@@ -5388,6 +5797,34 @@ var WorldOrbit = (() => {
       line: location.line,
       column: location.column
     });
+  }
+  function warnIfSchema25Feature(sourceSchemaVersion, diagnostics, featureName, location) {
+    if (!isSchemaOlderThan(sourceSchemaVersion, "2.5")) {
+      return;
+    }
+    diagnostics.push({
+      code: "parse.schema25.featureCompatibility",
+      severity: "warning",
+      source: "parse",
+      message: `Feature "${featureName}" requires schema 2.5; parsed in compatibility mode because the document header is "schema ${sourceSchemaVersion}".`,
+      line: location.line,
+      column: location.column
+    });
+  }
+  function isSchemaOlderThan(sourceSchemaVersion, requiredVersion) {
+    return schemaVersionRank(sourceSchemaVersion) < schemaVersionRank(requiredVersion);
+  }
+  function schemaVersionRank(version) {
+    switch (version) {
+      case "2.0-draft":
+        return 0;
+      case "2.0":
+        return 1;
+      case "2.1":
+        return 2;
+      case "2.5":
+        return 3;
+    }
   }
   function preprocessAtlasSource(source) {
     const chars = [...source];
@@ -5476,7 +5913,7 @@ var WorldOrbit = (() => {
   }
 
   // packages/core/dist/atlas-edit.js
-  function createEmptyAtlasDocument(systemId = "WorldOrbit", version = "2.0") {
+  function createEmptyAtlasDocument(systemId = "WorldOrbit", version = "2.5") {
     return {
       format: "worldorbit",
       version,
@@ -5695,8 +6132,9 @@ var WorldOrbit = (() => {
   }
 
   // packages/core/dist/load.js
-  var ATLAS_SCHEMA_PATTERN = /^schema\s+2(?:\.0|\.1)?$/i;
+  var ATLAS_SCHEMA_PATTERN = /^schema\s+2(?:\.0|\.1|\.5)?$/i;
   var ATLAS_SCHEMA_21_PATTERN = /^schema\s+2\.1$/i;
+  var ATLAS_SCHEMA_25_PATTERN = /^schema\s+2\.5$/i;
   var LEGACY_DRAFT_SCHEMA_PATTERN = /^schema\s+2\.0-draft$/i;
   function detectWorldOrbitSchemaVersion(source) {
     for (const line of stripCommentsForSchemaDetection(source).split(/\r?\n/)) {
@@ -5709,6 +6147,9 @@ var WorldOrbit = (() => {
       }
       if (ATLAS_SCHEMA_21_PATTERN.test(trimmed)) {
         return "2.1";
+      }
+      if (ATLAS_SCHEMA_25_PATTERN.test(trimmed)) {
+        return "2.5";
       }
       if (ATLAS_SCHEMA_PATTERN.test(trimmed)) {
         return "2.0";
@@ -5770,7 +6211,7 @@ var WorldOrbit = (() => {
   }
   function loadWorldOrbitSourceWithDiagnostics(source) {
     const schemaVersion = detectWorldOrbitSchemaVersion(source);
-    if (schemaVersion === "2.0" || schemaVersion === "2.0-draft" || schemaVersion === "2.1") {
+    if (schemaVersion === "2.0" || schemaVersion === "2.0-draft" || schemaVersion === "2.1" || schemaVersion === "2.5") {
       return loadAtlasSourceWithDiagnostics(source, schemaVersion);
     }
     let ast;
@@ -6011,13 +6452,14 @@ var WorldOrbit = (() => {
   }
   function createAtlasStateSnapshot(viewerState, renderOptions, filter, viewpointId) {
     return {
-      version: "2.0",
+      version: "2.5",
       viewpointId,
       activeEventId: renderOptions.activeEventId ?? null,
       viewerState: { ...viewerState },
       renderOptions: {
         preset: renderOptions.preset,
         projection: renderOptions.projection,
+        camera: renderOptions.camera ? { ...renderOptions.camera } : null,
         layers: renderOptions.layers ? { ...renderOptions.layers } : void 0,
         scaleModel: renderOptions.scaleModel ? { ...renderOptions.scaleModel } : void 0,
         activeEventId: renderOptions.activeEventId ?? null
@@ -6031,7 +6473,7 @@ var WorldOrbit = (() => {
   function deserializeViewerAtlasState(serialized) {
     const raw = JSON.parse(decodeURIComponent(serialized));
     return {
-      version: "2.0",
+      version: raw.version === "2.0" ? "2.0" : "2.5",
       viewpointId: raw.viewpointId ?? null,
       activeEventId: raw.activeEventId ?? raw.renderOptions?.activeEventId ?? null,
       viewerState: {
@@ -6044,6 +6486,7 @@ var WorldOrbit = (() => {
       renderOptions: {
         preset: raw.renderOptions?.preset,
         projection: raw.renderOptions?.projection,
+        camera: raw.renderOptions?.camera ? { ...raw.renderOptions.camera } : null,
         layers: raw.renderOptions?.layers ? { ...raw.renderOptions.layers } : void 0,
         scaleModel: raw.renderOptions?.scaleModel ? { ...raw.renderOptions.scaleModel } : void 0,
         activeEventId: raw.activeEventId ?? raw.renderOptions?.activeEventId ?? null
@@ -6061,6 +6504,7 @@ var WorldOrbit = (() => {
         viewerState: { ...atlasState.viewerState },
         renderOptions: {
           ...atlasState.renderOptions,
+          camera: atlasState.renderOptions.camera ? { ...atlasState.renderOptions.camera } : null,
           layers: atlasState.renderOptions.layers ? { ...atlasState.renderOptions.layers } : void 0,
           scaleModel: atlasState.renderOptions.scaleModel ? { ...atlasState.renderOptions.scaleModel } : void 0,
           activeEventId: atlasState.renderOptions.activeEventId ?? null
@@ -7156,6 +7600,7 @@ var WorldOrbit = (() => {
       padding: options.padding,
       preset: options.preset,
       projection: options.projection,
+      camera: options.camera ? { ...options.camera } : null,
       scaleModel: options.scaleModel ? { ...options.scaleModel } : void 0,
       theme: options.theme,
       layers: options.layers,
@@ -7443,6 +7888,11 @@ var WorldOrbit = (() => {
         }
         if (currentInput.kind !== "scene" && viewpoint.projection !== scene.projection) {
           nextRenderOptions.projection = viewpoint.projection;
+        }
+        if (viewpoint.camera) {
+          nextRenderOptions.camera = { ...viewpoint.camera };
+        } else if (renderOptions.camera) {
+          nextRenderOptions.camera = null;
         }
         if (viewpointLayers) {
           nextRenderOptions.layers = viewpointLayers;
@@ -8050,6 +8500,7 @@ var WorldOrbit = (() => {
   function cloneRenderOptions(renderOptions) {
     return {
       ...renderOptions,
+      camera: renderOptions.camera ? { ...renderOptions.camera } : null,
       filter: renderOptions.filter ? { ...renderOptions.filter } : void 0,
       scaleModel: renderOptions.scaleModel ? { ...renderOptions.scaleModel } : void 0,
       layers: renderOptions.layers ? { ...renderOptions.layers } : void 0,
@@ -8061,6 +8512,7 @@ var WorldOrbit = (() => {
     return {
       ...current,
       ...next,
+      camera: next.camera !== void 0 ? next.camera ? { ...next.camera } : null : current.camera ? { ...current.camera } : null,
       filter: next.filter !== void 0 ? normalizeViewerFilter(next.filter) : current.filter ? { ...current.filter } : void 0,
       scaleModel: next.scaleModel ? {
         ...current.scaleModel ?? {},
@@ -8074,7 +8526,7 @@ var WorldOrbit = (() => {
     };
   }
   function hasSceneAffectingRenderOptions(options) {
-    return options.width !== void 0 || options.height !== void 0 || options.padding !== void 0 || options.preset !== void 0 || options.projection !== void 0 || options.scaleModel !== void 0 || options.activeEventId !== void 0;
+    return options.width !== void 0 || options.height !== void 0 || options.padding !== void 0 || options.preset !== void 0 || options.projection !== void 0 || options.camera !== void 0 || options.scaleModel !== void 0 || options.activeEventId !== void 0;
   }
   function resolveSourceRenderOptions(loaded, renderOptions) {
     const atlasDocument = loaded.atlasDocument ?? loaded.draftDocument;
@@ -8385,7 +8837,11 @@ var WorldOrbit = (() => {
   var FIELD_HELP = {
     "defaults-view": {
       description: "Sets the default camera projection for the atlas.",
-      references: ["Topdown = map-like", "Isometric = angled overview"]
+      references: [
+        "Topdown = map-like",
+        "Isometric = angled overview",
+        "Orthographic/Perspective = 3D-ready semantic views"
+      ]
     },
     "defaults-scale": {
       description: "Chooses the overall spacing/style preset used by the renderer.",
@@ -8397,15 +8853,35 @@ var WorldOrbit = (() => {
     },
     "viewpoint-projection": {
       description: "Overrides the projection for this saved viewpoint.",
-      references: ["Topdown = flat orbital map", "Isometric = angled scene"]
+      references: [
+        "Topdown = flat orbital map",
+        "Isometric = angled scene",
+        "Orthographic/Perspective = stored with current 2D fallback"
+      ]
     },
     "viewpoint-zoom": {
       description: "Controls how closely this viewpoint frames the system.",
       references: ["1 = scene fit", "2+ = close-up"]
     },
     "viewpoint-rotation": {
-      description: "Rotates the saved camera angle in degrees.",
-      references: ["90deg = quarter turn", "180deg = flip"]
+      description: "Legacy 2D screen rotation. This is separate from the Schema 2.5 camera block.",
+      references: ["90deg = quarter turn", "Use camera.azimuth for semantic view direction"]
+    },
+    "viewpoint-camera-azimuth": {
+      description: "Horizontal camera direction in degrees for Schema 2.5 viewpoints.",
+      references: ["0 = forward/default", "90 = quarter orbit around the scene"]
+    },
+    "viewpoint-camera-elevation": {
+      description: "Vertical camera tilt in degrees for 3D-ready viewpoints.",
+      references: ["0 = level", "30 = gentle look down"]
+    },
+    "viewpoint-camera-roll": {
+      description: "Rolls the camera around its forward axis.",
+      references: ["0 = upright", "15 = slight bank"]
+    },
+    "viewpoint-camera-distance": {
+      description: "Semantic camera distance for perspective viewpoints.",
+      references: ["4 = close", "12 = wide framing"]
     },
     "viewpoint-events": {
       description: "Lists event IDs that this viewpoint should feature in its detail panel.",
@@ -8430,6 +8906,14 @@ var WorldOrbit = (() => {
     "event-visibility": {
       description: "Notes where or how the event is visible.",
       references: ['"Visible from Naar"', '"Southern hemisphere only"']
+    },
+    "event-epoch": {
+      description: "Optional event-wide epoch that event poses inherit unless they override it.",
+      references: ['"JY-0001.0"', '"Naar bloom cycle year 18"']
+    },
+    "event-referencePlane": {
+      description: "Optional event-wide reference plane for all poses in this snapshot.",
+      references: ["ecliptic", "naar-equatorial"]
     },
     "event-viewpoints": {
       description: "Viewpoint IDs that should list this event prominently.",
@@ -8470,6 +8954,14 @@ var WorldOrbit = (() => {
     "placement-phase": {
       description: "Starting position of the object along its orbit.",
       references: ["0deg = start position", "180deg = opposite side"]
+    },
+    "pose-epoch": {
+      description: "Overrides the effective epoch for this pose only.",
+      references: ['"JY-0001.0"', "Falls back to event, object, then system"]
+    },
+    "pose-referencePlane": {
+      description: "Overrides the effective reference plane for this pose only.",
+      references: ["naar-equatorial", "Falls back to event, object, then system"]
     },
     "prop-radius": {
       description: "Visual body size or real-world-inspired radius value.",
@@ -8665,6 +9157,8 @@ var WorldOrbit = (() => {
           participantObjectIds: [],
           timing: null,
           visibility: null,
+          epoch: null,
+          referencePlane: null,
           tags: [],
           color: null,
           hidden: false,
@@ -8689,6 +9183,7 @@ var WorldOrbit = (() => {
           preset: atlasDocument.system?.defaults.preset ?? null,
           zoom: null,
           rotationDeg: 0,
+          camera: null,
           layers: {},
           filter: null
         };
@@ -9580,6 +10075,7 @@ var WorldOrbit = (() => {
         preset: readOptionalTextInput(form, "viewpoint-preset") ?? null,
         zoom: parseNullableNumber(readOptionalTextInput(form, "viewpoint-zoom")),
         rotationDeg: parseNullableNumber(readOptionalTextInput(form, "viewpoint-rotation")) ?? 0,
+        camera: buildViewCameraFromForm(form),
         layers: {
           background: readCheckbox(form, "layer-background"),
           guides: readCheckbox(form, "layer-guides"),
@@ -9622,6 +10118,8 @@ var WorldOrbit = (() => {
         participantObjectIds: splitTokens(readOptionalTextInput(form, "event-participants")),
         timing: readOptionalTextInput(form, "event-timing"),
         visibility: readOptionalTextInput(form, "event-visibility"),
+        epoch: readOptionalTextInput(form, "event-epoch"),
+        referencePlane: readOptionalTextInput(form, "event-referencePlane"),
         tags: splitTokens(readOptionalTextInput(form, "event-tags")),
         color: readOptionalTextInput(form, "event-color"),
         hidden: readCheckbox(form, "event-hidden")
@@ -9644,7 +10142,9 @@ var WorldOrbit = (() => {
       const nextObjectId = readTextInput(form, "pose-object-id") || currentPose.objectId;
       const replacement = {
         objectId: nextObjectId,
-        placement: buildPlacementFromPoseForm(form, currentPose)
+        placement: buildPlacementFromPoseForm(form, currentPose),
+        epoch: readOptionalTextInput(form, "pose-epoch"),
+        referencePlane: readOptionalTextInput(form, "pose-referencePlane")
       };
       const inner = parseOptionalUnit(readOptionalTextInput(form, "prop-inner"));
       const outer = parseOptionalUnit(readOptionalTextInput(form, "prop-outer"));
@@ -10014,7 +10514,9 @@ var WorldOrbit = (() => {
     <h2>Defaults</h2>
     ${renderInspectorSection("defaults", "basics", "Basics", `${renderSelectField("Projection", "defaults-view", [
       ["topdown", "Topdown"],
-      ["isometric", "Isometric"]
+      ["isometric", "Isometric"],
+      ["orthographic", "Orthographic"],
+      ["perspective", "Perspective"]
     ], defaults?.view ?? "topdown")}
       ${renderTextField("Scale preset", "defaults-scale", defaults?.scale ?? "")}
       ${renderTextField("Units", "defaults-units", defaults?.units ?? "")}
@@ -10050,7 +10552,9 @@ var WorldOrbit = (() => {
       ${renderTextField("Selected object", "viewpoint-select", viewpoint.selectedObjectId ?? "")}
       ${renderSelectField("Projection", "viewpoint-projection", [
       ["topdown", "Topdown"],
-      ["isometric", "Isometric"]
+      ["isometric", "Isometric"],
+      ["orthographic", "Orthographic"],
+      ["perspective", "Perspective"]
     ], viewpoint.projection)}
       ${renderSelectField("Preset", "viewpoint-preset", [
       ["", "Document default"],
@@ -10061,6 +10565,11 @@ var WorldOrbit = (() => {
     ], viewpoint.preset ?? "")}
       ${renderTextField("Zoom", "viewpoint-zoom", viewpoint.zoom === null ? "" : String(viewpoint.zoom))}
       ${renderTextField("Rotation", "viewpoint-rotation", String(viewpoint.rotationDeg))}`, true)}
+    ${renderInspectorSection("viewpoint", "camera", "Camera", `${renderTextField("Azimuth", "viewpoint-camera-azimuth", viewpoint.camera?.azimuth === null || viewpoint.camera?.azimuth === void 0 ? "" : String(viewpoint.camera.azimuth))}
+      ${renderTextField("Elevation", "viewpoint-camera-elevation", viewpoint.camera?.elevation === null || viewpoint.camera?.elevation === void 0 ? "" : String(viewpoint.camera.elevation))}
+      ${renderTextField("Roll", "viewpoint-camera-roll", viewpoint.camera?.roll === null || viewpoint.camera?.roll === void 0 ? "" : String(viewpoint.camera.roll))}
+      ${renderTextField("Distance", "viewpoint-camera-distance", viewpoint.camera?.distance === null || viewpoint.camera?.distance === void 0 ? "" : String(viewpoint.camera.distance))}
+      <p class="wo-editor-inline-note">Rotation stays a 2D screen-rotation hint. The camera block stores Schema 2.5 view direction and framing.</p>`)}
     ${renderInspectorSection("viewpoint", "layers", "Layers", `<fieldset class="wo-editor-fieldset">
         <legend>Layers</legend>
         ${renderCheckboxField("Background", "layer-background", viewpoint.layers.background !== false)}
@@ -10095,6 +10604,8 @@ var WorldOrbit = (() => {
       ${renderTextField("Participants", "event-participants", eventEntry.participantObjectIds.join(" "))}
       ${renderTextField("Timing", "event-timing", eventEntry.timing ?? "")}
       ${renderTextField("Visibility", "event-visibility", eventEntry.visibility ?? "")}
+      ${renderTextField("Epoch", "event-epoch", eventEntry.epoch ?? "")}
+      ${renderTextField("Reference plane", "event-referencePlane", eventEntry.referencePlane ?? "")}
       ${renderTextField("Tags", "event-tags", eventEntry.tags.join(" "))}
       ${renderTextField("Color", "event-color", eventEntry.color ?? "")}
       ${renderCheckboxField("Hidden", "event-hidden", eventEntry.hidden === true)}`, true)}
@@ -10139,6 +10650,9 @@ var WorldOrbit = (() => {
       ${renderTextField("Phase", "placement-phase", pose.placement?.mode === "orbit" && pose.placement.phase ? formatUnitValue3(pose.placement.phase) : "")}
       ${renderTextField("Inner", "prop-inner", pose.inner ? formatUnitValue3(pose.inner) : "")}
       ${renderTextField("Outer", "prop-outer", pose.outer ? formatUnitValue3(pose.outer) : "")}`, true)}
+    ${renderInspectorSection("event-pose", "context", "Context", `${renderTextField("Epoch", "pose-epoch", pose.epoch ?? "")}
+      ${renderTextField("Reference plane", "pose-referencePlane", pose.referencePlane ?? "")}
+      <p class="wo-editor-inline-note">Falls back to event, then object, then system context when left empty.</p>`)}
   </form>`;
   }
   function renderAnnotationInspector(formState, id) {
@@ -10322,6 +10836,15 @@ var WorldOrbit = (() => {
     }
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : null;
+  }
+  function buildViewCameraFromForm(form) {
+    const camera = {
+      azimuth: parseNullableNumber(readOptionalTextInput(form, "viewpoint-camera-azimuth")),
+      elevation: parseNullableNumber(readOptionalTextInput(form, "viewpoint-camera-elevation")),
+      roll: parseNullableNumber(readOptionalTextInput(form, "viewpoint-camera-roll")),
+      distance: parseNullableNumber(readOptionalTextInput(form, "viewpoint-camera-distance"))
+    };
+    return camera.azimuth !== null || camera.elevation !== null || camera.roll !== null || camera.distance !== null ? camera : null;
   }
   function parseObjectTypes(value) {
     const tokens = splitTokens(value);
@@ -10905,6 +11428,21 @@ var WorldOrbit = (() => {
             return ["viewpoint-zoom"];
           case "rotationDeg":
             return ["viewpoint-rotation"];
+          case "camera":
+            return [
+              "viewpoint-camera-azimuth",
+              "viewpoint-camera-elevation",
+              "viewpoint-camera-roll",
+              "viewpoint-camera-distance"
+            ];
+          case "camera.azimuth":
+            return ["viewpoint-camera-azimuth"];
+          case "camera.elevation":
+            return ["viewpoint-camera-elevation"];
+          case "camera.roll":
+            return ["viewpoint-camera-roll"];
+          case "camera.distance":
+            return ["viewpoint-camera-distance"];
           case "events":
             return ["viewpoint-events"];
           default:
@@ -10930,6 +11468,10 @@ var WorldOrbit = (() => {
             return ["event-timing"];
           case "visibility":
             return ["event-visibility"];
+          case "epoch":
+            return ["event-epoch"];
+          case "referencePlane":
+            return ["event-referencePlane"];
           case "tags":
             return ["event-tags"];
           case "color":
@@ -10957,6 +11499,12 @@ var WorldOrbit = (() => {
         }
         if (field === "inner" || field === "outer") {
           return [`prop-${field}`];
+        }
+        if (field === "epoch") {
+          return ["pose-epoch"];
+        }
+        if (field === "referencePlane") {
+          return ["pose-referencePlane"];
         }
         return [];
       case "annotation":

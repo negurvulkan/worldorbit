@@ -42,13 +42,18 @@ export type Unit =
   | "deg"; // degrees
 
 export type WorldOrbitDocumentVersion = "1.0";
-export type WorldOrbitAtlasDocumentVersion = "2.0" | "2.1";
+export type WorldOrbitAtlasDocumentVersion = "2.0" | "2.1" | "2.5";
 export type WorldOrbitDraftDocumentVersion = "2.0-draft";
 export type WorldOrbitAnyDocumentVersion =
   | WorldOrbitDocumentVersion
   | WorldOrbitAtlasDocumentVersion
   | WorldOrbitDraftDocumentVersion;
-export type ViewProjection = "topdown" | "isometric";
+export type ViewProjection =
+  | "topdown"
+  | "isometric"
+  | "orthographic"
+  | "perspective";
+export type RenderProjectionFallback = "topdown" | "isometric";
 export type RenderPresetName = "diagram" | "presentation" | "atlas-card" | "markdown";
 
 export interface CoordinatePoint {
@@ -208,6 +213,8 @@ export interface WorldOrbitEvent {
   participantObjectIds: string[];
   timing: string | null;
   visibility: string | null;
+  epoch?: string | null;
+  referencePlane?: string | null;
   tags: string[];
   color: string | null;
   hidden: boolean;
@@ -219,6 +226,8 @@ export interface WorldOrbitEventPose {
   placement: Placement | null;
   inner?: UnitValue;
   outer?: UnitValue;
+  epoch?: string | null;
+  referencePlane?: string | null;
 }
 
 export interface WorldOrbitResonance {
@@ -244,6 +253,13 @@ export interface WorldOrbitValidationRule {
 export interface WorldOrbitToleranceRule {
   field: string;
   value: NormalizedValue;
+}
+
+export interface WorldOrbitViewCamera {
+  azimuth: number | null;
+  elevation: number | null;
+  roll: number | null;
+  distance: number | null;
 }
 
 export type NormalizedValue =
@@ -329,6 +345,7 @@ export interface SceneRenderOptions {
   padding?: number;
   preset?: RenderPresetName;
   projection?: "document" | ViewProjection;
+  camera?: WorldOrbitViewCamera | null;
   scaleModel?: Partial<RenderScaleModel>;
   activeEventId?: string | null;
 }
@@ -458,8 +475,10 @@ export interface RenderSceneViewpoint {
   selectedObjectId: string | null;
   eventIds: string[];
   projection: ViewProjection;
+  renderProjection: RenderProjectionFallback;
   preset: RenderPresetName | null;
   rotationDeg: number;
+  camera: WorldOrbitViewCamera | null;
   scale: number | null;
   layers: Partial<Record<SceneLayerId, boolean>>;
   filter: RenderSceneViewpointFilter | null;
@@ -511,6 +530,8 @@ export interface RenderScene {
   padding: number;
   renderPreset: RenderPresetName | null;
   projection: ViewProjection;
+  renderProjection: RenderProjectionFallback;
+  camera: WorldOrbitViewCamera | null;
   scaleModel: RenderScaleModel;
   title: string;
   subtitle: string;
@@ -604,6 +625,7 @@ export interface WorldOrbitAtlasViewpoint {
   preset: RenderPresetName | null;
   zoom: number | null;
   rotationDeg: number;
+  camera: WorldOrbitViewCamera | null;
   layers: Partial<Record<SceneLayerId, boolean>>;
   filter: RenderSceneViewpointFilter | null;
 }

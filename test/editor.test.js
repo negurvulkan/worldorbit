@@ -117,6 +117,35 @@ event naar-eclipse
       phase 90deg
 `.trim();
 
+const schema25Source = `schema 2.5
+
+system Helion
+  title "Helion"
+  epoch "JY-0214.0"
+  referencePlane ecliptic
+
+defaults
+  view orthographic
+  preset atlas-card
+
+viewpoint overview
+  label "Overview"
+  projection perspective
+  rotation 12
+  camera
+    azimuth 28
+    elevation 18
+    distance 6
+
+object star Helion
+  mass 1sol
+
+object planet Aster
+  orbit Helion
+  semiMajor 1au
+  phase 20deg
+`.trim();
+
 function installDomGlobals(window) {
   const previous = {
     window: globalThis.window,
@@ -465,6 +494,48 @@ test("editor preserves schema 2.1, supports events in the outline, and drags eve
     assert.notEqual(updatedPosePhase, 90);
     assert.match(editor.getSource(), /event naar-eclipse/);
     assert.match(editor.getSource(), /pose Seyra/);
+  } finally {
+    editor?.destroy();
+    restoreRects();
+    restoreGlobals();
+    dom.window.close();
+  }
+});
+
+test("editor preserves schema 2.5 viewpoint camera blocks and projection choices", () => {
+  const dom = new JSDOM(`<div id="editor"></div>`, {
+    pretendToBeVisual: true,
+  });
+  const restoreGlobals = installDomGlobals(dom.window);
+  const restoreRects = installFixedRects(dom.window, 1120, 680);
+  const root = dom.window.document.getElementById("editor");
+  let editor;
+
+  try {
+    editor = createWorldOrbitEditor(root, {
+      source: schema25Source,
+    });
+
+    assert.equal(editor.getAtlasDocument().version, "2.5");
+    editor.selectPath({ kind: "viewpoint", id: "overview" });
+
+    const projectionSelect = root.querySelector('select[name="viewpoint-projection"]');
+    const azimuthInput = root.querySelector('input[name="viewpoint-camera-azimuth"]');
+    const distanceInput = root.querySelector('input[name="viewpoint-camera-distance"]');
+    assert.ok(projectionSelect);
+    assert.ok(azimuthInput);
+    assert.ok(distanceInput);
+    assert.equal(projectionSelect.value, "perspective");
+    assert.equal(azimuthInput.value, "28");
+    assert.equal(distanceInput.value, "6");
+
+    azimuthInput.value = "40";
+    azimuthInput.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+
+    const updatedViewpoint = editor.getAtlasDocument().system?.viewpoints.find((entry) => entry.id === "overview");
+    assert.equal(updatedViewpoint?.camera?.azimuth, 40);
+    assert.match(editor.getSource(), /^schema 2\.5/m);
+    assert.match(editor.getSource(), /camera[\s\S]*azimuth 40/);
   } finally {
     editor?.destroy();
     restoreRects();

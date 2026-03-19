@@ -1,18 +1,33 @@
 # WorldOrbit Language Reference
 
-WorldOrbit is a text-first DSL for fictional orbital systems. This reference covers the currently recommended atlas format, Schema 2.1, while also calling out the older compatibility paths that remain supported.
+WorldOrbit is a text-first DSL for fictional orbital systems. This reference covers the currently recommended atlas format, Schema 2.5, while also calling out the older compatibility paths that remain supported.
 
 ## Version overview
 
-- `schema 2.1` is the recommended header for new atlas documents.
+- `schema 2.5` is the recommended header for new atlas documents.
+- `schema 2.1` remains fully readable and is the direct compatibility base for Schema 2.5.
 - `schema 2.0` remains fully supported.
 - `schema 2.0-draft` remains readable as a legacy compatibility path and emits a deprecation diagnostic.
 - Schema 1.0 source without a header is still supported through the older parser/normalization pipeline.
 
+## What's new in Schema 2.5
+
+Schema 2.5 is a backward-compatible extension of Schema 2.1 focused on clearer 3D preparation, not on becoming a full 3D scene or simulation format.
+
+Schema 2.5 adds:
+
+- two additional viewpoint projections: `orthographic` and `perspective`
+- an optional `camera` block on `viewpoint`
+- explicit inheritance rules for `epoch` and `referencePlane` across system, object, event, and pose contexts
+- stronger event/pose snapshot semantics for reproducible curated scenes
+- stronger validation around viewpoints, camera fields, and event/pose context
+
+Schema 2.5 still does not add general XYZ coordinates, meshes, materials, quaternions, lighting, or a full orbital solver.
+
 ## Document skeleton
 
 ```worldorbit
-schema 2.1
+schema 2.5
 
 system Iyath
   title "The Iyath System"
@@ -21,7 +36,7 @@ system Iyath
   referencePlane ecliptic
 
 defaults
-  view isometric
+  view orthographic
   scale presentation
   preset atlas-card
   theme atlas
@@ -39,6 +54,8 @@ event naar-eclipse
   kind solar-eclipse
   target Naar
   participants Iyath Naar Seyra
+  epoch "JY-0001.0"
+  referencePlane ecliptic
 
 object star Iyath
 
@@ -50,7 +67,7 @@ object planet Naar
 
 ## Comments
 
-Schema 2.1 adds real comments.
+Schema 2.1 adds real comments, and Schema 2.5 keeps them unchanged.
 
 - `# ...` starts a line comment and continues to the end of the line.
 - `/* ... */` starts a block comment and may span multiple lines.
@@ -61,7 +78,7 @@ Schema 2.1 adds real comments.
 Example:
 
 ```worldorbit
-schema 2.1
+schema 2.5
 
 # Main atlas
 system Iyath
@@ -119,6 +136,13 @@ Supported fields:
 - `preset`
 - `theme`
 
+`view` accepts:
+
+- `topdown`
+- `isometric`
+- `orthographic`, Schema 2.5+
+- `perspective`, Schema 2.5+
+
 ### `atlas`
 
 Optional metadata section.
@@ -143,9 +167,26 @@ Supported fields:
 - `preset`
 - `zoom`
 - `rotation`
+- `camera`
 - `layers`
 - `events`
 - `filter`
+
+`projection` accepts:
+
+- `topdown`
+- `isometric`
+- `orthographic`, Schema 2.5+
+- `perspective`, Schema 2.5+
+
+`rotation` remains the legacy 2D screen-rotation hint. It is still supported in Schema 2.5 and is not an alias for `camera.azimuth`.
+
+`camera` is a Schema 2.5 block with:
+
+- `azimuth`
+- `elevation`
+- `roll`, optional
+- `distance`, optional
 
 `filter` supports:
 
@@ -154,11 +195,11 @@ Supported fields:
 - `tags`
 - `groups`
 
-In Schema 2.1, `filter.groups` refers to semantic `group` ids. For older atlases it still falls back to the legacy render-group behavior.
+In Schema 2.1 and Schema 2.5, `filter.groups` refers to semantic `group` ids. For older atlases it still falls back to the legacy render-group behavior.
 
-`events` is a Schema 2.1 list of event ids that this viewpoint should feature in its panel or event picker.
+`events` is a Schema 2.1+ list of event ids that this viewpoint should feature in its panel or event picker.
 
-`layers` may include `events` in Schema 2.1 to enable event overlays in viewers that support them.
+`layers` may include `events` in Schema 2.1+ to enable event overlays in viewers that support them.
 
 ### `annotation`
 
@@ -204,7 +245,7 @@ Relations are not orbital placement. They model logistics, politics, infrastruct
 
 ### `event`
 
-Schema 2.1+ declarative event section.
+Schema 2.1+ declarative event section. Schema 2.5 extends it with explicit event-level context.
 
 Supported fields:
 
@@ -215,6 +256,8 @@ Supported fields:
 - `participants` list of object ids
 - `timing` string
 - `visibility` string
+- `epoch` string, Schema 2.5+
+- `referencePlane` string, Schema 2.5+
 - `tags` list
 - `color` string
 - `hidden` boolean
@@ -226,7 +269,7 @@ At least one of `target` or `participants` should be present.
 
 #### `positions` and `pose`
 
-Inside an `event`, Schema 2.1 optionally supports a `positions` block with repeated `pose <objectId>` blocks.
+Inside an `event`, Schema 2.1 optionally supports a `positions` block with repeated `pose <objectId>` blocks. Schema 2.5 keeps that shape and clarifies how missing pose data falls back to base object, event, and system context.
 
 Example:
 
@@ -252,8 +295,17 @@ Each `pose` reuses the placement language for a curated event snapshot:
 
 - exactly one of `orbit`, `at`, `surface`, or `free`
 - optional placement geometry such as `distance`, `semiMajor`, `eccentricity`, `period`, `angle`, `inclination`, `phase`, `inner`, and `outer`
+- optional `epoch`, Schema 2.5+
+- optional `referencePlane`, Schema 2.5+
 
 `pose` blocks are for position and geometry only. They are not a second place to redefine `mass`, `radius`, `info`, typed lore blocks, or other non-placement object metadata.
+
+Context inheritance for event snapshots is:
+
+- `pose.epoch -> event.epoch -> object.epoch -> system.epoch -> unset`
+- `pose.referencePlane -> event.referencePlane -> object.referencePlane -> system.referencePlane -> implicit renderer default`
+
+Missing pose placement fields fall back to the base object. Missing pose blocks do not invalidate the event; they mean the event uses the document's normal placement for those referenced bodies.
 
 ### `object`
 
