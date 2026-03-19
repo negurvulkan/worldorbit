@@ -35,6 +35,11 @@ relation supply-route
   to Relay
   kind logistics
 
+event naar-eclipse
+  kind solar-eclipse
+  target Naar
+  participants Iyath Naar Seyra
+
 object star Iyath
 
 object planet Naar
@@ -139,6 +144,7 @@ Supported fields:
 - `zoom`
 - `rotation`
 - `layers`
+- `events`
 - `filter`
 
 `filter` supports:
@@ -149,6 +155,10 @@ Supported fields:
 - `groups`
 
 In Schema 2.1, `filter.groups` refers to semantic `group` ids. For older atlases it still falls back to the legacy render-group behavior.
+
+`events` is a Schema 2.1 list of event ids that this viewpoint should feature in its panel or event picker.
+
+`layers` may include `events` in Schema 2.1 to enable event overlays in viewers that support them.
 
 ### `annotation`
 
@@ -191,6 +201,59 @@ Supported fields:
 - `hidden` boolean
 
 Relations are not orbital placement. They model logistics, politics, infrastructure, and other non-spatial links.
+
+### `event`
+
+Schema 2.1+ declarative event section.
+
+Supported fields:
+
+- `kind` string, required
+- `label` string
+- `summary` string
+- `target` object id
+- `participants` list of object ids
+- `timing` string
+- `visibility` string
+- `tags` list
+- `color` string
+- `hidden` boolean
+- `positions` block
+
+Events are semantic timeline or snapshot markers for things like eclipses, transits, conjunctions, or ceremonial windows. They do not turn WorldOrbit into a simulation language.
+
+At least one of `target` or `participants` should be present.
+
+#### `positions` and `pose`
+
+Inside an `event`, Schema 2.1 optionally supports a `positions` block with repeated `pose <objectId>` blocks.
+
+Example:
+
+```worldorbit
+event naar-eclipse
+  kind solar-eclipse
+  target Naar
+  participants Iyath Naar Seyra
+
+  positions
+    pose Naar
+      orbit Iyath
+      semiMajor 1au
+      phase 90deg
+
+    pose Seyra
+      orbit Naar
+      distance 384400km
+      phase 90deg
+```
+
+Each `pose` reuses the placement language for a curated event snapshot:
+
+- exactly one of `orbit`, `at`, `surface`, or `free`
+- optional placement geometry such as `distance`, `semiMajor`, `eccentricity`, `period`, `angle`, `inclination`, `phase`, `inner`, and `outer`
+
+`pose` blocks are for position and geometry only. They are not a second place to redefine `mass`, `radius`, `info`, typed lore blocks, or other non-placement object metadata.
 
 ### `object`
 
@@ -368,6 +431,7 @@ Current validator support focuses on:
 - existence of referenced ids
 - `at`/`surface` constraints
 - group references
+- event targets, participants, and viewpoint event references
 - simple Kepler-style period checks when enough mass and orbital data are present
 
 ## `info` and typed lore blocks
@@ -464,8 +528,8 @@ Common unit families include:
 Important validator rules include:
 
 - exactly one `system`
-- unique ids across groups, viewpoints, annotations, relations, and objects
-- valid references in `orbit`, `surface`, `at`, `target`, `from`, `to`, `groups`, and `resonance`
+- unique ids across groups, viewpoints, annotations, relations, events, and objects
+- valid references in `orbit`, `surface`, `at`, `target`, `from`, `to`, `groups`, `resonance`, event `participants`, and viewpoint `events`
 - `distance` and `semiMajor` may not coexist on the same orbit
 - `at` is limited to `structure` and `phenomenon`
 - duplicate keys are invalid in `info`, `atlas.metadata`, `climate`, `habitability`, and `settlement`
@@ -475,6 +539,7 @@ Common warnings include:
 - `phase` without `epoch`
 - `inclination` without `referencePlane`
 - unknown groups
+- unknown events or events without enough participants/positions
 - derive rules without enough input data
 - period values when central mass is not derivable
 

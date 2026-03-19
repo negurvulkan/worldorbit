@@ -624,6 +624,9 @@
             preset atlas-card
             theme atlas
 
+            group inner-system
+            label "Inner System"
+
             object star Iyath
 
             object planet Naar
@@ -633,7 +636,17 @@
             angle 28deg
             inclination 24deg
             phase 42deg
-            atmosphere nitrogen-oxygen</div>
+            atmosphere nitrogen-oxygen
+            groups inner-system
+
+            object moon Seyra
+            orbit Naar
+            distance 384400km
+
+            event naar-eclipse
+            kind solar-eclipse
+            target Naar
+            participants Iyath Naar Seyra</div>
           <div class="viewer-shell">
             <div class="viewer-title">
               <span>Rendered preview</span>
@@ -653,7 +666,7 @@
           <p>
             Generic diagram tools can draw connections. WorldOrbit is built specifically for fictional orbital systems,
             Markdown-based lore repositories, codices, browser viewers, and content-first worldbuilding workflows.
-            Schema 2.1 now adds comments, semantic groups, relations, and light validation metadata without breaking Schema 2.0 atlases.
+            Schema 2.1 now adds comments, semantic groups, relations, declarative events with pose snapshots, and light validation metadata without breaking Schema 2.0 atlases.
           </p>
         </div>
 
@@ -725,6 +738,9 @@ defaults
   preset atlas-card
   theme atlas
 
+group inner-system
+  label "Inner System"
+
 annotation naar-notes
   label "Naar Notes"
   target Naar
@@ -739,7 +755,29 @@ object planet Naar
   angle 28deg
   inclination 24deg
   phase 42deg
-  atmosphere nitrogen-oxygen</textarea>
+  atmosphere nitrogen-oxygen
+  groups inner-system
+
+object moon Seyra
+  orbit Naar
+  distance 384400km
+  groups inner-system
+
+event naar-eclipse
+  kind solar-eclipse
+  target Naar
+  participants Iyath Naar Seyra
+
+  positions
+    pose Naar
+      orbit Iyath
+      semiMajor 1.18au
+      phase 90deg
+
+    pose Seyra
+      orbit Naar
+      distance 384400km
+      phase 90deg</textarea>
               </div>
 
               <div id="playground-status">Edit the source and click “Render Preview”.</div>
@@ -876,6 +914,9 @@ defaults
   preset atlas-card
   theme atlas
 
+group inner-system
+  label "Inner System"
+
 object star Iyath
 
 object planet Naar
@@ -885,7 +926,17 @@ object planet Naar
   angle 28deg
   inclination 24deg
   phase 42deg
-  atmosphere nitrogen-oxygen`;
+  atmosphere nitrogen-oxygen
+  groups inner-system
+
+object moon Seyra
+  orbit Naar
+  distance 384400km
+
+event naar-eclipse
+  kind solar-eclipse
+  target Naar
+  participants Iyath Naar Seyra`;
 
     const playgroundDefaultSource = `schema 2.1
 
@@ -897,6 +948,9 @@ defaults
   scale presentation
   preset atlas-card
   theme atlas
+
+group inner-system
+  label "Inner System"
 
 annotation naar-notes
   label "Naar Notes"
@@ -912,7 +966,29 @@ object planet Naar
   angle 28deg
   inclination 24deg
   phase 42deg
-  atmosphere nitrogen-oxygen`;
+  atmosphere nitrogen-oxygen
+  groups inner-system
+
+object moon Seyra
+  orbit Naar
+  distance 384400km
+  groups inner-system
+
+event naar-eclipse
+  kind solar-eclipse
+  target Naar
+  participants Iyath Naar Seyra
+
+  positions
+    pose Naar
+      orbit Iyath
+      semiMajor 1.18au
+      phase 90deg
+
+    pose Seyra
+      orbit Naar
+      distance 384400km
+      phase 90deg`;
 
     function mountWorldOrbitDemo(targetId, source, options = {}) {
       const target = document.getElementById(targetId);

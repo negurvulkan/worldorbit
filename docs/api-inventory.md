@@ -52,6 +52,8 @@ Core public types include:
 - `WorldOrbitObject`
 - `WorldOrbitGroup`
 - `WorldOrbitRelation`
+- `WorldOrbitEvent`
+- `WorldOrbitEventPose`
 - `WorldOrbitResonance`
 - `WorldOrbitRenderHints`
 - `WorldOrbitDeriveRule`
@@ -66,6 +68,7 @@ Core public types include:
 - `RenderSceneGroup`
 - `RenderSceneSemanticGroup`
 - `RenderSceneRelation`
+- `RenderSceneEvent`
 - `RenderSceneLabel`
 - `RenderSceneViewpoint`
 - `RenderPresetName`
@@ -110,7 +113,7 @@ Viewer public types include:
 - `WorldOrbitAtlasViewer`
 - `WorldOrbitEmbedPayload`
 
-Viewer behavior now includes Schema 2.1-specific semantic groups, relation overlays, relation layers, render hints, and detail payloads for `epoch`, `referencePlane`, `tidalLock`, `resonance`, and typed lore blocks.
+Viewer behavior now includes Schema 2.1-specific semantic groups, relation overlays, event overlays, active event scene snapshots, render hints, and detail payloads for `epoch`, `referencePlane`, `tidalLock`, `resonance`, events, and typed lore blocks.
 
 ## `@worldorbit/editor`
 
@@ -129,13 +132,14 @@ Editor public types include:
 
 - `isDirty()`
 - `markSaved()`
+- `addEvent()`
 
 `WorldOrbitEditorOptions` includes:
 
 - `onDirtyChange?(dirty)`
 - `shortcuts?`
 
-The editor and Studio now load, preserve, and roundtrip Schema 2.1 documents instead of assuming Schema 2.0 as the only canonical atlas form.
+The editor and Studio now load, preserve, and roundtrip Schema 2.1 documents instead of assuming Schema 2.0 as the only canonical atlas form, including event sections, event poses, and stage edits that write back into `event.positions` rather than base object placement.
 
 ## `@worldorbit/markdown`
 

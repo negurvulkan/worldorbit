@@ -35,6 +35,11 @@ relation supply-route
   to Relay
   kind logistics
 
+event naar-eclipse
+  kind solar-eclipse
+  target Naar
+  participants Iyath Naar Seyra
+
 object star Iyath
 
 object planet Naar
@@ -139,6 +144,7 @@ Unterstuetzte Felder:
 - `zoom`
 - `rotation`
 - `layers`
+- `events`
 - `filter`
 
 `filter` unterstuetzt:
@@ -149,6 +155,10 @@ Unterstuetzte Felder:
 - `groups`
 
 In Schema 2.1 verweist `filter.groups` auf semantische `group`-IDs. Bei aelteren Atlanten faellt das Verhalten weiter auf die bisherige Render-Gruppierung zurueck.
+
+`events` ist in Schema 2.1 eine Liste von Event-IDs, die ein Viewpoint in seinem Panel oder Event-Picker hervorheben soll.
+
+`layers` darf in Schema 2.1 auch `events` enthalten, um Event-Overlays in unterstuetzenden Viewern einzublenden.
 
 ### `annotation`
 
@@ -191,6 +201,59 @@ Unterstuetzte Felder:
 - `hidden` boolean
 
 Relationen sind keine Orbital-Platzierung. Sie modellieren Logistik, Politik, Infrastruktur und andere nicht-raeumliche Verknuepfungen.
+
+### `event`
+
+Deklarative Event-Sektion ab Schema 2.1.
+
+Unterstuetzte Felder:
+
+- `kind` string, erforderlich
+- `label` string
+- `summary` string
+- `target` Objekt-ID
+- `participants` Liste von Objekt-IDs
+- `timing` string
+- `visibility` string
+- `tags` list
+- `color` string
+- `hidden` boolean
+- `positions`-Block
+
+Events sind semantische Zeitfenster oder Schnappschuesse fuer Dinge wie Finsternisse, Transits, Konjunktionen oder besondere Beobachtungsfenster. Sie machen WorldOrbit nicht zu einer Simulationssprache.
+
+Mindestens eines von `target` oder `participants` sollte gesetzt sein.
+
+#### `positions` und `pose`
+
+Innerhalb eines `event` unterstuetzt Schema 2.1 optional einen `positions`-Block mit wiederholbaren `pose <objectId>`-Bloecken.
+
+Beispiel:
+
+```worldorbit
+event naar-eclipse
+  kind solar-eclipse
+  target Naar
+  participants Iyath Naar Seyra
+
+  positions
+    pose Naar
+      orbit Iyath
+      semiMajor 1au
+      phase 90deg
+
+    pose Seyra
+      orbit Naar
+      distance 384400km
+      phase 90deg
+```
+
+Jedes `pose` verwendet die Placement-Sprache erneut fuer einen kuratierten Ereignis-Schnappschuss:
+
+- genau eines von `orbit`, `at`, `surface` oder `free`
+- optionale Placement-Geometrie wie `distance`, `semiMajor`, `eccentricity`, `period`, `angle`, `inclination`, `phase`, `inner` und `outer`
+
+`pose`-Bloecke sind nur fuer Position und Geometrie gedacht. Sie sind kein zweiter Ort fuer `mass`, `radius`, `info`, typisierte Lore-Bloecke oder andere nicht-platzierungsbezogene Objektmetadaten.
 
 ### `object`
 
@@ -368,6 +431,7 @@ Die aktuelle Validator-Unterstuetzung konzentriert sich auf:
 - Existenz gegebener IDs
 - `at`-/`surface`-Regeln
 - Gruppenreferenzen
+- Event-Ziele, Teilnehmer und Viewpoint-Event-Referenzen
 - einfache Kepler-Pruefungen, wenn genug Massen- und Orbitdaten vorhanden sind
 
 ## `info` und typisierte Lore-Bloecke
@@ -464,8 +528,8 @@ Haefige Einheitsfamilien:
 Wichtige Validator-Regeln sind:
 
 - genau ein `system`
-- eindeutige IDs ueber Gruppen, Viewpoints, Annotations, Relationen und Objekte
-- gueltige Referenzen in `orbit`, `surface`, `at`, `target`, `from`, `to`, `groups` und `resonance`
+- eindeutige IDs ueber Gruppen, Viewpoints, Annotations, Relationen, Events und Objekte
+- gueltige Referenzen in `orbit`, `surface`, `at`, `target`, `from`, `to`, `groups`, `resonance`, Event-`participants` und Viewpoint-`events`
 - `distance` und `semiMajor` duerfen nicht auf demselben Orbit koexistieren
 - `at` ist auf `structure` und `phenomenon` beschraenkt
 - doppelte Keys sind in `info`, `atlas.metadata`, `climate`, `habitability` und `settlement` ungueltig
@@ -475,6 +539,7 @@ Haefige Warnungen sind:
 - `phase` ohne `epoch`
 - `inclination` ohne `referencePlane`
 - unbekannte Gruppen
+- unbekannte Events oder Events ohne genug Teilnehmer/Positionen
 - Ableitungsregeln ohne genug Eingangsdaten
 - Periodenwerte ohne ableitbare Zentralmasse
 

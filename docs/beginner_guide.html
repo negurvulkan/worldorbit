@@ -227,7 +227,7 @@
         <article class="card">
           <span class="pill">1</span>
           <h3>Start with the schema</h3>
-          <p>Use <code>schema 2.1</code> for new documents. <code>schema 2.0</code> still loads, but 2.1 is the clearest default going forward.</p>
+          <p>Use <code>schema 2.1</code> for new documents. <code>schema 2.0</code> still loads, but 2.1 is the clearest default going forward and adds comments, groups, relations, and events.</p>
         </article>
         <article class="card">
           <span class="pill">2</span>
@@ -279,7 +279,7 @@ object star Sun</pre>
       <div class="example-block example-medium">
         <div class="section-heading">
           <h2>Example 2 — A small star system with planets and a moon</h2>
-          <p>This adds orbit data, a moon, and a small station at a Lagrange point.</p>
+          <p>This adds orbit data, a moon, a small station at a Lagrange point, and a named event snapshot.</p>
         </div>
         <div class="example-grid">
           <div>
@@ -296,6 +296,9 @@ defaults
   preset atlas-card
   theme atlas
 
+group inner-system
+  label "Inner System"
+
 object star Iyath
 
 object planet Naar
@@ -306,20 +309,28 @@ object planet Naar
   inclination 24deg
   phase 42deg
   atmosphere nitrogen-oxygen
+  groups inner-system
 
 object moon Leth
   orbit Naar
   distance 384000km
   phase 140deg
+  groups inner-system
 
 object structure Relay-One
   at Naar:L4
-  kind relay</pre>
+  kind relay
+  groups inner-system
+
+event eclipse-window
+  kind solar-eclipse
+  target Naar
+  participants Iyath Naar Leth</pre>
             </div>
           </div>
           <div>
             <div class="preview-box"><div id="example-2-preview"></div></div>
-            <div class="status">Rendered result: a system with a star, one planet, a moon, and a relay at a special orbital position.</div>
+            <div class="status">Rendered result: a system with a star, one planet, a moon, a relay at a special orbital position, and a named event entry.</div>
           </div>
         </div>
       </div>
@@ -328,9 +339,10 @@ object structure Relay-One
         <div class="section-heading">
           <h2>Example 3 — A more complete solar system</h2>
           <p>
-            This example tries to capture the structure of our solar system with the Sun, inner planets, gas giants,
-            a moon, the asteroid belt, the rings of Saturn, and a few structures. It is intentionally richer so you can see
-            how WorldOrbit scales from tiny diagrams to dense orbital maps.
+            This example combines most of the current Schema 2.1 atlas surface in one place: comments, groups, filtered
+            viewpoints, a relation, validation hints, typed lore blocks, render hints, and a curated eclipse event with
+            explicit event poses. It is intentionally rich so you can see how WorldOrbit scales from tiny diagrams to
+            denser orbital atlases.
           </p>
         </div>
         <div class="example-grid">
@@ -341,37 +353,90 @@ object structure Relay-One
 
 system Sol
   title "Solar System"
+  description "Reference atlas showing most Schema 2.1 authoring features in one place."
+  epoch "J2000.0"
+  referencePlane ecliptic
 
 defaults
   view topdown
   scale presentation
+  units metric
   preset atlas-card
   theme atlas
 
+group inner-system
+  label "Inner System"
+  summary "Sun through Mars and the Earth-Moon system."
+  color "#d9b37a"
+  tags rocky inhabited
+
+group outer-system
+  label "Outer System"
+  summary "Gas giants, rings, ice giants, and deep-space markers."
+  color "#8fb7d9"
+  tags giant frontier
+
+group orbital-infrastructure
+  label "Orbital Infrastructure"
+  summary "Stations, telescopes, and surface networks."
+  color "#c8d4e8"
+  tags infrastructure science
+
+group event-tracked
+  label "Event Tracked"
+  summary "Objects curated for named event snapshots."
+  color "#7ecb74"
+  tags events diagnostics
+
 viewpoint overview
   label "Solar System Overview"
-  summary "All major planets and selected structures."
+  summary "Major planets, reference moons, rings, belts, and key infrastructure."
   projection topdown
+
+viewpoint earth-system
+  label "Earth and Near Space"
+  focus Earth
+  summary "Earth, the Moon, and nearby infrastructure with a curated eclipse snapshot."
+  projection topdown
+  zoom 5.5
+  layers background guides orbits-back events objects labels metadata
+  events total-solar-eclipse-2027
+  filter
+    groups inner-system orbital-infrastructure event-tracked
 
 annotation inner-worlds
   label "Inner Worlds"
   target Earth
   body "Mercury, Venus, Earth, and Mars form the rocky inner system."
 
-annotation outer-worlds
-  label "Outer Giants"
-  target Jupiter
-  body "The outer system is dominated by gas and ice giants."
+# Semantic group metadata and relations stay outside orbital placement.
+relation deep-space-network
+  from DSN
+  to JWST
+  kind communications
+  label "Deep Space Network"
+  summary "Earth-based network linking mission control to outer observatories."
+  tags infrastructure science
+  color "#89b8ff"
 
 object star Sun
+  class G2V
+  groups inner-system outer-system event-tracked
+  color "#f3c56b"
   radius 1sol
-  mass 333000me
+  mass 1sol
+  temperature 5778K
+
+  info
+    role "Primary star of the system"
+    note "Used here as the central reference mass for validator examples"
 
 object planet Mercury
   orbit Sun
   semiMajor 0.39au
-  phase 25deg
+  phase 20deg
   class rocky
+  groups inner-system
 
 object planet Venus
   orbit Sun
@@ -379,85 +444,169 @@ object planet Venus
   phase 75deg
   class rocky
   atmosphere carbon-dioxide
+  groups inner-system
 
 object planet Earth
   orbit Sun
   semiMajor 1au
+  period 365.25d
   phase 135deg
-  class rocky
+  class habitable
   atmosphere nitrogen-oxygen
+  groups inner-system event-tracked
+  renderPriority 6
+  validate kepler
+  locked period
+  tolerance period 0.02d
+
+  info
+    note "Reference biosphere world"
+
+  climate
+    meanSurfaceTemperature 288K
+    pressure "1 bar"
+
+  habitability
+    biosphere complex
+    inhabited true
+    compatibility native
+
+  settlement
+    population "8.1 billion"
+    status homeworld
 
 object moon Moon
   orbit Earth
   distance 384400km
   phase 220deg
+  epoch "J2000.0"
+  referencePlane earth-equatorial
+  tidalLock true
+  groups inner-system event-tracked
+  renderPriority 7
 
 object structure ISS
   orbit Earth
   distance 6771km
   kind station
+  groups orbital-infrastructure
+  renderLabel false
+  renderOrbit false
+  renderPriority 10
+
+object structure DSN
+  surface Earth
+  kind network
+  groups orbital-infrastructure
 
 object structure JWST
   at Earth:L2
   kind telescope
+  groups orbital-infrastructure event-tracked
+  renderPriority 8
 
 object planet Mars
   orbit Sun
   semiMajor 1.52au
   phase 210deg
   class rocky
+  groups inner-system
+  derive period kepler
 
 object belt Main-Belt
   orbit Sun
   inner 2.1au
   outer 3.3au
+  groups outer-system
 
 object planet Jupiter
   orbit Sun
   semiMajor 5.20au
   phase 300deg
   class gas-giant
+  groups outer-system
+
+object moon Io
+  orbit Jupiter
+  distance 421700km
+  phase 15deg
+  tidalLock true
+  groups outer-system
 
 object moon Europa
   orbit Jupiter
-  distance 671000km
+  distance 671100km
   phase 40deg
+  tidalLock true
+  referencePlane jovian-equatorial
+  resonance Io 2:1
+  groups outer-system
 
 object planet Saturn
   orbit Sun
   semiMajor 9.58au
   phase 20deg
   class gas-giant
+  groups outer-system
 
 object ring Saturn-Rings
   orbit Saturn
   inner 67000km
   outer 140000km
+  groups outer-system
 
 object planet Uranus
   orbit Sun
   semiMajor 19.2au
   phase 95deg
   class ice-giant
+  groups outer-system
 
 object planet Neptune
   orbit Sun
   semiMajor 30.05au
   phase 175deg
   class ice-giant
+  groups outer-system
 
 object structure Voyager-1
   free 160au
   kind probe
+  groups outer-system
+  renderPriority 3
 
 object phenomenon Heliosphere
+  free 120au
   kind boundary
-  source Sun</pre>
+  source Sun
+  groups outer-system
+
+event total-solar-eclipse-2027
+  kind solar-eclipse
+  label "Total Solar Eclipse"
+  summary "Curated eclipse alignment for Earth-system previews."
+  target Earth
+  participants Sun Earth Moon
+  timing "2027-08-02"
+  visibility "Northern Africa and the Arabian Peninsula"
+  tags eclipse earth-system
+  color "#7ecb74"
+
+  positions
+    pose Earth
+      orbit Sun
+      semiMajor 1au
+      phase 132deg
+
+    pose Moon
+      orbit Earth
+      distance 384400km
+      phase 132deg</pre>
             </div>
           </div>
           <div>
             <div class="preview-box"><div id="example-3-preview"></div></div>
-            <div class="status">Rendered result: a dense, atlas-style view of the solar system with annotations, rings, belts, structures, and selected moons.</div>
+            <div class="status">Rendered result: a dense Schema 2.1 atlas with groups, typed lore, infrastructure links, render hints, and a named eclipse snapshot.</div>
           </div>
         </div>
       </div>
@@ -500,7 +649,12 @@ object planet Belis
 object moon B1
   orbit Belis
   distance 250000km
-  phase 80deg</textarea>
+  phase 80deg
+
+event belis-eclipse
+  kind lunar-eclipse
+  target Belis
+  participants Helion Belis B1</textarea>
           </div>
           <div class="render-actions">
             <button class="btn btn-primary" id="playground-render">Render Preview</button>
@@ -542,7 +696,7 @@ object moon B1
           <li><code>system Name</code></li>
           <li><code>object star Name</code></li>
           <li><code>object planet Name</code> with <code>orbit</code> and <code>semiMajor</code></li>
-          <li>Optional: a moon, a belt, or a structure</li>
+          <li>Optional: a moon, a belt, a structure, or a named <code>event</code></li>
         </ul>
       </div>
     </div>
@@ -566,6 +720,10 @@ object moon B1
         <div class="faq-item">
           <h3>What is the difference between <code>orbit</code> and <code>at</code>?</h3>
           <p><code>orbit</code> places an object on a normal orbit. <code>at</code> places it at a fixed reference position, such as a Lagrange point.</p>
+        </div>
+        <div class="faq-item">
+          <h3>How do I describe eclipses or other special moments?</h3>
+          <p>Use a Schema 2.1 <code>event</code> section. Add <code>target</code> and <code>participants</code>, then optionally add a <code>positions</code> block with one or more <code>pose &lt;objectId&gt;</code> entries when you want a curated viewer or Studio snapshot.</p>
         </div>
         <div class="faq-item">
           <h3>Can I use WorldOrbit in Markdown?</h3>
@@ -602,7 +760,16 @@ object planet Naar
   eccentricity 0.08
   angle 28deg
   inclination 24deg
-  phase 42deg`;
+  phase 42deg
+
+object moon Seyra
+  orbit Naar
+  distance 384400km
+
+event naar-eclipse
+  kind solar-eclipse
+  target Naar
+  participants Iyath Naar Seyra`;
 
     const example1Source = `schema 2.1
 
@@ -621,6 +788,9 @@ defaults
   preset atlas-card
   theme atlas
 
+group inner-system
+  label "Inner System"
+
 object star Iyath
 
 object planet Naar
@@ -631,51 +801,112 @@ object planet Naar
   inclination 24deg
   phase 42deg
   atmosphere nitrogen-oxygen
+  groups inner-system
 
 object moon Leth
   orbit Naar
   distance 384000km
   phase 140deg
+  groups inner-system
 
 object structure Relay-One
   at Naar:L4
-  kind relay`;
+  kind relay
+  groups inner-system
+
+event eclipse-window
+  kind solar-eclipse
+  target Naar
+  participants Iyath Naar Leth`;
 
     const example3Source = `schema 2.1
 
 system Sol
   title "Solar System"
+  description "Reference atlas showing most Schema 2.1 authoring features in one place."
+  epoch "J2000.0"
+  referencePlane ecliptic
 
 defaults
   view topdown
   scale presentation
+  units metric
   preset atlas-card
   theme atlas
 
+group inner-system
+  label "Inner System"
+  summary "Sun through Mars and the Earth-Moon system."
+  color "#d9b37a"
+  tags rocky inhabited
+
+group outer-system
+  label "Outer System"
+  summary "Gas giants, rings, ice giants, and deep-space markers."
+  color "#8fb7d9"
+  tags giant frontier
+
+group orbital-infrastructure
+  label "Orbital Infrastructure"
+  summary "Stations, telescopes, and surface networks."
+  color "#c8d4e8"
+  tags infrastructure science
+
+group event-tracked
+  label "Event Tracked"
+  summary "Objects curated for named event snapshots."
+  color "#7ecb74"
+  tags events diagnostics
+
 viewpoint overview
   label "Solar System Overview"
-  summary "All major planets and selected structures."
+  summary "Major planets, reference moons, rings, belts, and key infrastructure."
   projection topdown
+
+viewpoint earth-system
+  label "Earth and Near Space"
+  focus Earth
+  summary "Earth, the Moon, and nearby infrastructure with a curated eclipse snapshot."
+  projection topdown
+  zoom 5.5
+  layers background guides orbits-back events objects labels metadata
+  events total-solar-eclipse-2027
+  filter
+    groups inner-system orbital-infrastructure event-tracked
 
 annotation inner-worlds
   label "Inner Worlds"
   target Earth
   body "Mercury, Venus, Earth, and Mars form the rocky inner system."
 
-annotation outer-worlds
-  label "Outer Giants"
-  target Jupiter
-  body "The outer system is dominated by gas and ice giants."
+# Semantic group metadata and relations stay outside orbital placement.
+relation deep-space-network
+  from DSN
+  to JWST
+  kind communications
+  label "Deep Space Network"
+  summary "Earth-based network linking mission control to outer observatories."
+  tags infrastructure science
+  color "#89b8ff"
 
 object star Sun
+  class G2V
+  groups inner-system outer-system event-tracked
+  color "#f3c56b"
   radius 1sol
-  mass 333000me
+  mass 1sol
+  temperature 5778K
+
+  info
+    role "Primary star of the system"
+    note "Used here as the central reference mass for validator examples"
 
 object planet Mercury
   orbit Sun
   semiMajor 0.39au
-  phase 25deg
+  phase 20deg
   class rocky
+  groups inner-system
 
 object planet Venus
   orbit Sun
@@ -683,80 +914,164 @@ object planet Venus
   phase 75deg
   class rocky
   atmosphere carbon-dioxide
+  groups inner-system
 
 object planet Earth
   orbit Sun
   semiMajor 1au
+  period 365.25d
   phase 135deg
-  class rocky
+  class habitable
   atmosphere nitrogen-oxygen
+  groups inner-system event-tracked
+  renderPriority 6
+  validate kepler
+  locked period
+  tolerance period 0.02d
+
+  info
+    note "Reference biosphere world"
+
+  climate
+    meanSurfaceTemperature 288K
+    pressure "1 bar"
+
+  habitability
+    biosphere complex
+    inhabited true
+    compatibility native
+
+  settlement
+    population "8.1 billion"
+    status homeworld
 
 object moon Moon
   orbit Earth
   distance 384400km
   phase 220deg
+  epoch "J2000.0"
+  referencePlane earth-equatorial
+  tidalLock true
+  groups inner-system event-tracked
+  renderPriority 7
 
 object structure ISS
   orbit Earth
   distance 6771km
   kind station
+  groups orbital-infrastructure
+  renderLabel false
+  renderOrbit false
+  renderPriority 10
+
+object structure DSN
+  surface Earth
+  kind network
+  groups orbital-infrastructure
 
 object structure JWST
   at Earth:L2
   kind telescope
+  groups orbital-infrastructure event-tracked
+  renderPriority 8
 
 object planet Mars
   orbit Sun
   semiMajor 1.52au
   phase 210deg
   class rocky
+  groups inner-system
+  derive period kepler
 
 object belt Main-Belt
   orbit Sun
   inner 2.1au
   outer 3.3au
+  groups outer-system
 
 object planet Jupiter
   orbit Sun
   semiMajor 5.20au
   phase 300deg
   class gas-giant
+  groups outer-system
+
+object moon Io
+  orbit Jupiter
+  distance 421700km
+  phase 15deg
+  tidalLock true
+  groups outer-system
 
 object moon Europa
   orbit Jupiter
-  distance 671000km
+  distance 671100km
   phase 40deg
+  tidalLock true
+  referencePlane jovian-equatorial
+  resonance Io 2:1
+  groups outer-system
 
 object planet Saturn
   orbit Sun
   semiMajor 9.58au
   phase 20deg
   class gas-giant
+  groups outer-system
 
 object ring Saturn-Rings
   orbit Saturn
   inner 67000km
   outer 140000km
+  groups outer-system
 
 object planet Uranus
   orbit Sun
   semiMajor 19.2au
   phase 95deg
   class ice-giant
+  groups outer-system
 
 object planet Neptune
   orbit Sun
   semiMajor 30.05au
   phase 175deg
   class ice-giant
+  groups outer-system
 
 object structure Voyager-1
   free 160au
   kind probe
+  groups outer-system
+  renderPriority 3
 
 object phenomenon Heliosphere
+  free 120au
   kind boundary
-  source Sun`;
+  source Sun
+  groups outer-system
+
+event total-solar-eclipse-2027
+  kind solar-eclipse
+  label "Total Solar Eclipse"
+  summary "Curated eclipse alignment for Earth-system previews."
+  target Earth
+  participants Sun Earth Moon
+  timing "2027-08-02"
+  visibility "Northern Africa and the Arabian Peninsula"
+  tags eclipse earth-system
+  color "#7ecb74"
+
+  positions
+    pose Earth
+      orbit Sun
+      semiMajor 1au
+      phase 132deg
+
+    pose Moon
+      orbit Earth
+      distance 384400km
+      phase 132deg`;
 
     const playgroundDefaultSource = `schema 2.1
 
@@ -784,7 +1099,23 @@ object planet Belis
 object moon B1
   orbit Belis
   distance 250000km
-  phase 80deg`;
+  phase 80deg
+
+event belis-eclipse
+  kind lunar-eclipse
+  target Belis
+  participants Helion Belis B1
+
+  positions
+    pose Belis
+      orbit Helion
+      semiMajor 1.6au
+      phase 180deg
+
+    pose B1
+      orbit Belis
+      distance 250000km
+      phase 180deg`;
 
     function mountPreview(targetId, source, projection = "isometric") {
       const target = document.getElementById(targetId);

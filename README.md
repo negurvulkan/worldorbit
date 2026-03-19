@@ -46,6 +46,12 @@ group inner-system
   label "Inner System"
   color #d9b37a
 
+viewpoint eclipse
+  label "Eclipse View"
+  projection isometric
+  layers background guides orbits-back events objects labels metadata
+  events naar-eclipse
+
 object star Iyath
 
 object planet Naar
@@ -57,6 +63,15 @@ object planet Naar
   phase 42deg
   atmosphere nitrogen-oxygen
   groups inner-system
+
+object moon Seyra
+  orbit Naar
+  distance 384400km
+
+event naar-eclipse
+  kind solar-eclipse
+  target Naar
+  participants Iyath Naar Seyra
 ````
 
 ## Installation
@@ -204,6 +219,8 @@ viewpoint overview
   label "Atlas Overview"
   summary "Fit the whole system."
   projection isometric
+  layers background guides orbits-back events objects labels metadata
+  events naar-eclipse
   filter
     groups inner-system
 
@@ -225,9 +242,31 @@ object planet Naar
   groups inner-system
   image /demo/assets/naar-map.png
   atmosphere nitrogen-oxygen
+
+object moon Seyra
+  orbit Naar
+  distance 384400km
+  groups inner-system
+
+event naar-eclipse
+  kind solar-eclipse
+  label "Naar Eclipse"
+  target Naar
+  participants Iyath Naar Seyra
+
+  positions
+    pose Naar
+      orbit Iyath
+      semiMajor 1.18au
+      phase 90deg
+
+    pose Seyra
+      orbit Naar
+      distance 384400km
+      phase 90deg
 ```
 
-Schema `2.1` adds comments, semantic `group` and `relation` sections, object-level `epoch` and `referencePlane`, declarative resonance and validation hints, and optional structured lore blocks such as `climate`, `habitability`, and `settlement`.
+Schema `2.1` adds comments, semantic `group` and `relation` sections, declarative `event` sections with per-event `positions`/`pose` snapshots, viewpoint-linked `events`, object-level `epoch` and `referencePlane`, declarative resonance and validation hints, and optional structured lore blocks such as `climate`, `habitability`, and `settlement`.
 
 Stable `1.0` source is still accepted. Canonical `schema 2.0` source remains fully supported, and legacy `schema 2.0-draft` files stay readable as a compatibility path with a deprecation diagnostic.
 
@@ -370,13 +409,13 @@ Viewer features in `v2.5` include:
 * scene-based SVG rendering
 * projections: `topdown` and `isometric`
 * theme presets: `atlas`, `nightglass`, `ember`
-* layer controls for background, guides, orbits, objects, labels, metadata, and relations
+* layer controls for background, guides, orbits, events, objects, labels, metadata, and relations
 * selection, hover, focus, fit, pan, zoom, and rotate
 * tooltip cards and object detail payloads
 * viewpoints, filters, search, and bookmark capture
 * deep-linkable atlas state
 * embeddable viewer custom elements
-* semantic group filters, relation overlays, and schema 2.1 detail metadata
+* semantic group filters, relation and event overlays, active event scenes, and schema 2.1 detail metadata
 
 ## Markdown Integration
 

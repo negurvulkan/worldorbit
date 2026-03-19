@@ -14,6 +14,8 @@ If you already author canonical `schema 2.0` files, you can move to `schema 2.1`
 - `#` line comments and optional `/* ... */` block comments
 - top-level `group` sections for semantic grouping
 - top-level `relation` sections for non-orbital links
+- top-level `event` sections for declarative eclipses, transits, conjunctions, and similar moments
+- `viewpoint.events`, `layers events`, and event-local `positions` snapshots with `pose <objectId>`
 - `system.description`, `system.epoch`, and `system.referencePlane`
 - object-level `groups`, `epoch`, `referencePlane`, `tidalLock`
 - viewer hints: `renderLabel`, `renderOrbit`, `renderPriority`
@@ -54,7 +56,8 @@ After the header upgrade, the most common next steps are:
 2. Add `epoch` and `referencePlane` where you use `phase` and `inclination`.
 3. Introduce semantic `group` sections for navigation and filtering.
 4. Add `relation` sections for logistics, infrastructure, or faction links.
-5. Gradually move selected lore from unstructured `info` keys into typed blocks.
+5. Add declarative `event` sections when you want named eclipses, transits, or other curated moments.
+6. Gradually move selected lore from unstructured `info` keys into typed blocks.
 
 ## Example
 
@@ -105,6 +108,11 @@ object planet Naar
   phase 42deg
   inclination 24deg
   groups inner-system
+
+event naar-eclipse
+  kind solar-eclipse
+  target Naar
+  participants Iyath Naar Seyra
 ```
 
 ## Validator behavior
@@ -114,10 +122,12 @@ Schema 2.1 adds new diagnostics, but it is not a simulation engine.
 Important checks include:
 
 - unknown IDs in `orbit`, `surface`, `at`, `groups`, `resonance`, `from`, and `to`
-- duplicate IDs across groups, viewpoints, annotations, relations, and objects
+- unknown IDs in event `target`, event `participants`, and viewpoint `events`
+- duplicate IDs across groups, viewpoints, annotations, relations, events, and objects
 - `distance` plus `semiMajor` on the same orbit
 - warnings for `phase` without an `epoch`
 - warnings for `inclination` without a `referencePlane`
+- warnings for events without enough participants or event positions
 - basic Kepler consistency checks when enough input data is present
 
 ## Compatibility notes
