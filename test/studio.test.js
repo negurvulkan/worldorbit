@@ -151,10 +151,12 @@ test("studio shells use UNPKG imports and page-specific example urls", () => {
   const studioHtml = readFileSync(new URL("../studio/index.html", import.meta.url), "utf8");
   const docsStudioHtml = readFileSync(new URL("../docs/studio/index.html", import.meta.url), "utf8");
 
-  assert.match(studioHtml, /https:\/\/unpkg\.com\/worldorbit\/packages\/editor\/dist\/index\.js/);
-  assert.match(docsStudioHtml, /https:\/\/unpkg\.com\/worldorbit\/packages\/editor\/dist\/index\.js/);
+  assert.match(studioHtml, /https:\/\/unpkg\.com\/worldorbit\/packages\/viewer\/dist\/index\.js/);
+  assert.match(docsStudioHtml, /https:\/\/unpkg\.com\/worldorbit\/packages\/viewer\/dist\/index\.js/);
   assert.match(studioHtml, /data-example-url="\.\.\/examples\/iyath\.schema21\.worldorbit"/);
   assert.match(docsStudioHtml, /data-example-url="\.\.\/\.\.\/examples\/iyath\.schema21\.worldorbit"/);
+  assert.match(studioHtml, /"@worldorbit\/editor": "\.\.\/packages\/editor\/dist\/index\.js"/);
+  assert.match(docsStudioHtml, /"@worldorbit\/editor": "\.\.\/\.\.\/packages\/editor\/dist\/index\.js"/);
   assert.match(
     studioHtml,
     /"@worldorbit\/viewer\/viewer-state": "https:\/\/unpkg\.com\/worldorbit\/packages\/viewer\/dist\/viewer-state\.js"/,

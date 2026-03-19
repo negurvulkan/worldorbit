@@ -1,6 +1,6 @@
 {
   "name": "worldorbit",
-  "version": "2.5.15",
+  "version": "2.5.15.2",
   "description": "A text-based DSL and parser pipeline for orbital worldbuilding",
   "type": "module",
   "main": "./dist/unpkg/worldorbit.esm.js",
@@ -52,6 +52,7 @@
   "license": "MIT",
   "scripts": {
     "build": "node ./scripts/build.mjs",
+    "prepack": "node ./scripts/prepack.mjs",
     "test": "npm run build && node --test test/*.test.js",
     "check": "npm run test"
   },
