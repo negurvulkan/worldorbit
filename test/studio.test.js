@@ -163,24 +163,24 @@ test("studio shells use UNPKG imports and page-specific example urls", () => {
   const studioHtml = readFileSync(new URL("../studio/index.html", import.meta.url), "utf8");
   const docsStudioHtml = readFileSync(new URL("../docs/studio/index.html", import.meta.url), "utf8");
 
-  assert.match(studioHtml, /https:\/\/unpkg\.com\/worldorbit@3\.0\.1\/packages\/viewer\/dist\/index\.js/);
-  assert.match(docsStudioHtml, /https:\/\/unpkg\.com\/worldorbit@3\.0\.1\/packages\/viewer\/dist\/index\.js/);
+  assert.match(studioHtml, /https:\/\/unpkg\.com\/worldorbit@3\.0\.3\/packages\/viewer\/dist\/index\.js/);
+  assert.match(docsStudioHtml, /https:\/\/unpkg\.com\/worldorbit@3\.0\.3\/packages\/viewer\/dist\/index\.js/);
   assert.match(studioHtml, /data-example-url="\.\.\/examples\/studio\.schema25\.worldorbit"/);
   assert.match(docsStudioHtml, /data-example-url="\.\.\/\.\.\/examples\/studio\.schema25\.worldorbit"/);
   assert.match(
     studioHtml,
-    /"@worldorbit\/editor": "https:\/\/unpkg\.com\/worldorbit@3\.0\.1\/packages\/editor\/dist\/index\.js"/,
+    /"@worldorbit\/editor": "https:\/\/unpkg\.com\/worldorbit@3\.0\.3\/packages\/editor\/dist\/index\.js"/,
   );
   assert.match(
     docsStudioHtml,
-    /"@worldorbit\/editor": "https:\/\/unpkg\.com\/worldorbit@3\.0\.1\/packages\/editor\/dist\/index\.js"/,
+    /"@worldorbit\/editor": "https:\/\/unpkg\.com\/worldorbit@3\.0\.3\/packages\/editor\/dist\/index\.js"/,
   );
   assert.match(
     studioHtml,
-    /"@worldorbit\/viewer\/viewer-state": "https:\/\/unpkg\.com\/worldorbit@3\.0\.1\/packages\/viewer\/dist\/viewer-state\.js"/,
+    /"@worldorbit\/viewer\/viewer-state": "https:\/\/unpkg\.com\/worldorbit@3\.0\.3\/packages\/viewer\/dist\/viewer-state\.js"/,
   );
   assert.match(
     docsStudioHtml,
-    /"@worldorbit\/viewer\/viewer-state": "https:\/\/unpkg\.com\/worldorbit@3\.0\.1\/packages\/viewer\/dist\/viewer-state\.js"/,
+    /"@worldorbit\/viewer\/viewer-state": "https:\/\/unpkg\.com\/worldorbit@3\.0\.3\/packages\/viewer\/dist\/viewer-state\.js"/,
   );
 });

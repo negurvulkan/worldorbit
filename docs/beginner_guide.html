@@ -763,12 +763,8 @@ event belis-eclipse
     </div>
   </footer>
 
-  <script type="module">
-    import {
-      createInteractiveViewer,
-      loadWorldOrbitSource,
-    } from "https://unpkg.com/worldorbit@3.0.2/dist/unpkg/worldorbit.esm.js";
-
+  <script src="https://unpkg.com/worldorbit@3.0.3/dist/unpkg/worldorbit.min.js"></script>
+  <script>
     const heroSource = `schema 2.5
 
 system Iyath
@@ -1176,11 +1172,11 @@ event belis-eclipse
 
     function mountPreview(targetId, source, projection = "isometric") {
       const target = document.getElementById(targetId);
-      if (!target) return;
+      if (!target || !window.WorldOrbit) return;
       try {
         target.innerHTML = "";
-        const loaded = loadWorldOrbitSource(source);
-        createInteractiveViewer(target, {
+        const loaded = WorldOrbit.loadWorldOrbitSource(source);
+        WorldOrbit.createInteractiveViewer(target, {
           document: loaded.document,
           projection,
           theme: "atlas"

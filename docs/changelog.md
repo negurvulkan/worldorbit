@@ -1,5 +1,9 @@
 # Changelog
 
+## v3.0.3
+
+- switched the main docs landing page and beginner guide back to the bundled browser script `worldorbit.min.js` so direct browser usage no longer depends on the non-self-contained ESM entry
+
 ## v3.0.2
 
 - refreshed package metadata and version-pinned CDN references for the `3.0.2` patch release across docs and browser-facing entry points
