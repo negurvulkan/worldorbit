@@ -884,8 +884,12 @@ event naar-eclipse
 
           <article class="showcase-card">
             <h3>Use in the browser</h3>
-            <div class="terminal">&lt;script
-src="https://unpkg.com/worldorbit@3.0.0/dist/unpkg/worldorbit.min.js"&gt;&lt;/script&gt;</div>
+            <div class="terminal">&lt;script type="module"&gt;
+  import {
+    loadWorldOrbitSource,
+    createInteractiveViewer
+  } from "https://unpkg.com/worldorbit@3.0.1/dist/unpkg/worldorbit.esm.js";
+&lt;/script&gt;</div>
             <p style="margin-top: 14px;">
               Ideal for quick experiments, standalone demos, or embedding WorldOrbit in static and CMS-driven pages.
             </p>
@@ -908,14 +912,18 @@ src="https://unpkg.com/worldorbit@3.0.0/dist/unpkg/worldorbit.min.js"&gt;&lt;/sc
       <div class="footer-links">
         <a href="https://github.com/negurvulkan/worldorbit" target="_blank" rel="noreferrer">GitHub</a>
         <a href="https://www.npmjs.com/package/worldorbit" target="_blank" rel="noreferrer">npm</a>
-          <a href="https://unpkg.com/worldorbit@3.0.0/dist/unpkg/worldorbit.min.js" target="_blank"
+          <a href="https://unpkg.com/worldorbit@3.0.1/dist/unpkg/worldorbit.esm.js" target="_blank"
           rel="noreferrer">UNPKG</a>
       </div>
     </div>
   </footer>
 
-  <script src="https://unpkg.com/worldorbit@3.0.0/dist/unpkg/worldorbit.min.js"></script>
-  <script>
+  <script type="module">
+    import {
+      createInteractiveViewer,
+      loadWorldOrbitSource,
+    } from "https://unpkg.com/worldorbit@3.0.1/dist/unpkg/worldorbit.esm.js";
+
     const heroSource = `schema 2.5
 
 system Iyath
@@ -1019,11 +1027,11 @@ event naar-eclipse
 
     function mountWorldOrbitDemo(targetId, source, options = {}) {
       const target = document.getElementById(targetId);
-      if (!target || !window.WorldOrbit) return;
+      if (!target) return;
 
       try {
-        const loaded = WorldOrbit.loadWorldOrbitSource(source);
-        WorldOrbit.createInteractiveViewer(target, {
+        const loaded = loadWorldOrbitSource(source);
+        createInteractiveViewer(target, {
           document: loaded.document,
           projection: options.projection || "isometric",
           theme: options.theme || "atlas"
@@ -1042,12 +1050,12 @@ event naar-eclipse
       const sourceField = document.getElementById("playground-source");
       const preview = document.getElementById("playground-preview");
       const status = document.getElementById("playground-status");
-      if (!sourceField || !preview || !status || !window.WorldOrbit) return;
+      if (!sourceField || !preview || !status) return;
 
       try {
         preview.innerHTML = "";
-        const loaded = WorldOrbit.loadWorldOrbitSource(sourceField.value);
-        WorldOrbit.createInteractiveViewer(preview, {
+        const loaded = loadWorldOrbitSource(sourceField.value);
+        createInteractiveViewer(preview, {
           document: loaded.document,
           projection: "isometric",
           theme: "atlas"

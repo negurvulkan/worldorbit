@@ -1,5 +1,10 @@
 # Changelog
 
+## v3.0.1
+
+- fixed the browser and UNPKG release entry points so `worldorbit.js` and `worldorbit.min.js` are emitted as executable browser bundles instead of raw ESM re-export shims
+- switched the browser-facing docs, examples, and CDN snippets to the working ESM entry path for patch-release usage
+
 ## v3.0.0
 
 - added `renderDocumentToSpatialScene(...)`, shared spatial scene types, and deterministic orbit-motion models so the same Schema `2.5` documents can drive both 2D and 3D viewers

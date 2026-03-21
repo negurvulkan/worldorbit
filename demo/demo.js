@@ -2,13 +2,13 @@ import {
   loadWorldOrbitSource,
   renderDocumentToScene,
   renderDocumentToSpatialScene,
-} from "@worldorbit/core";
+} from "../packages/core/dist/index.js";
 import {
   createEmbedPayload,
   createInteractiveViewer,
   createWorldOrbitEmbedMarkup,
   renderSceneToSvg,
-} from "@worldorbit/viewer";
+} from "../packages/viewer/dist/index.js";
 
 const sampleSource = `schema 2.5
 

@@ -2,7 +2,6 @@
 <html>
   <head>
     <meta charset="utf-8" />
-  <script src="https://unpkg.com/worldorbit@3.0.0/dist/unpkg/worldorbit.min.js"></script>
     <style>
       html, body {
         margin: 0;
@@ -18,13 +17,18 @@
   </head>
   <body>
     <div id="view"></div>
-    <script>
+    <script type="module">
+      import {
+        createInteractiveViewer,
+        loadWorldOrbitSource,
+      } from "https://unpkg.com/worldorbit@3.0.1/dist/unpkg/worldorbit.esm.js";
+
       const src = `system Iyath
 star Iyath`;
 
-      const loaded = WorldOrbit.loadWorldOrbitSource(src);
+      const loaded = loadWorldOrbitSource(src);
 
-      WorldOrbit.createInteractiveViewer(document.getElementById('view'), {
+      createInteractiveViewer(document.getElementById('view'), {
         document: loaded.document
       });
 

@@ -118,7 +118,6 @@ For direct browser usage, use the browser bundle:
 <html>
   <head>
     <meta charset="utf-8" />
-<script src="https://unpkg.com/worldorbit@3.0.0/dist/unpkg/worldorbit.min.js"></script>
     <style>
       html, body {
         margin: 0;
@@ -135,7 +134,12 @@ For direct browser usage, use the browser bundle:
   <body>
     <div id="view"></div>
 
-    <script>
+    <script type="module">
+      import {
+        createInteractiveViewer,
+        loadWorldOrbitSource
+      } from "https://unpkg.com/worldorbit@3.0.1/dist/unpkg/worldorbit.esm.js";
+
       const source = `
 schema 2.5
 
@@ -148,9 +152,9 @@ object planet Naar
   semiMajor 1.18au
 `.trim();
 
-      const loaded = WorldOrbit.loadWorldOrbitSource(source);
+      const loaded = loadWorldOrbitSource(source);
 
-      WorldOrbit.createInteractiveViewer(document.getElementById("view"), {
+      createInteractiveViewer(document.getElementById("view"), {
         document: loaded.document
       });
     </script>
@@ -158,7 +162,7 @@ object planet Naar
 </html>
 ```
 
-For browser usage, `worldorbit.min.js` is the recommended public entry point.
+For browser usage today, prefer the ESM entry point `worldorbit.esm.js`.
 
 ## Static and Interactive Rendering
 
@@ -428,7 +432,7 @@ const scene = renderDocumentToScene(loaded.document, {
 
 ## Viewer Capabilities
 
-Viewer features in `v3.0.0` include:
+Viewer features in `v3.0.1` include:
 
 * scene-based SVG rendering
 * renderer-neutral spatial scenes through `renderDocumentToSpatialScene(...)`
