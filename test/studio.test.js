@@ -162,6 +162,7 @@ test("studio mounts, persists session state, warns on unload, and saves canonica
 test("studio and docs shells use local workspace and docs asset paths with page-specific example urls", () => {
   const studioHtml = readFileSync(new URL("../studio/index.html", import.meta.url), "utf8");
   const docsStudioHtml = readFileSync(new URL("../docs/studio/index.html", import.meta.url), "utf8");
+  const docsStudioAppJs = readFileSync(new URL("../docs/studio/studio-app.js", import.meta.url), "utf8");
   const docsIndexHtml = readFileSync(new URL("../docs/index.html", import.meta.url), "utf8");
   const beginnerGuideHtml = readFileSync(new URL("../docs/beginner_guide.html", import.meta.url), "utf8");
 
@@ -187,8 +188,13 @@ test("studio and docs shells use local workspace and docs asset paths with page-
   );
   assert.match(docsStudioHtml, /"@worldorbit\/core": "\.\.\/assets\/browser\/core\/dist\/index\.js"/);
   assert.match(docsStudioHtml, /"@worldorbit\/markdown": "\.\.\/assets\/browser\/markdown\/dist\/index\.js"/);
+  assert.match(docsStudioAppJs, /data-studio-action="view-3d"/);
   assert.match(docsIndexHtml, /src="\.\/assets\/worldorbit\/worldorbit\.min\.js"/);
   assert.match(beginnerGuideHtml, /src="\.\/assets\/worldorbit\/worldorbit\.min\.js"/);
+  assert.match(docsIndexHtml, /id="hero-view-3d"/);
+  assert.match(docsIndexHtml, /id="playground-view-3d"/);
+  assert.match(beginnerGuideHtml, /id="hero-preview-3d"/);
+  assert.match(beginnerGuideHtml, /id="playground-preview-3d"/);
   assert.doesNotMatch(docsIndexHtml, /\.\.\/dist\/|unpkg\.com\/worldorbit|"\.\.\/\.\.\/packages\//);
   assert.doesNotMatch(beginnerGuideHtml, /\.\.\/dist\/|unpkg\.com\/worldorbit|"\.\.\/\.\.\/packages\//);
   assert.doesNotMatch(docsStudioHtml, /\.\.\/\.\.\/packages\/|unpkg\.com\/worldorbit/);

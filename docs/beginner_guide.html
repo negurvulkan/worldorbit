@@ -140,6 +140,13 @@
     .example-large pre.code { min-height: 620px; }
     .render-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
     .render-actions .btn { min-height: 40px; padding: 0 14px; font-size: 0.92rem; }
+    .mode-switch { display: inline-flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+    .mode-switch .btn[aria-pressed="true"] {
+      border-color: rgba(142,184,255,0.34);
+      background: rgba(142,184,255,0.18);
+      color: #eef4ff;
+      box-shadow: 0 0 0 1px rgba(142,184,255,0.14) inset;
+    }
     .preview-box {
       border: 1px solid rgba(255,255,255,0.06); border-radius: 16px; overflow: hidden;
       background: rgba(5, 8, 22, 0.72);
@@ -205,9 +212,13 @@
       <div class="hero-card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;color:var(--muted);font-size:0.88rem;">
           <span>Live example</span>
-          <span>Rendered with WorldOrbit</span>
+          <span id="hero-preview-tag">Rendered with WorldOrbit in 3D</span>
         </div>
         <div class="viewer-shell">
+          <div class="mode-switch" aria-label="Hero preview mode">
+            <button class="btn btn-secondary" id="hero-preview-2d" type="button" aria-pressed="false">View 2D</button>
+            <button class="btn btn-secondary" id="hero-preview-3d" type="button" aria-pressed="true">View 3D</button>
+          </div>
           <div id="hero-preview"></div>
         </div>
       </div>
@@ -622,7 +633,7 @@ event total-solar-eclipse-2027
           </div>
           <div>
             <div class="preview-box"><div id="example-3-preview"></div></div>
-            <div class="status">Rendered result: a dense Schema 2.5 atlas with groups, typed lore, infrastructure links, camera-ready viewpoints, render hints, and a named eclipse snapshot.</div>
+            <div class="status">Rendered result: a dense Schema 2.5 atlas with groups, typed lore, infrastructure links, camera-ready viewpoints, render hints, and a named eclipse snapshot, shown here in symbolic 3D.</div>
           </div>
         </div>
       </div>
@@ -680,6 +691,8 @@ event belis-eclipse
   participants Helion Belis B1</textarea>
           </div>
           <div class="render-actions">
+            <button class="btn btn-secondary" id="playground-preview-2d" aria-pressed="false">Preview 2D</button>
+            <button class="btn btn-secondary" id="playground-preview-3d" aria-pressed="true">Preview 3D</button>
             <button class="btn btn-primary" id="playground-render">Render Preview</button>
             <button class="btn btn-secondary" id="playground-reset">Reset Example</button>
           </div>
@@ -1170,41 +1183,121 @@ event belis-eclipse
       distance 250000km
       phase 180deg`;
 
-    function mountPreview(targetId, source, projection = "isometric") {
-      const target = document.getElementById(targetId);
-      if (!target || !window.WorldOrbit) return;
-      try {
-        target.innerHTML = "";
-        const loaded = WorldOrbit.loadWorldOrbitSource(source);
-        WorldOrbit.createInteractiveViewer(target, {
-          document: loaded.document,
-          projection,
-          theme: "atlas"
-        });
-      } catch (error) {
-        target.innerHTML = `<div style="padding:16px;color:#ffb4b4;font:14px/1.5 sans-serif;">Preview failed.<br>${String(error)}</div>`;
+    const previewModes = {
+      hero: "3d",
+      playground: "3d"
+    };
+    const previewViewers = new Map();
+
+    function syncPreviewButtons(prefix, mode) {
+      const button2d = document.getElementById(`${prefix}-2d`);
+      const button3d = document.getElementById(`${prefix}-3d`);
+      if (button2d) {
+        button2d.setAttribute("aria-pressed", mode === "2d" ? "true" : "false");
+      }
+      if (button3d) {
+        button3d.setAttribute("aria-pressed", mode === "3d" ? "true" : "false");
       }
     }
 
-    mountPreview("hero-preview", heroSource, "isometric");
-    mountPreview("example-1-preview", example1Source, "isometric");
-    mountPreview("example-2-preview", example2Source, "isometric");
-    mountPreview("example-3-preview", example3Source, "topdown");
+    function mountPreview(targetId, source, options = {}) {
+      const target = document.getElementById(targetId);
+      if (!target || !window.WorldOrbit) return;
+
+      const existingViewer = previewViewers.get(targetId);
+      if (existingViewer) {
+        existingViewer.destroy();
+        previewViewers.delete(targetId);
+      }
+
+      try {
+        target.innerHTML = "";
+        const loaded = WorldOrbit.loadWorldOrbitSource(source);
+        const viewer = WorldOrbit.createInteractiveViewer(target, {
+          document: loaded.document,
+          projection: options.projection || "document",
+          initialViewpointId: options.initialViewpointId || null,
+          theme: "atlas"
+        });
+        previewViewers.set(targetId, viewer);
+        if (options.viewMode === "3d") {
+          viewer.setViewMode("3d");
+        }
+        return viewer;
+      } catch (error) {
+        target.innerHTML = `<div style="padding:16px;color:#ffb4b4;font:14px/1.5 sans-serif;">Preview failed.<br>${String(error)}</div>`;
+        return null;
+      }
+    }
+
+    function renderHeroPreview(mode = previewModes.hero) {
+      previewModes.hero = mode;
+      const viewer = mountPreview("hero-preview", heroSource, {
+        projection: "document",
+        initialViewpointId: "overview",
+        viewMode: mode
+      });
+      const tag = document.getElementById("hero-preview-tag");
+      if (!viewer) {
+        previewModes.hero = "2d";
+        syncPreviewButtons("hero-preview", "2d");
+        if (tag) {
+          tag.textContent = "3D unavailable here, showing fallback messaging";
+        }
+        return;
+      }
+      syncPreviewButtons("hero-preview", mode);
+      if (tag) {
+        tag.textContent = mode === "3d"
+          ? "Rendered with WorldOrbit in 3D"
+          : "Rendered with WorldOrbit in 2D";
+      }
+    }
+
+    mountPreview("example-1-preview", example1Source, {
+      projection: "isometric",
+      viewMode: "2d"
+    });
+    mountPreview("example-2-preview", example2Source, {
+      projection: "document",
+      initialViewpointId: "inner",
+      viewMode: "2d"
+    });
+    mountPreview("example-3-preview", example3Source, {
+      projection: "document",
+      initialViewpointId: "earth-system",
+      viewMode: "3d"
+    });
 
     function renderPlayground() {
       const sourceField = document.getElementById("playground-source");
       const status = document.getElementById("playground-status");
       if (!sourceField || !status) return;
-      try {
-        mountPreview("playground-preview", sourceField.value, "isometric");
-        status.textContent = "Preview rendered successfully.";
+      const viewer = mountPreview("playground-preview", sourceField.value, {
+        projection: "document",
+        initialViewpointId: "demo",
+        viewMode: previewModes.playground
+      });
+      if (viewer) {
+        syncPreviewButtons("playground-preview", previewModes.playground);
+        status.textContent = `Preview rendered successfully in ${previewModes.playground.toUpperCase()}.`;
         status.style.color = "#aab7d5";
-      } catch (error) {
-        status.textContent = `Render failed: ${String(error)}`;
+      } else {
+        status.textContent = `Render failed in ${previewModes.playground.toUpperCase()}.`;
         status.style.color = "#ffb4b4";
       }
     }
 
+    document.getElementById("hero-preview-2d")?.addEventListener("click", () => renderHeroPreview("2d"));
+    document.getElementById("hero-preview-3d")?.addEventListener("click", () => renderHeroPreview("3d"));
+    document.getElementById("playground-preview-2d")?.addEventListener("click", () => {
+      previewModes.playground = "2d";
+      renderPlayground();
+    });
+    document.getElementById("playground-preview-3d")?.addEventListener("click", () => {
+      previewModes.playground = "3d";
+      renderPlayground();
+    });
     document.getElementById("playground-render")?.addEventListener("click", renderPlayground);
     document.getElementById("playground-reset")?.addEventListener("click", () => {
       const sourceField = document.getElementById("playground-source");
@@ -1212,6 +1305,7 @@ event belis-eclipse
       renderPlayground();
     });
 
+    renderHeroPreview("3d");
     renderPlayground();
   </script>
 </body>

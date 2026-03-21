@@ -132,8 +132,10 @@ export async function createWorldOrbitStudio(root, options = {}) {
   let currentDirty = false;
   let currentFileName = options.fileName ?? DEFAULT_FILE_NAME;
   let recoveryTimer = null;
+  let currentViewMode = "2d";
 
-  let editor = createWorldOrbitEditor(editorRoot, {
+  let editor = null;
+  editor = createWorldOrbitEditor(editorRoot, {
     source: baseSource,
     showInspector: sessionState.panels.inspector,
     showPreview: sessionState.panels.preview,
@@ -163,6 +165,7 @@ export async function createWorldOrbitStudio(root, options = {}) {
   editor.markSaved();
   currentDiagnostics = editor.getDiagnostics();
   currentDirty = editor.isDirty();
+  currentViewMode = editor.getViewMode();
 
   applySessionState();
 
@@ -246,6 +249,22 @@ export async function createWorldOrbitStudio(root, options = {}) {
         return;
       case "toggle-text":
         togglePanel("text");
+        return;
+      case "view-2d":
+        editor.setViewMode("2d");
+        currentViewMode = editor.getViewMode();
+        setMessage("Studio preview switched to 2D.", "info");
+        syncToolbarState();
+        return;
+      case "view-3d":
+        try {
+          editor.setViewMode("3d");
+          currentViewMode = editor.getViewMode();
+          setMessage("Studio preview switched to 3D.", "info");
+        } catch (error) {
+          setMessage(error instanceof Error ? error.message : String(error), "error");
+        }
+        syncToolbarState();
         return;
     }
   }
@@ -428,6 +447,14 @@ export async function createWorldOrbitStudio(root, options = {}) {
       }
     }
 
+    for (const mode of ["2d", "3d"]) {
+      const button = toolbar.querySelector(`[data-studio-action="view-${mode}"]`);
+      if (button) {
+        const activeMode = editor?.getViewMode?.() ?? currentViewMode;
+        button.setAttribute("aria-pressed", activeMode === mode ? "true" : "false");
+      }
+    }
+
     message.dataset.state = hasBlockingErrors(currentDiagnostics)
       ? "error"
       : currentDirty
@@ -483,6 +510,8 @@ function buildStudioMarkup() {
         <button type="button" data-studio-action="toggle-inspector" aria-pressed="true">Inspector</button>
         <button type="button" data-studio-action="toggle-preview" aria-pressed="true">Preview</button>
         <button type="button" data-studio-action="toggle-text" aria-pressed="true">Source</button>
+        <button type="button" data-studio-action="view-2d" aria-pressed="true">View 2D</button>
+        <button type="button" data-studio-action="view-3d" aria-pressed="false">View 3D</button>
         <label class="studio-range">
           <span>Sidebar</span>
           <input type="range" min="220" max="420" step="10" data-studio-range="sidebar" />

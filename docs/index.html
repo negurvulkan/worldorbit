@@ -470,6 +470,20 @@
       font-size: 0.9rem;
     }
 
+    .mode-switch {
+      display: inline-flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .mode-switch .button[aria-pressed="true"] {
+      border-color: rgba(142, 184, 255, 0.44);
+      background: rgba(142, 184, 255, 0.16);
+      color: #eef4ff;
+      box-shadow: 0 0 0 1px rgba(142, 184, 255, 0.12) inset;
+    }
+
     .editor-shell {
       margin-top: 16px;
       border-radius: 18px;
@@ -658,8 +672,12 @@
               <span>Rendered preview</span>
               <span>live WorldOrbit viewer</span>
             </div>
+            <div class="mode-switch" aria-label="Hero view mode">
+              <button class="button button-secondary" id="hero-view-2d" type="button" aria-pressed="false">View 2D</button>
+              <button class="button button-secondary" id="hero-view-3d" type="button" aria-pressed="true">View 3D</button>
+            </div>
             <div id="hero-view" style="width: 100%; height: 240px; border-radius: 14px; overflow: hidden;"></div>
-            <div class="viewer-tag">Rendered directly with WorldOrbit</div>
+            <div class="viewer-tag" id="hero-view-tag">Live 3D demo powered by the same WorldOrbit document</div>
           </div>
         </div>
       </div>
@@ -728,6 +746,8 @@
               </p>
 
               <div class="playground-actions">
+                <button class="button button-secondary" id="playground-view-2d" type="button" aria-pressed="false">Preview 2D</button>
+                <button class="button button-secondary" id="playground-view-3d" type="button" aria-pressed="true">Preview 3D</button>
                 <button class="button button-secondary" id="playground-render" type="button">Render Preview</button>
                 <button class="button button-secondary" id="playground-reset" type="button">Reset Example</button>
               </div>
@@ -1017,26 +1037,79 @@ event naar-eclipse
       distance 384400km
       phase 90deg`;
 
+    const demoViewModes = {
+      hero: "3d",
+      playground: "3d"
+    };
+    const demoViewers = new Map();
+
+    function syncModeButtons(prefix, mode) {
+      const button2d = document.getElementById(`${prefix}-view-2d`);
+      const button3d = document.getElementById(`${prefix}-view-3d`);
+      if (button2d) {
+        button2d.setAttribute("aria-pressed", mode === "2d" ? "true" : "false");
+      }
+      if (button3d) {
+        button3d.setAttribute("aria-pressed", mode === "3d" ? "true" : "false");
+      }
+    }
+
     function mountWorldOrbitDemo(targetId, source, options = {}) {
       const target = document.getElementById(targetId);
       if (!target || !window.WorldOrbit) return;
 
+      const existingViewer = demoViewers.get(targetId);
+      if (existingViewer) {
+        existingViewer.destroy();
+        demoViewers.delete(targetId);
+      }
+
       try {
+        target.innerHTML = "";
         const loaded = WorldOrbit.loadWorldOrbitSource(source);
-        WorldOrbit.createInteractiveViewer(target, {
+        const viewer = WorldOrbit.createInteractiveViewer(target, {
           document: loaded.document,
-          projection: options.projection || "isometric",
+          projection: options.projection || "document",
+          initialViewpointId: options.initialViewpointId || "overview",
           theme: options.theme || "atlas"
         });
+        demoViewers.set(targetId, viewer);
+
+        if (options.viewMode === "3d") {
+          viewer.setViewMode("3d");
+        }
+
+        return viewer;
       } catch (error) {
         target.innerHTML = `<div style="padding:16px;color:#ffb4b4;font:14px/1.5 sans-serif;">WorldOrbit preview failed to render.<br>${String(error)}</div>`;
+        return null;
       }
     }
 
-    mountWorldOrbitDemo("hero-view", heroSource, {
-      projection: "isometric",
-      theme: "atlas"
-    });
+    function renderHero(mode = demoViewModes.hero) {
+      demoViewModes.hero = mode;
+      const tag = document.getElementById("hero-view-tag");
+      const viewer = mountWorldOrbitDemo("hero-view", heroSource, {
+        projection: "document",
+        initialViewpointId: "overview",
+        theme: "atlas",
+        viewMode: mode
+      });
+      if (!viewer) {
+        demoViewModes.hero = "2d";
+        syncModeButtons("hero", "2d");
+        if (tag) {
+          tag.textContent = "3D unavailable here, showing fallback messaging instead.";
+        }
+        return;
+      }
+      syncModeButtons("hero", mode);
+      if (tag) {
+        tag.textContent = mode === "3d"
+          ? "Live 3D demo powered by the same WorldOrbit document"
+          : "Live 2D demo powered by the same WorldOrbit document";
+      }
+    }
 
     function renderPlayground() {
       const sourceField = document.getElementById("playground-source");
@@ -1044,19 +1117,19 @@ event naar-eclipse
       const status = document.getElementById("playground-status");
       if (!sourceField || !preview || !status || !window.WorldOrbit) return;
 
-      try {
-        preview.innerHTML = "";
-        const loaded = WorldOrbit.loadWorldOrbitSource(sourceField.value);
-        WorldOrbit.createInteractiveViewer(preview, {
-          document: loaded.document,
-          projection: "isometric",
-          theme: "atlas"
-        });
-        status.textContent = "Preview rendered successfully.";
+      const viewer = mountWorldOrbitDemo("playground-preview", sourceField.value, {
+        projection: "document",
+        initialViewpointId: "overview",
+        theme: "atlas",
+        viewMode: demoViewModes.playground
+      });
+      if (viewer) {
+        syncModeButtons("playground", demoViewModes.playground);
+        status.textContent = `Preview rendered successfully in ${demoViewModes.playground.toUpperCase()}.`;
         status.style.color = "#a8b3d1";
-      } catch (error) {
+      } else {
         preview.innerHTML = "";
-        status.textContent = `Render failed: ${String(error)}`;
+        status.textContent = `Render failed in ${demoViewModes.playground.toUpperCase()}.`;
         status.style.color = "#ffb4b4";
       }
     }
@@ -1064,6 +1137,21 @@ event naar-eclipse
     const renderButton = document.getElementById("playground-render");
     const resetButton = document.getElementById("playground-reset");
     const sourceField = document.getElementById("playground-source");
+    const heroView2D = document.getElementById("hero-view-2d");
+    const heroView3D = document.getElementById("hero-view-3d");
+    const playgroundView2D = document.getElementById("playground-view-2d");
+    const playgroundView3D = document.getElementById("playground-view-3d");
+
+    heroView2D?.addEventListener("click", () => renderHero("2d"));
+    heroView3D?.addEventListener("click", () => renderHero("3d"));
+    playgroundView2D?.addEventListener("click", () => {
+      demoViewModes.playground = "2d";
+      renderPlayground();
+    });
+    playgroundView3D?.addEventListener("click", () => {
+      demoViewModes.playground = "3d";
+      renderPlayground();
+    });
 
     if (renderButton) {
       renderButton.addEventListener("click", renderPlayground);
@@ -1076,6 +1164,7 @@ event naar-eclipse
       });
     }
 
+    renderHero("3d");
     renderPlayground();
   </script>
 </body>

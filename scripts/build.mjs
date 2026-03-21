@@ -246,6 +246,8 @@ try {
   copyDirectory("dist/browser/viewer", "docs/assets/browser/viewer");
   copyDirectory("dist/browser/markdown", "docs/assets/browser/markdown");
   copyDirectory("dist/browser/editor", "docs/assets/browser/editor");
+  copyFile("studio/studio.js", "docs/studio/studio.js");
+  copyFile("studio/studio-app.js", "docs/studio/studio-app.js");
 
   console.log("Browser bundles built!");
 } catch (e) {
