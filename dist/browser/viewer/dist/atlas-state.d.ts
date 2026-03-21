@@ -1,0 +1,12 @@
+import type { RenderScene, RenderSceneViewpoint } from "@worldorbit/core";
+import type { ViewerAtlasState, ViewerBookmark, ViewerFilter, ViewerLayerOptions, ViewerRenderOptions, ViewerSearchResult, ViewerState } from "./types.js";
+export declare function normalizeViewerFilter(filter: ViewerFilter | null | undefined): ViewerFilter | null;
+export declare function isViewerFilterActive(filter: ViewerFilter | null | undefined): boolean;
+export declare function computeVisibleObjectIds(scene: RenderScene, filter: ViewerFilter | null | undefined): Set<string>;
+export declare function searchSceneObjects(scene: RenderScene, query: string, limit?: number): ViewerSearchResult[];
+export declare function createAtlasStateSnapshot(viewerState: ViewerState, renderOptions: ViewerRenderOptions, filter: ViewerFilter | null, viewpointId: string | null): ViewerAtlasState;
+export declare function serializeViewerAtlasState(state: ViewerAtlasState): string;
+export declare function deserializeViewerAtlasState(serialized: string): ViewerAtlasState;
+export declare function createViewerBookmark(name: string, label: string | undefined, atlasState: ViewerAtlasState): ViewerBookmark;
+export declare function sceneViewpointToLayerOptions(viewpoint: RenderSceneViewpoint | null | undefined): ViewerLayerOptions | undefined;
+export declare function viewpointToViewerFilter(viewpoint: RenderSceneViewpoint | null | undefined): ViewerFilter | null;

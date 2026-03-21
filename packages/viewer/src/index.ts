@@ -1,4 +1,5 @@
 export type * from "./types.js";
+export { WorldOrbit3DUnavailableError, WorldOrbitViewerError } from "./errors.js";
 export { getThemePreset, resolveLayers, resolveTheme } from "./theme.js";
 export {
   deserializeViewerAtlasState,

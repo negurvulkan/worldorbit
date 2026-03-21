@@ -4,7 +4,11 @@ import test from "node:test";
 import { JSDOM } from "jsdom";
 
 import { parse } from "@worldorbit/core";
-import { createAtlasViewer, createInteractiveViewer } from "@worldorbit/viewer";
+import {
+  WorldOrbit3DUnavailableError,
+  createAtlasViewer,
+  createInteractiveViewer,
+} from "@worldorbit/viewer";
 
 const source = `
 system Iyath
@@ -696,6 +700,59 @@ test("interactive viewer preserves schema 2.5 camera metadata in atlas state and
     assert.equal(viewer.getScene().objects.find((object) => object.objectId === "Beryl")?.object.epoch, "JY-0214.0");
 
     viewer.destroy();
+  } finally {
+    restoreGlobals();
+    dom.window.close();
+  }
+});
+
+test("interactive viewer keeps 2D animation disabled and fails clearly when 3D is unavailable", () => {
+  const dom = new JSDOM(`<div id="preview"></div>`, {
+    pretendToBeVisual: true,
+  });
+  const restoreGlobals = installDomGlobals(dom.window);
+  const preview = dom.window.document.getElementById("preview");
+
+  preview.getBoundingClientRect = () => ({
+    x: 0,
+    y: 0,
+    left: 0,
+    top: 0,
+    right: 960,
+    bottom: 560,
+    width: 960,
+    height: 560,
+    toJSON() {
+      return {};
+    },
+  });
+
+  try {
+    const viewer = createInteractiveViewer(preview, {
+      source: schema25Source,
+      width: 960,
+      height: 560,
+    });
+
+    assert.equal(viewer.getViewMode(), "2d");
+    viewer.setAnimationSpeed(2);
+    viewer.playAnimation();
+    assert.equal(viewer.getAnimationState().playing, false);
+    assert.throws(() => viewer.setViewMode("3d"), WorldOrbit3DUnavailableError);
+    assert.equal(viewer.getViewMode(), "2d");
+
+    viewer.destroy();
+
+    assert.throws(
+      () =>
+        createInteractiveViewer(preview, {
+          source: schema25Source,
+          width: 960,
+          height: 560,
+          viewMode: "3d",
+        }),
+      WorldOrbit3DUnavailableError,
+    );
   } finally {
     restoreGlobals();
     dom.window.close();

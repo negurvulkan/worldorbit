@@ -9,10 +9,12 @@ test("package entry points resolve for core, viewer, markdown, and editor", asyn
 
   assert.equal(typeof core.parse, "function");
   assert.equal(typeof core.renderDocumentToScene, "function");
+  assert.equal(typeof core.renderDocumentToSpatialScene, "function");
   assert.equal(typeof core.parseWorldOrbitAtlas, "function");
   assert.equal(typeof viewer.renderSceneToSvg, "function");
   assert.equal(typeof viewer.createInteractiveViewer, "function");
   assert.equal(typeof viewer.createAtlasViewer, "function");
+  assert.equal(typeof viewer.WorldOrbit3DUnavailableError, "function");
   assert.equal(typeof markdown.remarkWorldOrbit, "function");
   assert.equal(typeof markdown.rehypeWorldOrbit, "function");
   assert.equal(typeof editor.createWorldOrbitEditor, "function");

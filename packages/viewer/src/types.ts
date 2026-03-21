@@ -11,6 +11,7 @@ import type {
   RenderSceneObject,
   RenderSceneViewpoint,
   SceneRenderOptions,
+  SpatialScene,
   ViewProjection,
   WorldOrbitObject,
   WorldOrbitDocument,
@@ -18,7 +19,12 @@ import type {
 } from "@worldorbit/core";
 
 export type WorldOrbitThemeName = "atlas" | "nightglass" | "ember";
-export type WorldOrbitEmbedMode = "static" | "interactive";
+export type WorldOrbitViewMode = "2d" | "3d";
+export type WorldOrbitEmbedMode =
+  | "static"
+  | "interactive"
+  | "interactive-2d"
+  | "interactive-3d";
 export type TooltipMode = "hover" | "pinned" | "disabled";
 
 export interface WorldOrbitTheme {
@@ -87,6 +93,7 @@ export interface ViewerRenderOptions
   extends Omit<SvgRenderOptions, "selectedObjectId"> {
   projection?: "document" | ViewProjection;
   scaleModel?: Partial<RenderScaleModel>;
+  viewMode?: WorldOrbitViewMode;
 }
 
 export interface ViewerState {
@@ -145,8 +152,16 @@ export interface ViewerAtlasState {
     layers?: ViewerLayerOptions;
     scaleModel?: Partial<RenderScaleModel>;
     activeEventId?: string | null;
+    viewMode?: WorldOrbitViewMode;
   };
   filter: ViewerFilter | null;
+}
+
+export interface ViewerAnimationState {
+  playing: boolean;
+  speed: number;
+  timeSeconds: number;
+  frozenByEvent: boolean;
 }
 
 export interface ViewerBookmark {
@@ -188,6 +203,7 @@ export interface InteractiveViewerOptions extends ViewerRenderOptions {
   source?: string;
   document?: WorldOrbitDocument;
   scene?: RenderScene;
+  spatialScene?: SpatialScene;
   initialViewpointId?: string;
   initialSelectionObjectId?: string;
   initialFilter?: ViewerFilter | null;
@@ -234,11 +250,18 @@ export interface WorldOrbitViewer {
   getScene(): RenderScene;
   getRenderOptions(): ViewerRenderOptions;
   setRenderOptions(options: Partial<ViewerRenderOptions>): void;
+  getViewMode(): WorldOrbitViewMode;
+  setViewMode(mode: WorldOrbitViewMode): void;
   listViewpoints(): RenderSceneViewpoint[];
   getActiveViewpoint(): RenderSceneViewpoint | null;
   goToViewpoint(id: string): boolean;
   getActiveEventId(): string | null;
   setActiveEvent(id: string | null): void;
+  playAnimation(): void;
+  pauseAnimation(): void;
+  resetAnimation(): void;
+  setAnimationSpeed(multiplier: number): void;
+  getAnimationState(): ViewerAnimationState;
   search(query: string, limit?: number): ViewerSearchResult[];
   getFilter(): ViewerFilter | null;
   setFilter(filter: ViewerFilter | null): void;
@@ -292,11 +315,13 @@ export interface WorldOrbitEmbedPayload {
   version: "2.0";
   mode: WorldOrbitEmbedMode;
   scene: RenderScene;
+  spatialScene?: SpatialScene;
   options?: {
     theme?: WorldOrbitTheme | WorldOrbitThemeName;
     layers?: ViewerLayerOptions;
     subtitle?: string;
     preset?: SceneRenderOptions["preset"];
+    viewMode?: WorldOrbitViewMode;
     initialViewpointId?: string;
     initialSelectionObjectId?: string;
     initialFilter?: ViewerFilter | null;

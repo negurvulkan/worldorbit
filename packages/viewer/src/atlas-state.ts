@@ -115,6 +115,7 @@ export function createAtlasStateSnapshot(
       layers: renderOptions.layers ? { ...renderOptions.layers } : undefined,
       scaleModel: renderOptions.scaleModel ? { ...renderOptions.scaleModel } : undefined,
       activeEventId: renderOptions.activeEventId ?? null,
+      viewMode: renderOptions.viewMode ?? "2d",
     },
     filter: normalizeViewerFilter(filter),
   };
@@ -149,6 +150,7 @@ export function deserializeViewerAtlasState(serialized: string): ViewerAtlasStat
         ? { ...raw.renderOptions.scaleModel }
         : undefined,
       activeEventId: raw.activeEventId ?? raw.renderOptions?.activeEventId ?? null,
+      viewMode: raw.renderOptions?.viewMode ?? "2d",
     },
     filter: normalizeViewerFilter(raw.filter ?? null),
   };
@@ -177,6 +179,7 @@ export function createViewerBookmark(
           ? { ...atlasState.renderOptions.scaleModel }
           : undefined,
         activeEventId: atlasState.renderOptions.activeEventId ?? null,
+        viewMode: atlasState.renderOptions.viewMode ?? "2d",
       },
       filter: atlasState.filter ? { ...atlasState.filter } : null,
     },

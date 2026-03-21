@@ -7,6 +7,7 @@ import type {
   WorldOrbitAtlasViewpoint,
   WorldOrbitObject,
 } from "@worldorbit/core";
+import type { WorldOrbitViewMode } from "@worldorbit/viewer";
 
 export interface WorldOrbitEditorSelection {
   path: AtlasDocumentPath | null;
@@ -27,6 +28,7 @@ export interface WorldOrbitEditorOptions {
   showPreview?: boolean;
   viewerWidth?: number;
   viewerHeight?: number;
+  viewMode?: WorldOrbitViewMode;
   shortcuts?: boolean;
   onChange?: (snapshot: WorldOrbitEditorSnapshot) => void;
   onDiagnosticsChange?: (diagnostics: AtlasResolvedDiagnostic[]) => void;
@@ -41,6 +43,8 @@ export interface WorldOrbitEditor {
   getAtlasDocument(): WorldOrbitAtlasDocument;
   getDiagnostics(): AtlasResolvedDiagnostic[];
   getSelection(): WorldOrbitEditorSelection | null;
+  getViewMode(): WorldOrbitViewMode;
+  setViewMode(mode: WorldOrbitViewMode): void;
   isDirty(): boolean;
   markSaved(): void;
   selectPath(path: AtlasDocumentPath | null): void;

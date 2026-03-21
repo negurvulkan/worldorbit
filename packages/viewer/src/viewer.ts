@@ -1,12 +1,14 @@
 import {
   loadWorldOrbitSource,
   renderDocumentToScene,
+  renderDocumentToSpatialScene,
   rotatePoint,
   type CoordinatePoint,
   type LoadedWorldOrbitSource,
   type RenderScene,
   type RenderSceneObject,
   type RenderSceneViewpoint,
+  type SpatialScene,
   type WorldOrbitDocument,
 } from "@worldorbit/core";
 
@@ -21,8 +23,13 @@ import {
   serializeViewerAtlasState,
   viewpointToViewerFilter,
 } from "./atlas-state.js";
+import { WorldOrbit3DUnavailableError } from "./errors.js";
 import { renderViewerMinimap } from "./minimap.js";
 import { renderSceneToSvg } from "./render.js";
+import {
+  createViewer3DRuntime,
+  type Viewer3DRuntime,
+} from "./runtime-3d.js";
 import {
   buildViewerTooltipDetails,
   renderDefaultTooltipContent,
@@ -30,6 +37,7 @@ import {
 import type {
   InteractiveViewerOptions,
   TooltipMode,
+  ViewerAnimationState,
   ViewerAtlasState,
   ViewerBookmark,
   ViewerFilter,
@@ -38,6 +46,7 @@ import type {
   ViewerSearchResult,
   ViewerState,
   ViewerTooltipDetails,
+  WorldOrbitViewMode,
   WorldOrbitViewer,
 } from "./types.js";
 import {
@@ -113,6 +122,7 @@ export function createInteractiveViewer(
     padding: options.padding,
     preset: options.preset,
     projection: options.projection,
+    viewMode: options.viewMode ?? "2d",
     camera: options.camera ? { ...options.camera } : null,
     scaleModel: options.scaleModel ? { ...options.scaleModel } : undefined,
     theme: options.theme,
@@ -127,9 +137,15 @@ export function createInteractiveViewer(
 
   let currentInput = resolveInitialInput(options);
   let scene = renderSceneFromInput(currentInput, renderOptions);
+  let providedSpatialScene = options.spatialScene ?? null;
+  let spatialScene =
+    renderOptions.viewMode === "3d"
+      ? renderSpatialSceneFromInput(currentInput, renderOptions, providedSpatialScene)
+      : null;
   let state = { ...DEFAULT_VIEWER_STATE };
   let svgElement: SVGSVGElement | null = null;
   let cameraRoot: SVGGElement | null = null;
+  let runtime3d: Viewer3DRuntime | null = null;
   let minimapRoot: HTMLElement | null = null;
   let tooltipRoot: HTMLElement | null = null;
   let suppressClick = false;
@@ -144,6 +160,14 @@ export function createInteractiveViewer(
   let activeTooltipObjectId: string | null = null;
   let activeTooltipDetails: ViewerTooltipDetails | null = null;
   let activeViewpointId: string | null = null;
+  let animationFrameId: number | null = null;
+  let lastAnimationTimestamp: number | null = null;
+  let animationState: ViewerAnimationState = {
+    playing: false,
+    speed: 1,
+    timeSeconds: 0,
+    frozenByEvent: spatialScene?.timeFrozen ?? false,
+  };
 
   if (previousTabIndex === null) {
     container.tabIndex = 0;
@@ -156,6 +180,8 @@ export function createInteractiveViewer(
     container.style.position = "relative";
   }
 
+  syncAnimationFrozenState();
+
   const handleWheel = (event: WheelEvent): void => {
     if (!behavior.pointer || destroyed) {
       return;
@@ -163,6 +189,12 @@ export function createInteractiveViewer(
 
     event.preventDefault();
     container.focus();
+
+    if (is3DView()) {
+      const factor = clampValue(Math.exp(-event.deltaY * 0.002), 0.6, 1.6);
+      api.zoomBy(factor);
+      return;
+    }
 
     const anchor = getWorldPointFromClient(event.clientX, event.clientY);
     const factor = clampValue(Math.exp(-event.deltaY * 0.002), 0.6, 1.6);
@@ -179,7 +211,7 @@ export function createInteractiveViewer(
       return;
     }
 
-    if (!isTouch && event.button !== 0) {
+    if (!isTouch && event.button !== 0 && !is3DView()) {
       return;
     }
 
@@ -211,6 +243,10 @@ export function createInteractiveViewer(
 
     const isTouch = event.pointerType === "touch";
     if (isTouch) {
+      if (is3DView()) {
+        return;
+      }
+
       if (!behavior.touch || !touchPoints.has(event.pointerId)) {
         return;
       }
@@ -248,6 +284,33 @@ export function createInteractiveViewer(
         updateState(panViewerState(state, deltaX, deltaY));
       }
 
+      return;
+    }
+
+    if (is3DView() && behavior.pointer && activePointerId === null) {
+      applyHover(runtime3d?.hitTest(event.clientX, event.clientY) ?? null);
+      return;
+    }
+
+    if (is3DView() && behavior.pointer && activePointerId === event.pointerId && lastPointerPoint) {
+      const nextPoint = getViewportPointFromClient(event.clientX, event.clientY);
+      const deltaX = nextPoint.x - lastPointerPoint.x;
+      const deltaY = nextPoint.y - lastPointerPoint.y;
+      dragDistance += Math.abs(deltaX) + Math.abs(deltaY);
+      lastPointerPoint = nextPoint;
+
+      if (dragDistance > 2) {
+        suppressClick = true;
+      }
+
+      if (event.shiftKey || event.buttons === 2) {
+        api.panBy(deltaX, deltaY);
+      } else {
+        api.rotateBy(deltaX * 0.35);
+        api.panBy(0, deltaY * 0.35);
+      }
+
+      applyHover(runtime3d?.hitTest(event.clientX, event.clientY) ?? null);
       return;
     }
 
@@ -293,7 +356,9 @@ export function createInteractiveViewer(
       return;
     }
 
-    const objectId = getClosestObjectId(event.target);
+    const objectId = is3DView()
+      ? runtime3d?.hitTest(event.clientX, event.clientY) ?? null
+      : getClosestObjectId(event.target);
     applySelection(objectId);
     if (behavior.tooltipMode === "pinned") {
       pinnedTooltipObjectId = objectId;
@@ -302,6 +367,9 @@ export function createInteractiveViewer(
   };
 
   const handleMouseOver = (event: MouseEvent): void => {
+    if (is3DView()) {
+      return;
+    }
     const objectId = getClosestObjectId(event.target);
     applyHover(objectId);
   };
@@ -311,6 +379,9 @@ export function createInteractiveViewer(
   };
 
   const handleFocusIn = (event: FocusEvent): void => {
+    if (is3DView()) {
+      return;
+    }
     const objectId = getClosestObjectId(event.target);
     if (!objectId) {
       return;
@@ -327,7 +398,9 @@ export function createInteractiveViewer(
       return;
     }
 
-    const objectId = getClosestObjectId(event.target);
+    const objectId = is3DView()
+      ? state.selectedObjectId
+      : getClosestObjectId(event.target);
     if ((event.key === "Enter" || event.key === " ") && objectId) {
       event.preventDefault();
       applySelection(objectId);
@@ -407,18 +480,36 @@ export function createInteractiveViewer(
     setSource(source: string): void {
       currentInput = { kind: "source", value: source };
       scene = renderSceneFromInput(currentInput, renderOptions);
+      providedSpatialScene = null;
+      spatialScene =
+        renderOptions.viewMode === "3d"
+          ? renderSpatialSceneFromInput(currentInput, renderOptions, null)
+          : null;
+      syncAnimationFrozenState();
       activeViewpointId = null;
       rerenderScene(true);
     },
     setDocument(document: WorldOrbitDocument): void {
       currentInput = { kind: "document", value: document };
       scene = renderSceneFromInput(currentInput, renderOptions);
+      providedSpatialScene = null;
+      spatialScene =
+        renderOptions.viewMode === "3d"
+          ? renderSpatialSceneFromInput(currentInput, renderOptions, null)
+          : null;
+      syncAnimationFrozenState();
       activeViewpointId = null;
       rerenderScene(true);
     },
     setScene(nextScene: RenderScene): void {
       currentInput = { kind: "scene", value: nextScene };
       scene = nextScene;
+      providedSpatialScene = null;
+      spatialScene =
+        renderOptions.viewMode === "3d"
+          ? renderSpatialSceneFromInput(currentInput, renderOptions, null)
+          : null;
+      syncAnimationFrozenState();
       activeViewpointId = null;
       rerenderScene(true);
     },
@@ -427,6 +518,32 @@ export function createInteractiveViewer(
     },
     getRenderOptions(): ViewerRenderOptions {
       return cloneRenderOptions(renderOptions);
+    },
+    getViewMode(): WorldOrbitViewMode {
+      return renderOptions.viewMode ?? "2d";
+    },
+    setViewMode(mode: WorldOrbitViewMode): void {
+      const previousRenderOptions = renderOptions;
+      const previousSpatialScene = spatialScene;
+      const nextRenderOptions = mergeRenderOptions(renderOptions, { viewMode: mode });
+      const nextSpatialScene =
+        mode === "3d"
+          ? renderSpatialSceneFromInput(currentInput, nextRenderOptions, providedSpatialScene)
+          : null;
+
+      renderOptions = nextRenderOptions;
+      spatialScene = nextSpatialScene;
+      syncAnimationFrozenState();
+
+      try {
+        rerenderScene(false);
+      } catch (error) {
+        renderOptions = previousRenderOptions;
+        spatialScene = previousSpatialScene;
+        syncAnimationFrozenState();
+        rerenderScene(false);
+        throw error;
+      }
     },
     listViewpoints(): RenderSceneViewpoint[] {
       return scene.viewpoints.slice();
@@ -483,6 +600,55 @@ export function createInteractiveViewer(
     },
     setActiveEvent(id: string | null): void {
       api.setRenderOptions({ activeEventId: id });
+    },
+    playAnimation(): void {
+      if (!is3DView()) {
+        animationState = {
+          ...animationState,
+          playing: false,
+        };
+        stopAnimationLoop();
+        return;
+      }
+
+      if (animationState.frozenByEvent) {
+        animationState = {
+          ...animationState,
+          playing: false,
+        };
+        return;
+      }
+
+      animationState = {
+        ...animationState,
+        playing: true,
+      };
+      ensureAnimationFrame();
+    },
+    pauseAnimation(): void {
+      animationState = {
+        ...animationState,
+        playing: false,
+      };
+      stopAnimationLoop();
+    },
+    resetAnimation(): void {
+      animationState = {
+        ...animationState,
+        playing: false,
+        timeSeconds: 0,
+      };
+      stopAnimationLoop();
+      syncRuntimePresentation();
+    },
+    setAnimationSpeed(multiplier: number): void {
+      animationState = {
+        ...animationState,
+        speed: clampValue(multiplier, 0.1, 64),
+      };
+    },
+    getAnimationState(): ViewerAnimationState {
+      return { ...animationState };
     },
     search(query: string, limit = 12): ViewerSearchResult[] {
       return searchSceneObjects(scene, query, limit);
@@ -552,11 +718,36 @@ export function createInteractiveViewer(
     },
     setRenderOptions(options: Partial<ViewerRenderOptions>): void {
       const sceneAffecting = hasSceneAffectingRenderOptions(options);
-      renderOptions = mergeRenderOptions(renderOptions, options);
+      const previousRenderOptions = renderOptions;
+      const previousScene = scene;
+      const previousSpatialScene = spatialScene;
+      const nextRenderOptions = mergeRenderOptions(renderOptions, options);
+
+      let nextScene = scene;
       if (currentInput.kind !== "scene" && sceneAffecting) {
-        scene = renderSceneFromInput(currentInput, renderOptions);
+        nextScene = renderSceneFromInput(currentInput, nextRenderOptions);
       }
-      rerenderScene(sceneAffecting);
+
+      const nextSpatialScene =
+        nextRenderOptions.viewMode === "3d"
+          ? renderSpatialSceneFromInput(currentInput, nextRenderOptions, providedSpatialScene)
+          : null;
+
+      renderOptions = nextRenderOptions;
+      scene = nextScene;
+      spatialScene = nextSpatialScene;
+      syncAnimationFrozenState();
+
+      try {
+        rerenderScene(sceneAffecting);
+      } catch (error) {
+        renderOptions = previousRenderOptions;
+        scene = previousScene;
+        spatialScene = previousSpatialScene;
+        syncAnimationFrozenState();
+        rerenderScene(sceneAffecting);
+        throw error;
+      }
     },
     getState(): ViewerState {
       return { ...state };
@@ -582,11 +773,19 @@ export function createInteractiveViewer(
       updateState(rotateViewerState(state, deg));
     },
     fitToSystem(): void {
-      updateState(fitViewerState(scene, state, constraints));
+      updateState(
+        is3DView()
+          ? { ...DEFAULT_VIEWER_STATE, selectedObjectId: state.selectedObjectId }
+          : fitViewerState(scene, state, constraints),
+      );
     },
     focusObject(id: string): void {
       activeViewpointId = null;
-      updateState(focusViewerState(scene, state, id, constraints));
+      updateState(
+        is3DView()
+          ? create3DFocusState(id)
+          : focusViewerState(scene, state, id, constraints),
+      );
       applySelection(id);
       if (behavior.tooltipMode === "pinned") {
         pinnedTooltipObjectId = getObjectById(id)?.objectId ?? null;
@@ -598,7 +797,9 @@ export function createInteractiveViewer(
       updateTooltip();
     },
     resetView(): void {
-      const resetState = fitViewerState(scene, { ...DEFAULT_VIEWER_STATE }, constraints);
+      const resetState = is3DView()
+        ? { ...DEFAULT_VIEWER_STATE }
+        : fitViewerState(scene, { ...DEFAULT_VIEWER_STATE }, constraints);
       activeViewpointId = null;
       updateState(resetState);
       applySelection(null);
@@ -629,6 +830,9 @@ export function createInteractiveViewer(
       container.removeEventListener("focusin", handleFocusIn);
       container.removeEventListener("focusout", handleFocusOut);
       container.removeEventListener("keydown", handleKeyDown);
+      stopAnimationLoop();
+      runtime3d?.destroy();
+      runtime3d = null;
       tooltipRoot?.remove();
       tooltipRoot = null;
       minimapRoot?.remove();
@@ -656,15 +860,26 @@ export function createInteractiveViewer(
   return api;
 
   function rerenderScene(resetView: boolean): void {
-    container.innerHTML = renderSceneToSvg(scene, {
-      ...renderOptions,
-      filter: renderOptions.filter ?? null,
-      selectedObjectId: state.selectedObjectId,
-    });
-    svgElement = container.querySelector('[data-worldorbit-svg="true"]');
-    cameraRoot = container.querySelector("#worldorbit-camera-root");
+    runtime3d?.destroy();
+    runtime3d = null;
+    container.innerHTML = "";
+    svgElement = null;
+    cameraRoot = null;
     minimapRoot = null;
     tooltipRoot = null;
+
+    if (is3DView()) {
+      spatialScene = spatialScene ?? renderSpatialSceneFromInput(currentInput, renderOptions, providedSpatialScene);
+      runtime3d = createViewer3DRuntime(container);
+    } else {
+      container.innerHTML = renderSceneToSvg(scene, {
+        ...renderOptions,
+        filter: renderOptions.filter ?? null,
+        selectedObjectId: state.selectedObjectId,
+      });
+      svgElement = container.querySelector('[data-worldorbit-svg="true"]');
+      cameraRoot = container.querySelector("#worldorbit-camera-root");
+    }
 
     if (behavior.minimap) {
       minimapRoot = document.createElement("div");
@@ -681,12 +896,14 @@ export function createInteractiveViewer(
       container.append(tooltipRoot);
     }
 
-    if (!svgElement || !cameraRoot) {
+    if (!is3DView() && (!svgElement || !cameraRoot)) {
       throw new Error("Interactive viewer could not locate the rendered SVG camera root.");
     }
 
     state = resetView
-      ? fitViewerState(scene, { ...DEFAULT_VIEWER_STATE }, constraints)
+      ? is3DView()
+        ? { ...DEFAULT_VIEWER_STATE }
+        : fitViewerState(scene, { ...DEFAULT_VIEWER_STATE }, constraints)
       : sanitizeState(state);
 
     applySelection(
@@ -707,7 +924,7 @@ export function createInteractiveViewer(
       pinnedTooltipObjectId && getObjectById(pinnedTooltipObjectId)
         ? pinnedTooltipObjectId
         : null;
-    updateCameraTransform();
+    syncRuntimePresentation();
     notifyFilterChange();
     notifyViewpointChange();
     options.onViewChange?.({ ...state });
@@ -716,7 +933,7 @@ export function createInteractiveViewer(
 
   function updateState(nextState: ViewerState): void {
     state = sanitizeState(nextState);
-    updateCameraTransform();
+    syncRuntimePresentation();
     options.onViewChange?.({ ...state });
     emitAtlasStateChange();
   }
@@ -735,6 +952,11 @@ export function createInteractiveViewer(
   }
 
   function updateCameraTransform(): void {
+    if (is3DView()) {
+      sync3DView();
+      return;
+    }
+
     if (!cameraRoot) {
       return;
     }
@@ -745,7 +967,7 @@ export function createInteractiveViewer(
   }
 
   function applySelection(objectId: string | null, emitCallback = true): void {
-    if (state.selectedObjectId) {
+    if (!is3DView() && state.selectedObjectId) {
       container
         .querySelector<SVGGElement>(`[data-object-id="${cssEscape(state.selectedObjectId)}"]`)
         ?.classList.remove("wo-object-selected");
@@ -759,7 +981,7 @@ export function createInteractiveViewer(
           : null,
     };
 
-    if (state.selectedObjectId) {
+    if (!is3DView() && state.selectedObjectId) {
       container
         .querySelector<SVGGElement>(`[data-object-id="${cssEscape(state.selectedObjectId)}"]`)
         ?.classList.add("wo-object-selected");
@@ -860,6 +1082,11 @@ export function createInteractiveViewer(
   }
 
   function syncAtlasHighlights(): void {
+    if (is3DView()) {
+      sync3DView();
+      return;
+    }
+
     for (const element of container.querySelectorAll<HTMLElement>(
       ".wo-chain-selected, .wo-chain-hover, .wo-ancestor-selected, .wo-ancestor-hover, .wo-orbit-related-selected, .wo-orbit-related-hover",
     )) {
@@ -926,6 +1153,21 @@ export function createInteractiveViewer(
   }
 
   function getViewportPointFromClient(clientX: number, clientY: number): CoordinatePoint {
+    if (is3DView()) {
+      const rect = container.getBoundingClientRect();
+      if (!rect.width || !rect.height) {
+        return {
+          x: scene.width / 2,
+          y: scene.height / 2,
+        };
+      }
+
+      return {
+        x: clientX - rect.left,
+        y: clientY - rect.top,
+      };
+    }
+
     if (!svgElement) {
       return {
         x: scene.width / 2,
@@ -983,6 +1225,22 @@ export function createInteractiveViewer(
       viewpoint.scale !== null && viewpoint.scale !== undefined
         ? clampValue(viewpoint.scale, constraints.minScale, constraints.maxScale)
         : null;
+
+    if (is3DView()) {
+      const focusId = viewpoint.objectId ?? viewpoint.selectedObjectId ?? null;
+      const target = focusId
+        ? spatialScene?.focusTargets.find((entry) => entry.objectId === focusId)
+        : null;
+
+      return {
+        scale: scale ?? 1.6,
+        rotationDeg,
+        translateX: target ? -target.center.x : 0,
+        translateY: target ? -target.center.z : 0,
+        selectedObjectId: viewpoint.selectedObjectId ?? viewpoint.objectId ?? null,
+      };
+    }
+
     const targetObject =
       viewpoint.objectId &&
       scene.objects.find((object) => object.objectId === viewpoint.objectId && !object.hidden);
@@ -1177,8 +1435,48 @@ export function createInteractiveViewer(
     element: HTMLElement,
     renderObject: RenderSceneObject,
   ): void {
-    if (!svgElement) {
+    const point = is3DView()
+      ? runtime3d?.projectObjectToContainer(renderObject.objectId) ?? null
+      : project2DTooltipPoint(renderObject);
+    if (!point) {
       return;
+    }
+
+    const maxLeft = Math.max(container.clientWidth - element.offsetWidth - 12, 12);
+    const maxTop = Math.max(container.clientHeight - element.offsetHeight - 12, 12);
+    const preferAbove = point.y > container.clientHeight * 0.48;
+    const nextLeft = clampValue(point.x + 18, 12, maxLeft);
+    const nextTop = clampValue(
+      preferAbove ? point.y - element.offsetHeight - 18 : point.y + 18,
+      12,
+      maxTop,
+    );
+
+    element.style.left = `${nextLeft}px`;
+    element.style.top = `${nextTop}px`;
+  }
+
+  function projectWorldPoint(point: CoordinatePoint): CoordinatePoint {
+    if (is3DView()) {
+      return point;
+    }
+
+    const center = {
+      x: scene.width / 2,
+      y: scene.height / 2,
+    };
+    const rotated = rotatePoint(point, center, state.rotationDeg);
+    return {
+      x: center.x + (rotated.x - center.x) * state.scale + state.translateX,
+      y: center.y + (rotated.y - center.y) * state.scale + state.translateY,
+    };
+  }
+
+  function project2DTooltipPoint(
+    renderObject: RenderSceneObject,
+  ): CoordinatePoint | null {
+    if (!svgElement) {
+      return null;
     }
 
     const anchor = {
@@ -1190,37 +1488,16 @@ export function createInteractiveViewer(
     const viewportPoint = projectWorldPoint(anchor);
     const svgRect = svgElement.getBoundingClientRect();
     const containerRect = container.getBoundingClientRect();
-    const pointX =
-      svgRect.left -
-      containerRect.left +
-      (viewportPoint.x / Math.max(scene.width, 1)) * svgRect.width;
-    const pointY =
-      svgRect.top -
-      containerRect.top +
-      (viewportPoint.y / Math.max(scene.height, 1)) * svgRect.height;
-    const maxLeft = Math.max(container.clientWidth - element.offsetWidth - 12, 12);
-    const maxTop = Math.max(container.clientHeight - element.offsetHeight - 12, 12);
-    const preferAbove = pointY > container.clientHeight * 0.48;
-    const nextLeft = clampValue(pointX + 18, 12, maxLeft);
-    const nextTop = clampValue(
-      preferAbove ? pointY - element.offsetHeight - 18 : pointY + 18,
-      12,
-      maxTop,
-    );
 
-    element.style.left = `${nextLeft}px`;
-    element.style.top = `${nextTop}px`;
-  }
-
-  function projectWorldPoint(point: CoordinatePoint): CoordinatePoint {
-    const center = {
-      x: scene.width / 2,
-      y: scene.height / 2,
-    };
-    const rotated = rotatePoint(point, center, state.rotationDeg);
     return {
-      x: center.x + (rotated.x - center.x) * state.scale + state.translateX,
-      y: center.y + (rotated.y - center.y) * state.scale + state.translateY,
+      x:
+        svgRect.left -
+        containerRect.left +
+        (viewportPoint.x / Math.max(scene.width, 1)) * svgRect.width,
+      y:
+        svgRect.top -
+        containerRect.top +
+        (viewportPoint.y / Math.max(scene.height, 1)) * svgRect.height,
     };
   }
 
@@ -1257,6 +1534,104 @@ export function createInteractiveViewer(
     if (changed) {
       options.onTooltipChange?.(details);
     }
+  }
+
+  function is3DView(): boolean {
+    return renderOptions.viewMode === "3d";
+  }
+
+  function syncAnimationFrozenState(): void {
+    animationState = {
+      ...animationState,
+      frozenByEvent: spatialScene?.timeFrozen ?? false,
+    };
+
+    if (animationState.frozenByEvent) {
+      animationState = {
+        ...animationState,
+        playing: false,
+      };
+      stopAnimationLoop();
+    }
+  }
+
+  function ensureAnimationFrame(): void {
+    if (animationFrameId !== null || !animationState.playing || destroyed) {
+      return;
+    }
+
+    animationFrameId = window.requestAnimationFrame(renderAnimationFrame);
+  }
+
+  function stopAnimationLoop(): void {
+    if (animationFrameId !== null) {
+      window.cancelAnimationFrame(animationFrameId);
+      animationFrameId = null;
+    }
+    lastAnimationTimestamp = null;
+  }
+
+  function renderAnimationFrame(timestamp: number): void {
+    animationFrameId = null;
+    if (!animationState.playing || destroyed) {
+      lastAnimationTimestamp = null;
+      return;
+    }
+
+    const previousTimestamp = lastAnimationTimestamp ?? timestamp;
+    const deltaSeconds = Math.max((timestamp - previousTimestamp) / 1_000, 0);
+    lastAnimationTimestamp = timestamp;
+    animationState = {
+      ...animationState,
+      timeSeconds: animationState.timeSeconds + deltaSeconds * animationState.speed,
+    };
+    sync3DView();
+    ensureAnimationFrame();
+  }
+
+  function syncRuntimePresentation(): void {
+    updateCameraTransform();
+    if (is3DView() && animationState.playing) {
+      ensureAnimationFrame();
+    } else if (!animationState.playing || !is3DView()) {
+      stopAnimationLoop();
+    }
+  }
+
+  function sync3DView(): void {
+    if (!is3DView() || !runtime3d || !spatialScene) {
+      return;
+    }
+
+    runtime3d.update({
+      spatialScene,
+      renderOptions,
+      visibleObjectIds: getVisibleObjectIds(),
+      selectedObjectId: state.selectedObjectId,
+      hoveredObjectId,
+      state,
+      timeSeconds: animationState.timeSeconds,
+    });
+    updateMinimap();
+    updateTooltip();
+  }
+
+  function create3DFocusState(objectId: string): ViewerState {
+    const target = spatialScene?.focusTargets.find((entry) => entry.objectId === objectId);
+    if (!target) {
+      return {
+        ...DEFAULT_VIEWER_STATE,
+        selectedObjectId: objectId,
+      };
+    }
+
+    return {
+      scale: 1.8,
+      rotationDeg: state.rotationDeg,
+      translateX: -target.center.x,
+      translateY: -target.center.z,
+      selectedObjectId: objectId,
+    };
   }
 }
 
@@ -1295,6 +1670,30 @@ function renderSceneFromInput(
   }
 }
 
+function renderSpatialSceneFromInput(
+  input: ViewerInput,
+  renderOptions: ViewerRenderOptions,
+  providedSpatialScene: SpatialScene | null,
+): SpatialScene {
+  if (providedSpatialScene) {
+    return providedSpatialScene;
+  }
+
+  switch (input.kind) {
+    case "scene":
+      return fallbackSpatialSceneFromRenderScene(input.value);
+    case "document":
+      return renderDocumentToSpatialScene(input.value, renderOptions);
+    case "source": {
+      const loaded = loadWorldOrbitSource(input.value);
+      return renderDocumentToSpatialScene(
+        loaded.document,
+        resolveSourceRenderOptions(loaded, renderOptions),
+      );
+    }
+  }
+}
+
 function cloneRenderOptions(renderOptions: ViewerRenderOptions): ViewerRenderOptions {
   return {
     ...renderOptions,
@@ -1307,6 +1706,7 @@ function cloneRenderOptions(renderOptions: ViewerRenderOptions): ViewerRenderOpt
         ? { ...renderOptions.theme }
         : renderOptions.theme,
     activeEventId: renderOptions.activeEventId ?? null,
+    viewMode: renderOptions.viewMode ?? "2d",
   };
 }
 
@@ -1351,6 +1751,7 @@ function mergeRenderOptions(
       next.theme && typeof next.theme === "object"
         ? { ...next.theme }
         : next.theme ?? current.theme,
+    viewMode: next.viewMode ?? current.viewMode ?? "2d",
   };
 }
 
@@ -1380,6 +1781,100 @@ function resolveSourceRenderOptions(
   return {
     ...renderOptions,
     preset: atlasDocument.system.defaults.preset,
+  };
+}
+
+function fallbackSpatialSceneFromRenderScene(scene: RenderScene): SpatialScene {
+  return {
+    width: scene.width,
+    height: scene.height,
+    padding: scene.padding,
+    renderPreset: scene.renderPreset,
+    projection: scene.projection,
+    camera: scene.camera,
+    scaleModel: {
+      orbitDistanceMultiplier: 1,
+      bodyRadiusMultiplier: 1,
+      markerSizeMultiplier: 1,
+      ringThicknessMultiplier: 1,
+      focusPadding: 12,
+      minBodyRadius: 4,
+      maxBodyRadius: 40,
+    },
+    title: scene.title,
+    subtitle: scene.subtitle,
+    systemId: scene.systemId,
+    viewMode: "3d",
+    layoutPreset: scene.layoutPreset,
+    metadata: {
+      ...scene.metadata,
+      "viewer.mode": "3d-fallback",
+    },
+    contentBounds: {
+      minX: scene.contentBounds.minX - scene.contentBounds.centerX,
+      minY: -40,
+      minZ: scene.contentBounds.minY - scene.contentBounds.centerY,
+      maxX: scene.contentBounds.maxX - scene.contentBounds.centerX,
+      maxY: 40,
+      maxZ: scene.contentBounds.maxY - scene.contentBounds.centerY,
+      width: scene.contentBounds.width,
+      height: 80,
+      depth: scene.contentBounds.height,
+      center: { x: 0, y: 0, z: 0 },
+    },
+    semanticGroups: scene.semanticGroups,
+    viewpoints: scene.viewpoints,
+    activeEventId: scene.activeEventId,
+    timeFrozen: scene.activeEventId !== null,
+    objects: scene.objects.map((object) => ({
+      objectId: object.objectId,
+      object: object.object,
+      parentId: object.parentId,
+      ancestorIds: object.ancestorIds.slice(),
+      childIds: object.childIds.slice(),
+      groupId: object.groupId,
+      semanticGroupIds: object.semanticGroupIds.slice(),
+      position: {
+        x: object.x - scene.contentBounds.centerX,
+        y: 0,
+        z: object.y - scene.contentBounds.centerY,
+      },
+      radius: object.radius,
+      visualRadius: object.visualRadius,
+      label: object.label,
+      secondaryLabel: object.secondaryLabel,
+      fillColor: object.fillColor,
+      imageHref: object.imageHref,
+      hidden: object.hidden,
+      motion: null,
+    })),
+    orbits: scene.orbitVisuals.map((orbit) => ({
+      objectId: orbit.objectId,
+      object: orbit.object,
+      parentId: orbit.parentId,
+      groupId: orbit.groupId,
+      semanticGroupIds: orbit.semanticGroupIds.slice(),
+      center: { x: 0, y: 0, z: 0 },
+      kind: orbit.kind,
+      radius: orbit.radius,
+      semiMajor: orbit.radius ?? orbit.rx ?? 0,
+      semiMinor: orbit.radius ?? orbit.ry ?? 0,
+      rotationDeg: orbit.rotationDeg,
+      inclinationDeg: 0,
+      band: orbit.band,
+      bandThickness: orbit.bandThickness,
+      hidden: orbit.hidden,
+      motion: null,
+    })),
+    focusTargets: scene.objects.map((object) => ({
+      objectId: object.objectId,
+      center: {
+        x: object.x - scene.contentBounds.centerX,
+        y: 0,
+        z: object.y - scene.contentBounds.centerY,
+      },
+      radius: object.visualRadius + 12,
+    })),
   };
 }
 
@@ -1471,6 +1966,34 @@ function installViewerTooltipStyles(): void {
   const style = document.createElement("style");
   style.id = TOOLTIP_STYLE_ID;
   style.textContent = `
+    .wo-viewer-3d-root {
+      position: relative;
+      min-height: 320px;
+      width: 100%;
+      border-radius: 22px;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at top left, rgba(240, 180, 100, 0.08), transparent 24%),
+        linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+    }
+    .wo-viewer-3d-loading {
+      display: grid;
+      place-items: center;
+      min-height: 320px;
+      padding: 24px;
+      color: rgba(237, 246, 255, 0.76);
+      font: 600 14px/1.5 "Segoe UI Variable", "Segoe UI", sans-serif;
+      text-align: center;
+    }
+    .wo-viewer-3d-loading.is-error {
+      color: #ffb2b2;
+    }
+    .wo-viewer-3d-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      min-height: 320px;
+    }
     .wo-viewer-tooltip-root {
       position: absolute;
       z-index: 12;

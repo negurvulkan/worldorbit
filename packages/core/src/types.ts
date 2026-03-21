@@ -61,6 +61,12 @@ export interface CoordinatePoint {
   y: number;
 }
 
+export interface CoordinatePoint3D {
+  x: number;
+  y: number;
+  z: number;
+}
+
 export interface UnitValue {
   value: number;
   unit: Unit | null;
@@ -350,6 +356,20 @@ export interface SceneRenderOptions {
   activeEventId?: string | null;
 }
 
+export interface SpatialScaleModel {
+  orbitDistanceMultiplier: number;
+  bodyRadiusMultiplier: number;
+  markerSizeMultiplier: number;
+  ringThicknessMultiplier: number;
+  focusPadding: number;
+  minBodyRadius: number;
+  maxBodyRadius: number;
+}
+
+export interface SpatialSceneRenderOptions extends SceneRenderOptions {
+  spatialScaleModel?: Partial<SpatialScaleModel>;
+}
+
 export interface RenderBounds {
   minX: number;
   minY: number;
@@ -524,6 +544,76 @@ export interface RenderSceneRelation {
   hidden: boolean;
 }
 
+export interface SpatialBounds {
+  minX: number;
+  minY: number;
+  minZ: number;
+  maxX: number;
+  maxY: number;
+  maxZ: number;
+  width: number;
+  height: number;
+  depth: number;
+  center: CoordinatePoint3D;
+}
+
+export interface OrbitalMotionModel {
+  phase0Deg: number;
+  rotationDeg: number;
+  inclinationDeg: number;
+  semiMajor: number;
+  semiMinor: number;
+  eccentricity: number;
+  periodSeconds: number | null;
+  angularVelocityDegPerSecond: number;
+  heuristic: boolean;
+  frozen: boolean;
+}
+
+export interface SpatialSceneObject {
+  objectId: string;
+  object: WorldOrbitObject;
+  parentId: string | null;
+  ancestorIds: string[];
+  childIds: string[];
+  groupId: string | null;
+  semanticGroupIds: string[];
+  position: CoordinatePoint3D;
+  radius: number;
+  visualRadius: number;
+  label: string;
+  secondaryLabel: string;
+  fillColor?: string;
+  imageHref?: string;
+  hidden: boolean;
+  motion: OrbitalMotionModel | null;
+}
+
+export interface SpatialOrbit {
+  objectId: string;
+  object: WorldOrbitObject;
+  parentId: string;
+  groupId: string | null;
+  semanticGroupIds: string[];
+  center: CoordinatePoint3D;
+  kind: "circle" | "ellipse";
+  radius?: number;
+  semiMajor: number;
+  semiMinor: number;
+  rotationDeg: number;
+  inclinationDeg: number;
+  band: boolean;
+  bandThickness?: number;
+  hidden: boolean;
+  motion: OrbitalMotionModel | null;
+}
+
+export interface SpatialFocusTarget {
+  objectId: string;
+  center: CoordinatePoint3D;
+  radius: number;
+}
+
 export interface RenderScene {
   width: number;
   height: number;
@@ -551,6 +641,30 @@ export interface RenderScene {
   relations: RenderSceneRelation[];
   leaders: RenderLeaderLine[];
   labels: RenderSceneLabel[];
+}
+
+export interface SpatialScene {
+  width: number;
+  height: number;
+  padding: number;
+  renderPreset: RenderPresetName | null;
+  projection: ViewProjection;
+  camera: WorldOrbitViewCamera | null;
+  scaleModel: SpatialScaleModel;
+  title: string;
+  subtitle: string;
+  systemId: string | null;
+  viewMode: "3d";
+  layoutPreset: SceneLayoutPreset;
+  metadata: Record<string, string>;
+  contentBounds: SpatialBounds;
+  semanticGroups: RenderSceneSemanticGroup[];
+  viewpoints: RenderSceneViewpoint[];
+  activeEventId: string | null;
+  timeFrozen: boolean;
+  objects: SpatialSceneObject[];
+  orbits: SpatialOrbit[];
+  focusTargets: SpatialFocusTarget[];
 }
 
 export type SceneLayoutPreset = "compact" | "balanced" | "presentation";

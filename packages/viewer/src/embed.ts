@@ -1,5 +1,6 @@
-import type { RenderScene } from "@worldorbit/core";
+import type { RenderScene, SpatialScene } from "@worldorbit/core";
 
+import { WorldOrbit3DUnavailableError } from "./errors.js";
 import { renderSceneToSvg } from "./render.js";
 import type {
   MountedWorldOrbitEmbeds,
@@ -23,11 +24,13 @@ export function deserializeWorldOrbitEmbedPayload(serialized: string): WorldOrbi
 
   return {
     version: "2.0",
-    mode: raw.mode ?? "interactive",
+    mode: normalizeEmbedMode(raw.mode),
     scene: raw.scene as RenderScene,
+    spatialScene: (raw.spatialScene as SpatialScene | undefined) ?? undefined,
     options: raw.options
       ? {
           ...raw.options,
+          viewMode: raw.options.viewMode ?? embedModeToViewMode(normalizeEmbedMode(raw.mode)),
           initialFilter: raw.options.initialFilter ?? null,
           atlasState: raw.options.atlasState ?? null,
         }
@@ -39,6 +42,8 @@ export function createEmbedPayload(
   scene: RenderScene,
   mode: WorldOrbitEmbedPayload["mode"],
   options: {
+    spatialScene?: SpatialScene;
+    viewMode?: "2d" | "3d";
     initialViewpointId?: string;
     initialSelectionObjectId?: string;
     initialFilter?: ViewerFilter | null;
@@ -48,9 +53,11 @@ export function createEmbedPayload(
 ): WorldOrbitEmbedPayload {
   return {
     version: "2.0",
-    mode,
+    mode: normalizeEmbedMode(mode),
     scene,
+    spatialScene: options.spatialScene,
     options: {
+      viewMode: options.viewMode ?? embedModeToViewMode(normalizeEmbedMode(mode)),
       initialViewpointId: options.initialViewpointId,
       initialSelectionObjectId: options.initialSelectionObjectId,
       initialFilter: options.initialFilter ?? null,
@@ -67,6 +74,7 @@ export function createWorldOrbitEmbedMarkup(
     "theme" | "layers" | "subtitle" | "preset"
   > & {
     className?: string;
+    viewMode?: "2d" | "3d";
     initialViewpointId?: string;
     initialSelectionObjectId?: string;
     initialFilter?: ViewerFilter | null;
@@ -82,6 +90,7 @@ export function createWorldOrbitEmbedMarkup(
       layers: options.layers ?? payload.options?.layers,
       subtitle: options.subtitle ?? payload.options?.subtitle,
       preset: options.preset ?? payload.options?.preset,
+      viewMode: options.viewMode ?? payload.options?.viewMode ?? embedModeToViewMode(normalizeEmbedMode(payload.mode)),
       initialViewpointId: options.initialViewpointId ?? payload.options?.initialViewpointId,
       initialSelectionObjectId:
         options.initialSelectionObjectId ?? payload.options?.initialSelectionObjectId,
@@ -100,7 +109,7 @@ export function createWorldOrbitEmbedMarkup(
     preset: mergedPayload.options?.preset,
   });
 
-  return `<div class="${escapeAttribute(options.className ?? "worldorbit-embed")}" data-worldorbit-embed="true" data-worldorbit-mode="${payload.mode}" data-worldorbit-preset="${escapeAttribute(mergedPayload.options?.preset ?? payload.scene.renderPreset ?? "custom")}" data-worldorbit-viewpoint="${escapeAttribute(mergedPayload.options?.initialViewpointId ?? "")}" data-worldorbit-payload="${escapeAttribute(serializeWorldOrbitEmbedPayload(mergedPayload))}">${html}</div>`;
+  return `<div class="${escapeAttribute(options.className ?? "worldorbit-embed")}" data-worldorbit-embed="true" data-worldorbit-mode="${mergedPayload.mode}" data-worldorbit-preset="${escapeAttribute(mergedPayload.options?.preset ?? payload.scene.renderPreset ?? "custom")}" data-worldorbit-viewpoint="${escapeAttribute(mergedPayload.options?.initialViewpointId ?? "")}" data-worldorbit-payload="${escapeAttribute(serializeWorldOrbitEmbedPayload(mergedPayload))}">${html}</div>`;
 }
 
 export function mountWorldOrbitEmbeds(
@@ -112,7 +121,7 @@ export function mountWorldOrbitEmbeds(
 
   for (const element of elements) {
     const payload = deserializePayloadFromElement(element);
-    const mode = options.mode ?? payload.mode;
+    const mode = normalizeEmbedMode(options.mode ?? payload.mode);
     const theme = options.theme ?? payload.options?.theme;
     const layers = options.layers ?? payload.options?.layers;
     const subtitle = options.subtitle ?? payload.options?.subtitle;
@@ -123,28 +132,43 @@ export function mountWorldOrbitEmbeds(
     const initialSelectionObjectId =
       options.viewer?.initialSelectionObjectId ?? payload.options?.initialSelectionObjectId;
     const minimap = options.viewer?.minimap ?? payload.options?.minimap;
+    const viewMode =
+      options.viewer?.viewMode ??
+      payload.options?.viewMode ??
+      embedModeToViewMode(mode);
 
-    if (mode === "interactive") {
-      const viewer = createInteractiveViewer(element, {
-        ...options.viewer,
-        scene: payload.scene,
-        width: options.width ?? payload.scene.width,
-        height: options.height ?? payload.scene.height,
-        padding: options.padding ?? payload.scene.padding,
-        preset,
-        theme,
-        layers,
-        subtitle,
-        initialFilter,
-        initialViewpointId,
-        initialSelectionObjectId,
-        minimap,
-      });
-      if (payload.options?.atlasState) {
-        viewer.setAtlasState(payload.options.atlasState);
+    if (mode === "interactive-2d" || mode === "interactive-3d") {
+      try {
+        const viewer = createInteractiveViewer(element, {
+          ...options.viewer,
+          scene: payload.scene,
+          spatialScene: payload.spatialScene,
+          width: options.width ?? payload.scene.width,
+          height: options.height ?? payload.scene.height,
+          padding: options.padding ?? payload.scene.padding,
+          preset,
+          theme,
+          layers,
+          subtitle,
+          viewMode,
+          initialFilter,
+          initialViewpointId,
+          initialSelectionObjectId,
+          minimap,
+        });
+        if (payload.options?.atlasState) {
+          viewer.setAtlasState(payload.options.atlasState);
+        }
+        viewers.set(element, viewer);
+        options.onMount?.(viewer, element);
+      } catch (error) {
+        if (error instanceof WorldOrbit3DUnavailableError && mode === "interactive-3d") {
+          element.innerHTML = render3DUnavailableMarkup(error.message);
+          options.onMount?.(null, element);
+        } else {
+          throw error;
+        }
       }
-      viewers.set(element, viewer);
-      options.onMount?.(viewer, element);
     } else {
       element.innerHTML = renderSceneToSvg(payload.scene, {
         width: options.width ?? payload.scene.width,
@@ -191,4 +215,20 @@ function escapeAttribute(value: string): string {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll("\"", "&quot;");
+}
+
+function normalizeEmbedMode(mode: WorldOrbitEmbedPayload["mode"] | undefined): WorldOrbitEmbedPayload["mode"] {
+  if (!mode || mode === "interactive") {
+    return "interactive-2d";
+  }
+
+  return mode;
+}
+
+function embedModeToViewMode(mode: WorldOrbitEmbedPayload["mode"]): "2d" | "3d" {
+  return mode === "interactive-3d" ? "3d" : "2d";
+}
+
+export function render3DUnavailableMarkup(message: string): string {
+  return `<div class="worldorbit-embed-unavailable" data-worldorbit-3d-unavailable="true"><strong>3D unavailable</strong><span>${escapeAttribute(message)}</span></div>`;
 }

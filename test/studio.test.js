@@ -125,6 +125,11 @@ test("studio mounts, persists session state, warns on unload, and saves canonica
     assert.ok(root.querySelector('[data-studio-action="save"]'));
     assert.ok(root.querySelector("[data-editor-stage] svg"));
     assert.equal(loadRecoveryDraft(), null);
+    assert.equal(root.querySelector('[data-studio-action="view-2d"]').getAttribute("aria-pressed"), "true");
+
+    root.querySelector('[data-studio-action="view-3d"]').click();
+    assert.match(root.querySelector("[data-studio-message]").textContent, /3D/i);
+    assert.equal(root.querySelector('[data-studio-action="view-2d"]').getAttribute("aria-pressed"), "true");
 
     root.querySelector('[data-studio-action="toggle-preview"]').click();
     assert.equal(loadSessionState().panels.preview, false);
@@ -158,24 +163,24 @@ test("studio shells use UNPKG imports and page-specific example urls", () => {
   const studioHtml = readFileSync(new URL("../studio/index.html", import.meta.url), "utf8");
   const docsStudioHtml = readFileSync(new URL("../docs/studio/index.html", import.meta.url), "utf8");
 
-  assert.match(studioHtml, /https:\/\/unpkg\.com\/worldorbit@2\.6\.0\/packages\/viewer\/dist\/index\.js/);
-  assert.match(docsStudioHtml, /https:\/\/unpkg\.com\/worldorbit@2\.6\.0\/packages\/viewer\/dist\/index\.js/);
+  assert.match(studioHtml, /https:\/\/unpkg\.com\/worldorbit@3\.0\.0\/packages\/viewer\/dist\/index\.js/);
+  assert.match(docsStudioHtml, /https:\/\/unpkg\.com\/worldorbit@3\.0\.0\/packages\/viewer\/dist\/index\.js/);
   assert.match(studioHtml, /data-example-url="\.\.\/examples\/studio\.schema25\.worldorbit"/);
   assert.match(docsStudioHtml, /data-example-url="\.\.\/\.\.\/examples\/studio\.schema25\.worldorbit"/);
   assert.match(
     studioHtml,
-    /"@worldorbit\/editor": "https:\/\/unpkg\.com\/worldorbit@2\.6\.0\/packages\/editor\/dist\/index\.js"/,
+    /"@worldorbit\/editor": "https:\/\/unpkg\.com\/worldorbit@3\.0\.0\/packages\/editor\/dist\/index\.js"/,
   );
   assert.match(
     docsStudioHtml,
-    /"@worldorbit\/editor": "https:\/\/unpkg\.com\/worldorbit@2\.6\.0\/packages\/editor\/dist\/index\.js"/,
+    /"@worldorbit\/editor": "https:\/\/unpkg\.com\/worldorbit@3\.0\.0\/packages\/editor\/dist\/index\.js"/,
   );
   assert.match(
     studioHtml,
-    /"@worldorbit\/viewer\/viewer-state": "https:\/\/unpkg\.com\/worldorbit@2\.6\.0\/packages\/viewer\/dist\/viewer-state\.js"/,
+    /"@worldorbit\/viewer\/viewer-state": "https:\/\/unpkg\.com\/worldorbit@3\.0\.0\/packages\/viewer\/dist\/viewer-state\.js"/,
   );
   assert.match(
     docsStudioHtml,
-    /"@worldorbit\/viewer\/viewer-state": "https:\/\/unpkg\.com\/worldorbit@2\.6\.0\/packages\/viewer\/dist\/viewer-state\.js"/,
+    /"@worldorbit\/viewer\/viewer-state": "https:\/\/unpkg\.com\/worldorbit@3\.0\.0\/packages\/viewer\/dist\/viewer-state\.js"/,
   );
 });

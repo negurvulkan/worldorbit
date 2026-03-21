@@ -589,8 +589,8 @@
           <h1>Build stellar systems in text. Render them as maps, viewers, and atlases.</h1>
           <p>
             WorldOrbit is a text-first DSL, viewer, and optional editor platform for orbital worldbuilding.
-            Write systems in plain text, embed them in Markdown, render them as static diagrams, or explore
-            them interactively with pan, rotate, zoom, and data-rich tooltips.
+            Write systems in plain text, embed them in Markdown, render them as static diagrams, explore
+            them interactively in 2D, or switch the same document into a symbolic 3D view with animated orbits.
           </p>
           <div class="hero-actions">
             <a class="button button-primary" href="#start">Get Started</a>
@@ -603,7 +603,7 @@
           </div>
           <div class="hero-meta">
             <span>Markdown-native</span>
-            <span>Static or interactive</span>
+            <span>Static, 2D, or 3D</span>
             <span>Optional visual editor</span>
           </div>
         </div>
@@ -672,7 +672,7 @@
           <p>
             Generic diagram tools can draw connections. WorldOrbit is built specifically for fictional orbital systems,
             Markdown-based lore repositories, codices, browser viewers, and content-first worldbuilding workflows.
-            Schema 2.5 now adds orthographic and perspective viewpoints, camera blocks, clearer event snapshot context, comments, semantic groups, relations, and light validation metadata without breaking Schema 2.1 or Schema 2.0 atlases.
+            Schema 2.5 now adds orthographic and perspective viewpoints, camera blocks, clearer event snapshot context, comments, semantic groups, relations, and light validation metadata. WorldOrbit 3.0 then turns those same documents into shared 2D and 3D viewer inputs without introducing a separate 3D DSL.
           </p>
         </div>
 
@@ -853,7 +853,7 @@ event naar-eclipse
     <section>
       <div class="container">
         <div class="quote">
-          <strong>One format for writing, rendering, and optional visual editing.</strong>
+          <strong>One format for writing, 2D rendering, 3D viewing, and optional visual editing.</strong>
           <p>
             WorldOrbit stays text-first at its core. The viewer and editor build on top of the same document model,
             so your source remains portable, inspectable, and useful across static pages, interactive atlases, and
@@ -885,7 +885,7 @@ event naar-eclipse
           <article class="showcase-card">
             <h3>Use in the browser</h3>
             <div class="terminal">&lt;script
-                      src="https://unpkg.com/worldorbit@2.6.0/dist/unpkg/worldorbit.min.js"&gt;&lt;/script&gt;</div>
+src="https://unpkg.com/worldorbit@3.0.0/dist/unpkg/worldorbit.min.js"&gt;&lt;/script&gt;</div>
             <p style="margin-top: 14px;">
               Ideal for quick experiments, standalone demos, or embedding WorldOrbit in static and CMS-driven pages.
             </p>
@@ -908,13 +908,13 @@ event naar-eclipse
       <div class="footer-links">
         <a href="https://github.com/negurvulkan/worldorbit" target="_blank" rel="noreferrer">GitHub</a>
         <a href="https://www.npmjs.com/package/worldorbit" target="_blank" rel="noreferrer">npm</a>
-          <a href="https://unpkg.com/worldorbit@2.6.0/dist/unpkg/worldorbit.min.js" target="_blank"
+          <a href="https://unpkg.com/worldorbit@3.0.0/dist/unpkg/worldorbit.min.js" target="_blank"
           rel="noreferrer">UNPKG</a>
       </div>
     </div>
   </footer>
 
-  <script src="https://unpkg.com/worldorbit@2.6.0/dist/unpkg/worldorbit.min.js"></script>
+  <script src="https://unpkg.com/worldorbit@3.0.0/dist/unpkg/worldorbit.min.js"></script>
   <script>
     const heroSource = `schema 2.5
 

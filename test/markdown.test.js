@@ -126,6 +126,7 @@ object planet Naar orbit Iyath semiMajor 1.18au eccentricity 0.08 angle 28deg in
   const planet = payload.scene.objects.find((object) => object.objectId === "Naar");
 
   assert.equal(payload.version, "2.0");
+  assert.equal(payload.mode, "interactive-2d");
   assert.equal(planet?.imageHref, "/demo/assets/naar-map.png");
   assert.equal(payload.scene.projection, "isometric");
   assert.equal(payload.scene.scaleModel.bodyRadiusMultiplier, 1.25);
@@ -152,6 +153,48 @@ test("renderWorldOrbitBlock accepts legacy schema 2.0-draft input for compatibil
   assert.equal(payload.scene.renderPreset, "atlas-card");
   assert.equal(payload.scene.projection, "isometric");
   assert.equal(payload.scene.viewpoints[0]?.summary, "Legacy draft overview for markdown hydration.");
+});
+
+test("renderWorldOrbitBlock can emit an interactive 3D embed payload", () => {
+  const html = renderWorldOrbitBlock(
+    `
+schema 2.5
+
+system Minerva
+  title "Minerva"
+
+defaults
+  view perspective
+  preset atlas-card
+
+viewpoint overview
+  projection perspective
+  camera
+    azimuth 28
+    elevation 20
+    distance 5
+
+object star Primary
+object planet Home
+  orbit Primary
+  semiMajor 1au
+  phase 24deg
+  period 1y
+`.trim(),
+    {
+      mode: "interactive-3d",
+      preset: "atlas-card",
+    },
+  );
+
+  const payloadMatch = html.match(/data-worldorbit-payload="([^"]+)"/);
+  assert.ok(payloadMatch);
+
+  const payload = deserializeWorldOrbitEmbedPayload(payloadMatch[1]);
+  assert.equal(payload.mode, "interactive-3d");
+  assert.equal(payload.options?.viewMode, "3d");
+  assert.ok(payload.spatialScene);
+  assert.equal(payload.spatialScene?.viewMode, "3d");
 });
 
 test("remark plugin transforms fenced blocks into static markup", async () => {

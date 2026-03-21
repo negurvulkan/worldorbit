@@ -118,7 +118,7 @@ For direct browser usage, use the browser bundle:
 <html>
   <head>
     <meta charset="utf-8" />
-<script src="https://unpkg.com/worldorbit@2.6.0/dist/unpkg/worldorbit.min.js"></script>
+<script src="https://unpkg.com/worldorbit@3.0.0/dist/unpkg/worldorbit.min.js"></script>
     <style>
       html, body {
         margin: 0;
@@ -351,6 +351,7 @@ createInteractiveViewer(document.getElementById("preview"), {
   document: loaded.document,
   projection: "isometric",
   theme: "atlas",
+  viewMode: "3d",
 });
 ```
 
@@ -427,9 +428,12 @@ const scene = renderDocumentToScene(loaded.document, {
 
 ## Viewer Capabilities
 
-Viewer features in `v2.6` include:
+Viewer features in `v3.0.0` include:
 
 * scene-based SVG rendering
+* renderer-neutral spatial scenes through `renderDocumentToSpatialScene(...)`
+* a full 3D viewer mode on the same documents and placements as 2D
+* deterministic orbit animation with play, pause, reset, and speed controls
 * projections: `topdown`, `isometric`, `orthographic`, and `perspective`
 * theme presets: `atlas`, `nightglass`, `ember`
 * layer controls for background, guides, orbits, events, objects, labels, metadata, and relations
@@ -442,7 +446,7 @@ Viewer features in `v2.6` include:
 
 ## Markdown Integration
 
-Use `worldorbit/markdown` to transform fenced `worldorbit` blocks into static or interactive output.
+Use `worldorbit/markdown` to transform fenced `worldorbit` blocks into static output, interactive 2D output, or interactive 3D output.
 
 ```ts
 import rehypeStringify from "rehype-stringify";
@@ -455,7 +459,7 @@ import { remarkWorldOrbit } from "worldorbit/markdown";
 const html = String(
   await unified()
     .use(remarkParse)
-    .use(remarkWorldOrbit, { mode: "interactive" })
+    .use(remarkWorldOrbit, { mode: "interactive-3d" })
     .use(remarkRehype, { allowDangerousHtml: true })
     .use(rehypeStringify, { allowDangerousHtml: true })
     .process(markdownSource),
@@ -468,7 +472,7 @@ In the browser:
 import { mountWorldOrbitEmbeds } from "worldorbit/viewer";
 
 mountWorldOrbitEmbeds(document, {
-  mode: "interactive",
+  mode: "interactive-3d",
 });
 ```
 
@@ -477,6 +481,8 @@ mountWorldOrbitEmbeds(document, {
 Examples live in:
 
 * [examples/minimal.worldorbit](./examples/minimal.worldorbit)
+* [examples/minimal-3d.worldorbit](./examples/minimal-3d.worldorbit)
+* [examples/showcase-3d.worldorbit](./examples/showcase-3d.worldorbit)
 * [examples/schema25-camera.worldorbit](./examples/schema25-camera.worldorbit)
 * [examples/schema25-event-snapshot.worldorbit](./examples/schema25-event-snapshot.worldorbit)
 * [examples/studio.schema25.worldorbit](./examples/studio.schema25.worldorbit)
@@ -496,6 +502,7 @@ Browser-facing examples and demos live in the repository under `demo/`, `studio/
 * [migration guide: v1 to v2](./docs/migration-v1-to-v2.md)
 * [migration guide: v2.0 to v2.1](./docs/migration-v2-to-v2.1.md)
 * [migration guide: v2.1 to v2.5](./docs/migration-v2.1-to-v2.5.md)
+* [migration guide: v2.6 to v3.0](./docs/migration-v2.6-to-v3.0.md)
 * [language reference](./docs/language-reference.md)
 * [language reference (DE)](./docs/language-reference.de.md)
 * [API inventory](./docs/api-inventory.md)

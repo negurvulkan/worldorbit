@@ -1,10 +1,10 @@
 # API Inventory
 
-This inventory highlights the public WorldOrbit APIs that matter most for authoring, loading, validating, rendering, and editing Schema 2.5 documents. Schema 2.1, canonical Schema 2.0, Schema 1.0, and legacy `schema 2.0-draft` remain supported compatibility paths.
+This inventory highlights the public WorldOrbit APIs that matter most for authoring, loading, validating, rendering, and editing Schema 2.5 documents in the `3.0.0` viewer/runtime family. Schema 2.1, canonical Schema 2.0, Schema 1.0, and legacy `schema 2.0-draft` remain supported compatibility paths.
 
 ## `@worldorbit/core`
 
-Stable v2.6 APIs:
+Stable v3.0 APIs:
 
 - `parse(source)`
 - `parseSafe(source)`
@@ -18,6 +18,8 @@ Stable v2.6 APIs:
 - `validateDocument(document)`
 - `validateDocumentWithDiagnostics(document)`
 - `renderDocumentToScene(document, options?)`
+- `renderDocumentToSpatialScene(document, options?)`
+- `evaluateSpatialSceneAtTime(scene, timeSeconds)`
 - `formatDocument(document, options?)`
 - `formatAtlasDocument(document)`
 - `formatDraftDocument(document)`
@@ -65,6 +67,12 @@ Core public types include:
 - `WorldOrbitDiagnostic`
 - `DiagnosticResult`
 - `RenderScene`
+- `SpatialScene`
+- `SpatialSceneObject`
+- `SpatialOrbit`
+- `SpatialFocusTarget`
+- `OrbitalMotionModel`
+- `SpatialScaleModel`
 - `RenderSceneLayer`
 - `RenderSceneGroup`
 - `RenderSceneSemanticGroup`
@@ -81,7 +89,7 @@ Core public types include:
 
 ## `@worldorbit/viewer`
 
-Stable v2.6 APIs:
+Stable v3.0 APIs:
 
 - `renderSceneToSvg(scene, options?)`
 - `renderDocumentToSvg(document, options?)`
@@ -113,12 +121,14 @@ Viewer public types include:
 - `WorldOrbitViewer`
 - `WorldOrbitAtlasViewer`
 - `WorldOrbitEmbedPayload`
+- `WorldOrbitViewMode`
+- `ViewerAnimationState`
 
-Viewer behavior now includes Schema 2.5 semantic projections, camera metadata, semantic groups, relation overlays, event overlays, active event scene snapshots, render hints, and detail payloads for `epoch`, `referencePlane`, `tidalLock`, `resonance`, events, and typed lore blocks.
+Viewer behavior now includes Schema 2.5 semantic projections, camera metadata, semantic groups, relation overlays, event overlays, active event scene snapshots, render hints, detail payloads for `epoch`, `referencePlane`, `tidalLock`, `resonance`, events, and typed lore blocks, plus shared 2D/3D documents, explicit `viewMode`, deterministic orbit animation controls, and embed modes `static`, `interactive-2d`, and `interactive-3d`.
 
 ## `@worldorbit/editor`
 
-Stable v2.6 APIs:
+Stable v3.0 APIs:
 
 - `createWorldOrbitEditor(container, options)`
 
@@ -139,16 +149,17 @@ Editor public types include:
 
 - `onDirtyChange?(dirty)`
 - `shortcuts?`
+- `viewMode?`
 
-The editor and Studio now load, preserve, and roundtrip Schema 2.5 documents instead of assuming Schema 2.0 as the only canonical atlas form, including event sections, event poses, viewpoint camera blocks, and stage edits that write back into `event.positions` rather than base object placement.
+The editor and Studio now load, preserve, and roundtrip Schema 2.5 documents instead of assuming Schema 2.0 as the only canonical atlas form, including event sections, event poses, viewpoint camera blocks, stage edits that write back into `event.positions` rather than base object placement, and a 3D preview mode that reuses the same document model.
 
 ## `@worldorbit/markdown`
 
-Stable v2.6 APIs:
+Stable v3.0 APIs:
 
 - `renderWorldOrbitBlock(source, options?)`
 - `renderWorldOrbitError(message)`
 - `remarkWorldOrbit(options?)`
 - `rehypeWorldOrbit(options?)`
 
-Markdown rendering accepts Schema 2.5 source directly through the same high-level loading path as the viewer and editor.
+Markdown rendering accepts Schema 2.5 source directly through the same high-level loading path as the viewer and editor, including explicit `interactive-2d` and `interactive-3d` embed modes.

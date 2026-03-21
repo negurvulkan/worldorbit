@@ -573,6 +573,7 @@ function cloneBookmark(bookmark: ViewerBookmark): ViewerBookmark {
         scaleModel: bookmark.atlasState.renderOptions.scaleModel
           ? { ...bookmark.atlasState.renderOptions.scaleModel }
           : undefined,
+        viewMode: bookmark.atlasState.renderOptions.viewMode ?? "2d",
       },
       filter: bookmark.atlasState.filter ? { ...bookmark.atlasState.filter } : null,
     },

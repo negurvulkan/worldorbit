@@ -544,6 +544,33 @@ test("editor preserves schema 2.5 viewpoint camera blocks and projection choices
   }
 });
 
+test("editor keeps 2D embed output stable and rejects unavailable 3D preview mode", () => {
+  const dom = new JSDOM(`<div id="editor"></div>`, {
+    pretendToBeVisual: true,
+  });
+  const restoreGlobals = installDomGlobals(dom.window);
+  const restoreRects = installFixedRects(dom.window, 1120, 680);
+  const root = dom.window.document.getElementById("editor");
+  let editor;
+
+  try {
+    editor = createWorldOrbitEditor(root, {
+      source: schema25Source,
+    });
+
+    assert.equal(editor.getViewMode(), "2d");
+    assert.match(editor.exportEmbedMarkup(), /data-worldorbit-mode="interactive-2d"/);
+    assert.throws(() => editor.setViewMode("3d"), /WorldOrbit 3D/);
+    assert.equal(editor.getViewMode(), "2d");
+    assert.match(editor.exportEmbedMarkup(), /data-worldorbit-mode="interactive-2d"/);
+  } finally {
+    editor?.destroy();
+    restoreRects();
+    restoreGlobals();
+    dom.window.close();
+  }
+});
+
 test("editor stage handles can retarget at and surface placements and update free offsets", () => {
   const dom = new JSDOM(`<div id="editor"></div>`, {
     pretendToBeVisual: true,

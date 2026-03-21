@@ -4,6 +4,8 @@ import {
   type WorldOrbitDocument,
 } from "@worldorbit/core";
 
+import { WorldOrbit3DUnavailableError } from "./errors.js";
+import { render3DUnavailableMarkup } from "./embed.js";
 import { renderSceneToSvg } from "./render.js";
 import { createAtlasViewer } from "./atlas-viewer.js";
 import { createInteractiveViewer } from "./viewer.js";
@@ -75,10 +77,23 @@ export function defineWorldOrbitViewerElement(tagName = "worldorbit-viewer"): vo
         return;
       }
 
-      this.viewer = createInteractiveViewer(this, {
-        scene,
-        theme,
-      });
+      try {
+        this.viewer = createInteractiveViewer(this, {
+          source,
+          theme,
+          viewMode:
+            mode === "interactive-3d"
+              ? "3d"
+              : "2d",
+        });
+      } catch (error) {
+        if (error instanceof WorldOrbit3DUnavailableError && mode === "interactive-3d") {
+          this.innerHTML = render3DUnavailableMarkup(error.message);
+          return;
+        }
+
+        throw error;
+      }
     }
   }
 

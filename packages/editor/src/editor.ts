@@ -27,6 +27,7 @@ import { renderWorldOrbitBlock } from "@worldorbit/markdown";
 import {
   createInteractiveViewer,
   type ViewerObjectDetails,
+  type WorldOrbitViewMode,
   type WorldOrbitViewer,
 } from "@worldorbit/viewer";
 import { getViewerVisibleBounds, invertViewerPoint } from "@worldorbit/viewer/viewer-state";
@@ -328,6 +329,7 @@ export function createWorldOrbitEditor(
   const showInspector = options.showInspector ?? true;
   const showPreview = options.showPreview ?? true;
   const shortcutsEnabled = options.shortcuts ?? true;
+  let viewMode: WorldOrbitViewMode = options.viewMode ?? "2d";
 
   container.classList.add("wo-editor");
   container.dataset.woShowInspector = String(showInspector);
@@ -356,6 +358,7 @@ export function createWorldOrbitEditor(
     height: options.viewerHeight ?? 680,
     preset: atlasDocument.system?.defaults.preset ?? "atlas-card",
     projection: "document",
+    viewMode,
     minimap: true,
     tooltipMode: "hover",
     onSelectionChange(selectedObject) {
@@ -423,6 +426,21 @@ export function createWorldOrbitEditor(
     },
     getSelection(): WorldOrbitEditorSelection | null {
       return selection ? { path: { ...selection } } : null;
+    },
+    getViewMode(): WorldOrbitViewMode {
+      return viewMode;
+    },
+    setViewMode(mode: WorldOrbitViewMode): void {
+      const previousViewMode = viewMode;
+      try {
+        viewer!.setViewMode(mode);
+        viewMode = mode;
+        renderStageOverlay();
+        renderPreviewNow();
+      } catch (error) {
+        viewMode = previousViewMode;
+        throw error;
+      }
     },
     isDirty(): boolean {
       return dirty;
@@ -561,7 +579,7 @@ export function createWorldOrbitEditor(
       return viewer!.exportSvg();
     },
     exportEmbedMarkup(): string {
-      return buildEmbedMarkup(getCurrentSourceForExport(), atlasDocument);
+      return buildEmbedMarkup(getCurrentSourceForExport(), atlasDocument, viewMode);
     },
     destroy(): void {
       if (destroyed) {
@@ -1104,6 +1122,9 @@ export function createWorldOrbitEditor(
       return;
     }
     overlay.innerHTML = "";
+    if (viewMode === "3d") {
+      return;
+    }
     const selectedObjectId =
       selection?.kind === "object"
         ? selection.id ?? null
@@ -1974,7 +1995,7 @@ export function createWorldOrbitEditor(
       lastPreviewSvg = nextSvg;
     }
 
-    const nextMarkup = buildEmbedMarkup(getCurrentSourceForExport(), atlasDocument);
+    const nextMarkup = buildEmbedMarkup(getCurrentSourceForExport(), atlasDocument, viewMode);
     if (previewMarkup && nextMarkup !== lastPreviewMarkup) {
       previewMarkup.textContent = nextMarkup;
       lastPreviewMarkup = nextMarkup;
@@ -3887,9 +3908,10 @@ function mapDiagnosticFieldToInputNames(
 function buildEmbedMarkup(
   source: string,
   document: WorldOrbitAtlasDocument,
+  viewMode: WorldOrbitViewMode,
 ): string {
   return renderWorldOrbitBlock(source, {
-    mode: "interactive",
+    mode: viewMode === "3d" ? "interactive-3d" : "interactive-2d",
     preset: document.system?.defaults.preset ?? "atlas-card",
     projection: document.system?.defaults.view ?? "topdown",
   });

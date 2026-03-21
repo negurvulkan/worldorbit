@@ -13,6 +13,10 @@ export {
   validateDocumentWithDiagnostics,
 } from "./diagnostics.js";
 export { renderDocumentToScene, rotatePoint } from "./scene.js";
+export {
+  evaluateSpatialSceneAtTime,
+  renderDocumentToSpatialScene,
+} from "./spatial-scene.js";
 export { formatAtlasDocument, formatDocument, formatDraftDocument } from "./format.js";
 export {
   materializeAtlasDocument,

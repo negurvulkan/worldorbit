@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import * as esbuild from "esbuild-wasm";
+import { cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 
 const projects = [
   {
@@ -79,33 +78,6 @@ const projects = [
   },
 ];
 
-const browserBundles = [
-  {
-    name: "core",
-    entry: "packages/core/dist/index.js",
-    minifiedOutfile: "dist/unpkg/worldorbit-core.min.js",
-    minifiedGlobalName: "WorldOrbitCore",
-  },
-  {
-    name: "viewer",
-    entry: "packages/viewer/dist/index.js",
-    minifiedOutfile: "dist/unpkg/worldorbit-viewer.min.js",
-    minifiedGlobalName: "WorldOrbitViewer",
-  },
-  {
-    name: "markdown",
-    entry: "packages/markdown/dist/index.js",
-    minifiedOutfile: "dist/unpkg/worldorbit-markdown.min.js",
-    minifiedGlobalName: "WorldOrbitMarkdown",
-  },
-  {
-    name: "editor",
-    entry: "packages/editor/dist/index.js",
-    minifiedOutfile: "dist/unpkg/worldorbit-editor.min.js",
-    minifiedGlobalName: "WorldOrbitEditor",
-  },
-];
-
 for (const item of projects) {
   rmSync(`${item.project}/dist`, { recursive: true, force: true });
   rmSync(`${item.project}/tsconfig.tsbuildinfo`, { force: true });
@@ -123,6 +95,7 @@ for (const item of projects) {
   if (result.status !== 0) {
     process.exit(result.status ?? 1);
   }
+  copyPackageVendors(item.project);
   createLocalPackageShim(item.shim);
 }
 
@@ -162,54 +135,48 @@ function ensureParentDir(filePath) {
   }
 }
 
-async function buildBundle(entry, outfile, options = {}) {
-  ensureParentDir(outfile);
-  await esbuild.build({
-    entryPoints: [entry],
-    outfile: outfile,
-    bundle: true,
-    format: options.format ?? "iife",
-    globalName: options.globalName,
-    minify: options.minify ?? true,
-    platform: "browser",
-  });
-}
+function copyPackageVendors(projectDir) {
+  const sourceDir = `${projectDir}/vendor`;
+  const targetDir = `${projectDir}/dist/vendor`;
+  rmSync(targetDir, { recursive: true, force: true });
 
-async function buildPackageBundle(name, entry) {
-  await buildBundle(entry, `dist/browser/${name}/dist/index.js`, {
-    minify: false,
-    format: "iife",
-  });
-  await buildBundle(entry, `dist/unpkg/${name}/dist/index.js`, {
-    minify: false,
-    format: "iife",
-    globalName: "WorldOrbit",
-  });
+  try {
+    cpSync(sourceDir, targetDir, {
+      recursive: true,
+    });
+  } catch {
+    // Packages without vendored runtime assets simply skip this step.
+  }
 }
 
 try {
-  for (const bundle of browserBundles) {
-    await buildPackageBundle(bundle.name, bundle.entry);
-    await buildBundle(bundle.entry, bundle.minifiedOutfile, {
-      format: "iife",
-      globalName: bundle.minifiedGlobalName,
-      minify: true,
-    });
+  for (const item of projects) {
+    const packageName = item.project.split("/").at(-1);
+    if (!packageName) {
+      continue;
+    }
+
+    cpSync(
+      `${item.project}/dist`,
+      `dist/browser/${packageName}/dist`,
+      { recursive: true },
+    );
+    cpSync(
+      `${item.project}/dist`,
+      `dist/unpkg/${packageName}/dist`,
+      { recursive: true },
+    );
   }
 
   const allInOneSource = `export * from "../../packages/core/dist/index.js";\nexport * from "../../packages/viewer/dist/index.js";\n`;
   writeFileSync("dist/unpkg/worldorbit.esm.js", allInOneSource);
   writeFileSync("dist/unpkg/worldorbit.d.ts", allInOneSource);
-  await buildBundle("dist/unpkg/worldorbit.esm.js", "dist/unpkg/worldorbit.js", {
-    format: "iife",
-    globalName: "WorldOrbit",
-    minify: false,
-  });
-  await buildBundle("dist/unpkg/worldorbit.esm.js", "dist/unpkg/worldorbit.min.js", {
-    format: "iife",
-    globalName: "WorldOrbit",
-    minify: true,
-  });
+  writeFileSync("dist/unpkg/worldorbit.js", allInOneSource);
+  writeFileSync("dist/unpkg/worldorbit.min.js", allInOneSource);
+  writeFileSync("dist/unpkg/worldorbit-core.min.js", 'export * from "./core/dist/index.js";\n');
+  writeFileSync("dist/unpkg/worldorbit-viewer.min.js", 'export * from "./viewer/dist/index.js";\n');
+  writeFileSync("dist/unpkg/worldorbit-markdown.min.js", 'export * from "./markdown/dist/index.js";\n');
+  writeFileSync("dist/unpkg/worldorbit-editor.min.js", 'export * from "./editor/dist/index.js";\n');
 
   console.log("Browser bundles built!");
 } catch (e) {

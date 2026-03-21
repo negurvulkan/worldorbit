@@ -1,0 +1,108 @@
+schema 2.5
+
+system Iyath
+  title "Iyath Showcase"
+  epoch "JY-0240.0"
+  referencePlane ecliptic
+
+defaults
+  view orthographic
+  scale presentation
+  preset atlas-card
+  theme atlas
+
+group inner-system
+  label "Inner System"
+  color #d9b37a
+
+viewpoint overview
+  label "Overview"
+  projection orthographic
+  camera
+    azimuth 24
+    elevation 18
+
+viewpoint naar
+  label "Naar Perspective"
+  focus Naar
+  select Naar
+  projection perspective
+  camera
+    azimuth 38
+    elevation 24
+    distance 5
+  events naar-eclipse
+
+object star Iyath
+  mass 1.02sol
+  temperature 5840
+
+object planet Naar
+  orbit Iyath
+  semiMajor 1.18au
+  eccentricity 0.08
+  angle 28deg
+  inclination 24deg
+  phase 42deg
+  period 412d
+  radius 1.06re
+  atmosphere nitrogen-oxygen
+  groups inner-system
+
+object moon Leth
+  orbit Naar
+  distance 220000km
+  angle 34deg
+  inclination 18deg
+  phase 210deg
+  period 18d
+  radius 0.27re
+  groups inner-system
+
+object ring Dawn-Ring
+  orbit Naar
+  distance 185000km
+  angle 22deg
+  inclination 18deg
+  inner 120000km
+  outer 190000km
+
+object belt Ember-Belt
+  orbit Iyath
+  semiMajor 2.7au
+  eccentricity 0.16
+  angle 14deg
+  inclination 11deg
+  phase 166deg
+  period 1800d
+  inner 2.45au
+  outer 2.95au
+
+object structure Relay
+  kind relay
+  at Naar:L4
+  groups inner-system
+
+object structure Skyhook
+  kind elevator
+  surface Naar
+  groups inner-system
+
+event naar-eclipse
+  kind solar-eclipse
+  label "Naar Eclipse"
+  target Naar
+  participants Iyath Naar Leth
+  epoch "JY-0240.0"
+  referencePlane ecliptic
+
+  positions
+    pose Naar
+      orbit Iyath
+      semiMajor 1.18au
+      phase 90deg
+
+    pose Leth
+      orbit Naar
+      distance 220000km
+      phase 90deg

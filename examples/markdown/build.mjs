@@ -9,7 +9,10 @@ import { unified } from "unified";
 import { remarkWorldOrbit } from "../../packages/markdown/dist/index.js";
 
 const inputPath = process.argv[2] ?? "./examples/markdown/static.md";
-const mode = process.argv[3] === "interactive" ? "interactive" : "static";
+const requestedMode = process.argv[3] ?? "static";
+const mode = ["static", "interactive", "interactive-2d", "interactive-3d"].includes(requestedMode)
+  ? requestedMode
+  : "static";
 const source = await readFile(inputPath, "utf8");
 
 const file = await unified()

@@ -1,6 +1,7 @@
 import {
   loadWorldOrbitSource,
   renderDocumentToScene,
+  renderDocumentToSpatialScene,
   type LoadedWorldOrbitSource,
 } from "@worldorbit/core";
 import {
@@ -21,10 +22,20 @@ export function renderWorldOrbitBlock(
       loaded.document,
       resolveSourceRenderOptions(loaded, options),
     );
+    const mode = options.mode ?? "static";
 
-    if ((options.mode ?? "static") === "interactive") {
+    if (mode === "interactive" || mode === "interactive-2d" || mode === "interactive-3d") {
+      const normalizedMode = mode === "interactive" ? "interactive-2d" : mode;
       return createWorldOrbitEmbedMarkup(
-        createEmbedPayload(scene, "interactive", {
+        createEmbedPayload(scene, normalizedMode, {
+          spatialScene:
+            normalizedMode === "interactive-3d"
+              ? renderDocumentToSpatialScene(
+                  loaded.document,
+                  resolveSourceRenderOptions(loaded, options),
+                )
+              : undefined,
+          viewMode: normalizedMode === "interactive-3d" ? "3d" : "2d",
           initialViewpointId: options.initialViewpointId,
           initialSelectionObjectId: options.initialSelectionObjectId,
           initialFilter: options.initialFilter ?? null,
@@ -37,6 +48,7 @@ export function renderWorldOrbitBlock(
           layers: options.layers,
           subtitle: options.subtitle,
           preset: options.preset,
+          viewMode: normalizedMode === "interactive-3d" ? "3d" : "2d",
           initialViewpointId: options.initialViewpointId,
           initialSelectionObjectId: options.initialSelectionObjectId,
           initialFilter: options.initialFilter ?? null,

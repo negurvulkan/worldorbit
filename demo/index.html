@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>WorldOrbit v2.7 Atlas Demo</title>
+  <title>WorldOrbit v3.0.0 Demo</title>
   <style>
     :root {
       --bg: #071019;
@@ -360,18 +360,14 @@
 <body>
   <main>
     <section class="hero">
-      <span class="eyebrow">WorldOrbit v2.4 Atlas Platform</span>
-      <h1>Viewer, Tooltips, Studio</h1>
+      <span class="eyebrow">WorldOrbit v3.0.0 Spatial Viewer</span>
+      <h1>2D, 3D, Embeds, Animation</h1>
       <p>
-        Diese Demo laeuft direkt auf den neuen Paketen <code>@worldorbit/core</code>
-        und <code>@worldorbit/viewer</code>. Sie zeigt die neue Projektion- und
-        Scale-Pipeline vom DSL ueber die Render-Scene bis zum interaktiven Viewer.
-        Der Editor startet jetzt mit kanonischem <code>schema 2.0</code> und zeigt
-        die stabile Atlas-Schicht mit Viewpoints, Filtern, Bookmarks, Minimap,
-        Tooltip-Karten und serialisierbaren Deep-Link-States fuer Embeds. Dazu kommt
-        jetzt <code>@worldorbit/editor</code> mit der Referenz-App <code>/studio/</code>.
-        Legacy <code>2.0-draft</code> und klassische <code>1.0</code>-Quellen bleiben
-        weiter lesbar.
+        Diese Demo zeigt denselben WorldOrbit-Quelltext als statische Vorschau,
+        interaktiven 2D-Viewer oder interaktive 3D-Ansicht mit deterministischer
+        Orbit-Animation. Sie laeuft direkt auf <code>@worldorbit/core</code>,
+        <code>@worldorbit/viewer</code> und <code>@worldorbit/editor</code>, ohne
+        eine separate 3D-DSL einzufuehren oder bestehende Atlas-Workflows zu brechen.
       </p>
     </section>
 
@@ -393,10 +389,15 @@
         <div class="preview-shell">
           <div class="panel-header">
             <div class="panel-title">
-              <strong>Interactive Viewer</strong>
+              <strong>Viewer / Embed Playground</strong>
               <span id="summary" class="summary">Initialisiere Viewer</span>
             </div>
             <div class="button-row">
+              <select id="view-mode" aria-label="View mode">
+                <option value="static">Static</option>
+                <option value="interactive-2d" selected>Interactive 2D</option>
+                <option value="interactive-3d">Interactive 3D</option>
+              </select>
               <select id="theme" aria-label="Theme">
                 <option value="atlas">Atlas</option>
                 <option value="nightglass">Nightglass</option>
@@ -408,6 +409,15 @@
               <button id="rotate-right" type="button">Rotate +</button>
               <button id="fit-view" type="button">Fit</button>
               <button id="reset-view" type="button">Reset</button>
+              <button id="animation-play" type="button">Play</button>
+              <button id="animation-pause" type="button">Pause</button>
+              <button id="animation-reset" type="button">Anim Reset</button>
+              <select id="animation-speed" aria-label="Animation speed">
+                <option value="0.5">0.5x</option>
+                <option value="1" selected>1x</option>
+                <option value="2">2x</option>
+                <option value="4">4x</option>
+              </select>
               <button id="download-svg" type="button">SVG export</button>
             </div>
           </div>
@@ -427,6 +437,8 @@
                 <option value="document">Dokument</option>
                 <option value="topdown">Topdown</option>
                 <option value="isometric">Isometric</option>
+                <option value="orthographic">Orthographic</option>
+                <option value="perspective">Perspective</option>
               </select>
             </div>
             <div class="control-card">
@@ -465,6 +477,12 @@
               <input id="label-scale" type="range" min="0.8" max="1.6" step="0.05" value="1.05" />
             </div>
             <div class="control-card">
+              <strong>Animation</strong>
+              <div class="control-stack">
+                <span class="hint">Orbit-Animation ist im 3D-Modus aktiv. Play/Pause/Reset und Geschwindigkeit bleiben deterministisch.</span>
+              </div>
+            </div>
+            <div class="control-card">
               <strong>Bookmarks</strong>
               <div class="control-stack">
                 <button id="save-bookmark" type="button">View speichern</button>
@@ -501,7 +519,7 @@
     </section>
   </main>
 
-  <script src="https://unpkg.com/worldorbit@2.5.10/dist/unpkg/worldorbit.min.js"></script>
+  <script src="https://unpkg.com/worldorbit@3.0.0/dist/unpkg/worldorbit.min.js"></script>
   <script type="module" src="./demo.js"></script>
 </body>
 

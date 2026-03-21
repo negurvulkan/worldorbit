@@ -1,5 +1,11 @@
 # Changelog
 
+## v3.0.0
+
+- added `renderDocumentToSpatialScene(...)`, shared spatial scene types, and deterministic orbit-motion models so the same Schema `2.5` documents can drive both 2D and 3D viewers
+- extended `@worldorbit/viewer`, embeds, Markdown, Demo, Editor, and Studio with explicit `viewMode`, `interactive-2d` / `interactive-3d` modes, 3D preview switching, and play/pause/reset/speed animation controls
+- refreshed release-facing docs, examples, UNPKG shell pages, migration notes, and package metadata for the `3.0.0` suite while keeping the existing text-first DSL and 2D pipelines intact
+
 ## v2.6.0
 
 - added Schema 2.5 as the new recommended atlas format with `orthographic` and `perspective` viewpoints, a Schema-level `camera` block, and clearer event/pose snapshot context for `epoch` and `referencePlane`

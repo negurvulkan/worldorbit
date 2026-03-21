@@ -1,45 +1,57 @@
-import { loadWorldOrbitSource } from "@worldorbit/core";
+import {
+  loadWorldOrbitSource,
+  renderDocumentToScene,
+  renderDocumentToSpatialScene,
+} from "@worldorbit/core";
 import {
   createEmbedPayload,
   createInteractiveViewer,
   createWorldOrbitEmbedMarkup,
+  renderSceneToSvg,
 } from "@worldorbit/viewer";
 
-const sampleSource = `schema 2.0
+const sampleSource = `schema 2.5
 
 system Iyath
   title "Iyath System"
+  epoch "JY-0001.0"
+  referencePlane ecliptic
 
 defaults
-  view isometric
+  view orthographic
   scale presentation
   preset atlas-card
   theme atlas
 
-atlas
-  metadata
-    atlas.note "Reference atlas entry for the direct-to-v2.4 schema/editor track."
-
 viewpoint overview
   label "Atlas Overview"
-  summary "Fit the full system and keep the atlas defaults visible."
-  projection isometric
+  summary "Fit the full system and keep the atlas defaults visible in 2D and 3D."
+  projection orthographic
+  camera
+    azimuth 26
+    elevation 18
 
 viewpoint naar
   label "Naar Close Orbit"
-  summary "Center the homeworld and its local infrastructure."
+  summary "Center the homeworld and its local infrastructure in a perspective camera."
   focus Naar
   select Naar
-  zoom 2.25
-  rotation 12
-  layers background orbits objects labels metadata -guides
+  projection perspective
+  camera
+    azimuth 38
+    elevation 24
+    distance 5
+  layers background orbits objects labels metadata relations
 
 viewpoint infrastructure
   label "Infrastructure"
   summary "Filter infrastructure and anomalies for atlas inspection."
   focus Naar
-  projection isometric
-  layers background orbits objects labels metadata
+  projection orthographic
+  camera
+    azimuth 30
+    elevation 20
+  layers background orbits objects labels metadata relations
   filter
     query relay skyhook gate anomaly
     objectTypes structure phenomenon
@@ -104,6 +116,7 @@ object belt Ember-Belt
   angle 14deg
   inclination 11deg
   phase 166deg
+  period 1800d
   inner 2.45au
   outer 2.95au
   tags mining debris atlas
@@ -132,6 +145,7 @@ object phenomenon Helioscar
   angle 36deg
   inclination 9deg
   phase 228deg
+  period 3200d
   temperature 620`;
 
 const sourceField = document.querySelector("#source");
@@ -151,9 +165,14 @@ const fitButton = document.querySelector("#fit-view");
 const resetViewButton = document.querySelector("#reset-view");
 const saveBookmarkButton = document.querySelector("#save-bookmark");
 const bookmarkList = document.querySelector("#bookmark-list");
+const viewModeSelect = document.querySelector("#view-mode");
 const themeSelect = document.querySelector("#theme");
 const presetSelect = document.querySelector("#preset");
 const projectionSelect = document.querySelector("#projection");
+const animationPlayButton = document.querySelector("#animation-play");
+const animationPauseButton = document.querySelector("#animation-pause");
+const animationResetButton = document.querySelector("#animation-reset");
+const animationSpeedSelect = document.querySelector("#animation-speed");
 const viewpointSelect = document.querySelector("#viewpoint");
 const typeFilterSelect = document.querySelector("#type-filter");
 const atlasSearchInput = document.querySelector("#atlas-search");
@@ -172,8 +191,10 @@ let currentAtlasDocument = null;
 let currentSelection = null;
 let currentSelectionDetails = null;
 let currentScene = null;
+let currentSpatialScene = null;
 let currentAtlasState = null;
 let currentViewpointId = null;
+let currentDisplayMode = getDisplayMode();
 let currentRenderOptions = getRenderOptionsFromControls();
 let bookmarks = [];
 let renderTimer = 0;
@@ -189,19 +210,35 @@ function scheduleRender() {
 
 function render() {
   try {
+    currentDisplayMode = getDisplayMode();
     const loaded = loadWorldOrbitSource(sourceField.value);
     currentDocument = loaded.document;
     currentSourceSchemaVersion = loaded.schemaVersion;
     currentAtlasDocument = loaded.atlasDocument ?? loaded.draftDocument;
     currentSelection = null;
     currentSelectionDetails = null;
+    currentScene = renderDocumentToScene(currentDocument, getDocumentRenderOptions());
+    currentSpatialScene =
+      currentDisplayMode === "interactive-3d"
+        ? renderDocumentToSpatialScene(currentDocument, getDocumentRenderOptions())
+        : null;
+    destroyViewer();
 
-    if (!viewer) {
+    if (currentDisplayMode === "static") {
+      preview.innerHTML = renderSceneToSvg(currentScene, {
+        ...currentRenderOptions,
+        theme: themeSelect.value,
+      });
+      currentAtlasState = null;
+      currentViewpointId = null;
+    } else {
       viewer = createInteractiveViewer(preview, {
         document: currentDocument,
+        spatialScene: currentSpatialScene ?? undefined,
         ...currentRenderOptions,
         theme: themeSelect.value,
         minimap: true,
+        viewMode: currentDisplayMode === "interactive-3d" ? "3d" : "2d",
         onSelectionChange(selection) {
           currentSelection = selection;
           updateSummary();
@@ -232,27 +269,21 @@ function render() {
           updateEmbedPanel();
         },
       });
-    } else {
-      viewer.setDocument(currentDocument);
-      viewer.setRenderOptions({
-        ...currentRenderOptions,
-        theme: themeSelect.value,
-      });
-      viewer.setState({ selectedObjectId: null });
+      currentScene = viewer.getScene();
+      viewer.setAnimationSpeed(Number(animationSpeedSelect.value));
     }
 
-    currentScene = viewer.getScene();
     populateViewpointOptions();
 
-    if (pendingAtlasState) {
+    if (viewer && pendingAtlasState) {
       viewer.setAtlasState(pendingAtlasState);
       pendingAtlasState = null;
       currentScene = viewer.getScene();
-    } else {
+    } else if (viewer) {
       applyAtlasFilter(false);
     }
 
-    currentAtlasState = viewer.getAtlasState();
+    currentAtlasState = viewer?.getAtlasState() ?? null;
     updateSearchResults();
     renderBookmarks();
     updateSummary();
@@ -260,15 +291,16 @@ function render() {
     updateEmbedPanel();
     updateDownloadState();
     errorPanel.hidden = true;
-    downloadButton.disabled = false;
-    enableViewerButtons(true);
+    enableViewerButtons(Boolean(currentScene));
   } catch (error) {
+    destroyViewer();
     currentDocument = null;
     currentSourceSchemaVersion = null;
     currentAtlasDocument = null;
     currentSelection = null;
     currentSelectionDetails = null;
     currentScene = null;
+    currentSpatialScene = null;
     currentAtlasState = null;
     currentViewpointId = null;
     preview.innerHTML = "";
@@ -286,22 +318,7 @@ function render() {
 function applyRenderControls() {
   currentRenderOptions = getRenderOptionsFromControls();
   syncControlOutputs();
-
-  if (!viewer || !currentDocument) {
-    return;
-  }
-
-  viewer.setRenderOptions({
-    ...currentRenderOptions,
-    theme: themeSelect.value,
-  });
-  currentScene = viewer.getScene();
-  populateViewpointOptions();
-  updateSearchResults();
-  updateSummary();
-  updateModelPanel();
-  updateEmbedPanel();
-  updateDownloadState();
+  render();
 }
 
 function applyAtlasFilter(resetViewpoint = true) {
@@ -358,7 +375,7 @@ function applyViewpointSelection() {
 }
 
 function populateViewpointOptions() {
-  if (!viewer) {
+  if (!currentScene) {
     viewpointSelect.innerHTML = `<option value="">Scene default</option>`;
     return;
   }
@@ -366,8 +383,7 @@ function populateViewpointOptions() {
   const activeValue = currentViewpointId ?? "";
   const options = [
     `<option value="">Scene default</option>`,
-    ...viewer
-      .listViewpoints()
+    ...currentScene.viewpoints
       .map(
         (viewpoint) =>
           `<option value="${escapeHtml(viewpoint.id)}">${escapeHtml(viewpoint.label)}</option>`,
@@ -375,7 +391,7 @@ function populateViewpointOptions() {
   ];
 
   viewpointSelect.innerHTML = options.join("");
-  viewpointSelect.value = activeValue && viewer.listViewpoints().some((entry) => entry.id === activeValue)
+  viewpointSelect.value = activeValue && currentScene.viewpoints.some((entry) => entry.id === activeValue)
     ? activeValue
     : "";
 }
@@ -474,6 +490,16 @@ function getRenderOptionsFromControls() {
   };
 }
 
+function getDocumentRenderOptions() {
+  return {
+    ...currentRenderOptions,
+    projection:
+      currentRenderOptions.projection === "document"
+        ? undefined
+        : currentRenderOptions.projection,
+  };
+}
+
 function syncControlOutputs() {
   orbitScaleValue.value = Number(orbitScaleInput.value).toFixed(2);
   bodyScaleValue.value = Number(bodyScaleInput.value).toFixed(2);
@@ -497,19 +523,19 @@ function syncAtlasControlsFromFilter(filter) {
 }
 
 function updateSummary() {
-  if (!currentDocument || !currentScene || !viewer) {
+  if (!currentDocument || !currentScene) {
     summary.textContent = "Keine Szene geladen";
     return;
   }
 
-  const filter = viewer.getFilter();
+  const filter = viewer?.getFilter() ?? null;
   const filterSummary = filter
     ? `Filter ${filter.query ?? filter.objectTypes?.join("/") ?? "aktiv"}`
     : "Kein Filter";
   const viewpointSummary = currentViewpointId ? `Viewpoint ${currentViewpointId}` : "Scene default";
   const preset = currentScene.renderPreset ?? "custom";
   const schemaLabel = currentSourceSchemaVersion ?? currentDocument.version;
-  const base = `${currentDocument.objects.length} Objekte - schema ${schemaLabel} - ${currentScene.projection} - ${currentScene.layoutPreset} layout - ${preset}`;
+  const base = `${currentDocument.objects.length} Objekte - schema ${schemaLabel} - ${currentDisplayMode} - ${currentScene.projection} - ${currentScene.layoutPreset} layout - ${preset}`;
 
   summary.textContent = currentSelection
     ? `${base} - ${viewpointSummary} - ${filterSummary} - Auswahl: ${currentSelection.objectId}`
@@ -517,12 +543,12 @@ function updateSummary() {
 }
 
 function updateModelPanel() {
-  if (!currentDocument || !currentScene || !viewer) {
+  if (!currentDocument || !currentScene) {
     modelOutput.textContent = "";
     return;
   }
 
-  const payload = currentSelectionDetails
+  const payload = currentSelectionDetails && viewer
     ? {
         selectedObject: {
           id: currentSelectionDetails.objectId,
@@ -544,6 +570,14 @@ function updateModelPanel() {
           label: currentSelectionDetails.label,
         },
         atlasState: currentAtlasState,
+        spatialScene: currentSpatialScene
+          ? {
+              viewMode: currentSpatialScene.viewMode,
+              timeFrozen: currentSpatialScene.timeFrozen,
+              objectCount: currentSpatialScene.objects.length,
+              orbitCount: currentSpatialScene.orbits.length,
+            }
+          : null,
         renderNode: {
           projection: currentScene.projection,
           x: currentSelectionDetails.renderObject.x,
@@ -572,6 +606,14 @@ function updateModelPanel() {
         sourceSchemaVersion: currentSourceSchemaVersion,
         atlasDocumentVersion: currentAtlasDocument?.version ?? null,
         atlasState: currentAtlasState,
+        spatialScene: currentSpatialScene
+          ? {
+              viewMode: currentSpatialScene.viewMode,
+              timeFrozen: currentSpatialScene.timeFrozen,
+              objectCount: currentSpatialScene.objects.length,
+              orbitCount: currentSpatialScene.orbits.length,
+            }
+          : null,
         sceneDefaults: {
           preset: currentScene.renderPreset,
           projection: currentScene.projection,
@@ -658,29 +700,34 @@ function pickRenderPlacement(placement) {
 }
 
 function updateEmbedPanel() {
-  if (!currentScene || !viewer) {
+  if (!currentScene) {
     embedOutput.textContent = "";
     return;
   }
 
-  const atlasState = viewer.getAtlasState();
+  const atlasState = viewer?.getAtlasState() ?? null;
+  const initialFilter = viewer?.getFilter() ?? null;
+  const payloadMode = currentDisplayMode === "static" ? "static" : currentDisplayMode;
   embedOutput.textContent = createWorldOrbitEmbedMarkup(
-    createEmbedPayload(currentScene, "interactive", {
+    createEmbedPayload(currentScene, payloadMode, {
+      spatialScene: currentSpatialScene ?? undefined,
+      viewMode: currentDisplayMode === "interactive-3d" ? "3d" : "2d",
       atlasState,
       initialViewpointId: currentViewpointId ?? undefined,
       initialSelectionObjectId: currentSelection?.objectId ?? undefined,
-      initialFilter: viewer.getFilter(),
-      minimap: true,
+      initialFilter,
+      minimap: currentDisplayMode !== "static",
     }),
     {
       theme: themeSelect.value,
       className: "worldorbit-embed demo-sample",
       preset: currentRenderOptions.preset,
+      viewMode: currentDisplayMode === "interactive-3d" ? "3d" : "2d",
       atlasState,
       initialViewpointId: currentViewpointId ?? undefined,
       initialSelectionObjectId: currentSelection?.objectId ?? undefined,
-      initialFilter: viewer.getFilter(),
-      minimap: true,
+      initialFilter,
+      minimap: currentDisplayMode !== "static",
     },
   );
 }
@@ -690,6 +737,8 @@ function updateDownloadState() {
 }
 
 function enableViewerButtons(enabled) {
+  const interactive = enabled && currentDisplayMode !== "static";
+  const animate = interactive && currentDisplayMode === "interactive-3d";
   [
     zoomInButton,
     zoomOutButton,
@@ -699,24 +748,50 @@ function enableViewerButtons(enabled) {
     resetViewButton,
     saveBookmarkButton,
   ].forEach((button) => {
-    button.disabled = !enabled;
+    button.disabled = !interactive;
   });
+  animationPlayButton.disabled = !animate;
+  animationPauseButton.disabled = !animate;
+  animationResetButton.disabled = !animate;
+  animationSpeedSelect.disabled = !animate;
+  viewpointSelect.disabled = !interactive;
+  typeFilterSelect.disabled = !interactive;
+  atlasSearchInput.disabled = !interactive;
 }
 
 function downloadSvg() {
-  if (!viewer) {
+  if (!currentScene) {
     return;
   }
 
-  const blob = new Blob([viewer.exportSvg()], {
+  const svg = viewer
+    ? viewer.exportSvg()
+    : renderSceneToSvg(currentScene, {
+        ...currentRenderOptions,
+        theme: themeSelect.value,
+      });
+  const blob = new Blob([svg], {
     type: "image/svg+xml;charset=utf-8",
   });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "worldorbit-v2-atlas.svg";
+  link.download = "worldorbit-v3-atlas.svg";
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function getDisplayMode() {
+  return viewModeSelect.value;
+}
+
+function destroyViewer() {
+  if (!viewer) {
+    return;
+  }
+
+  viewer.destroy();
+  viewer = null;
 }
 
 function readAtlasStateFromHash() {
@@ -759,6 +834,7 @@ saveBookmarkButton.addEventListener("click", saveBookmark);
 themeSelect.addEventListener("change", applyRenderControls);
 presetSelect.addEventListener("change", applyRenderControls);
 projectionSelect.addEventListener("change", applyRenderControls);
+viewModeSelect.addEventListener("change", applyRenderControls);
 viewpointSelect.addEventListener("change", applyViewpointSelection);
 typeFilterSelect.addEventListener("change", () => applyAtlasFilter(true));
 atlasSearchInput.addEventListener("input", () => {
@@ -768,6 +844,12 @@ atlasSearchInput.addEventListener("input", () => {
 orbitScaleInput.addEventListener("input", applyRenderControls);
 bodyScaleInput.addEventListener("input", applyRenderControls);
 labelScaleInput.addEventListener("input", applyRenderControls);
+animationPlayButton.addEventListener("click", () => viewer?.playAnimation());
+animationPauseButton.addEventListener("click", () => viewer?.pauseAnimation());
+animationResetButton.addEventListener("click", () => viewer?.resetAnimation());
+animationSpeedSelect.addEventListener("change", () => {
+  viewer?.setAnimationSpeed(Number(animationSpeedSelect.value));
+});
 searchResults.addEventListener("click", (event) => {
   const button = event.target.closest("[data-object-id]");
   if (!button) {

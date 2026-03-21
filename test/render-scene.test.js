@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { loadWorldOrbitSource, parse, renderDocumentToScene } from "@worldorbit/core";
+import {
+  evaluateSpatialSceneAtTime,
+  loadWorldOrbitSource,
+  parse,
+  renderDocumentToScene,
+  renderDocumentToSpatialScene,
+} from "@worldorbit/core";
 import { renderSceneToSvg } from "@worldorbit/viewer";
 
 const source = `
@@ -263,6 +269,42 @@ event aster-eclipse
       orbit Aster
       distance 300000km
       phase 90deg
+`.trim();
+
+const spatialSource = `
+schema 2.5
+
+system Minerva
+  title "Minerva"
+  epoch "JY-0100.0"
+  referencePlane ecliptic
+
+defaults
+  view perspective
+  scale presentation
+  preset atlas-card
+
+viewpoint overview
+  label "Overview"
+  projection perspective
+  camera
+    azimuth 28
+    elevation 20
+    distance 5
+
+object star Primary
+  mass 1sol
+
+object planet Home
+  orbit Primary
+  semiMajor 1au
+  phase 24deg
+  period 1y
+
+object moon Lantern
+  orbit Home
+  distance 410000km
+  phase 90deg
 `.trim();
 
 const labelPlacementSource = `
@@ -665,4 +707,35 @@ test("schema 2.5 scenes preserve projection intent, camera metadata, and 2D fall
     eventScene.objects.find((object) => object.objectId === "Beryl")?.object.referencePlane,
     "ecliptic",
   );
+});
+
+test("spatial scenes reuse the shared document model, derive deterministic motion, and freeze event snapshots", () => {
+  const loaded = loadWorldOrbitSource(spatialSource);
+  const spatialScene = renderDocumentToSpatialScene(loaded.document, {
+    width: 960,
+    height: 640,
+  });
+  const home = spatialScene.objects.find((object) => object.objectId === "Home");
+  const lantern = spatialScene.objects.find((object) => object.objectId === "Lantern");
+  const t0 = evaluateSpatialSceneAtTime(spatialScene, 0);
+  const tLater = evaluateSpatialSceneAtTime(spatialScene, 24);
+
+  assert.equal(spatialScene.viewMode, "3d");
+  assert.equal(spatialScene.timeFrozen, false);
+  assert.ok(spatialScene.focusTargets.some((target) => target.objectId === "Home"));
+  assert.equal(home?.motion?.heuristic, false);
+  assert.equal(lantern?.motion?.heuristic, true);
+  assert.notDeepEqual(t0.get("Home"), tLater.get("Home"));
+  assert.notDeepEqual(t0.get("Lantern"), tLater.get("Lantern"));
+
+  const frozenScene = renderDocumentToSpatialScene(loadWorldOrbitSource(schema25Source).document, {
+    width: 960,
+    height: 640,
+    activeEventId: "aster-eclipse",
+  });
+  const frozenStart = evaluateSpatialSceneAtTime(frozenScene, 0);
+  const frozenLater = evaluateSpatialSceneAtTime(frozenScene, 240);
+
+  assert.equal(frozenScene.timeFrozen, true);
+  assert.deepEqual(frozenStart.get("Beryl"), frozenLater.get("Beryl"));
 });
