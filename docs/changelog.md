@@ -1,5 +1,9 @@
 # Changelog
 
+## v3.0.2
+
+- refreshed package metadata and version-pinned CDN references for the `3.0.2` patch release across docs and browser-facing entry points
+
 ## v3.0.1
 
 - fixed the browser and UNPKG release entry points so `worldorbit.js` and `worldorbit.min.js` are emitted as executable browser bundles instead of raw ESM re-export shims
