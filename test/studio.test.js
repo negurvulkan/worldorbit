@@ -159,28 +159,32 @@ test("studio mounts, persists session state, warns on unload, and saves canonica
   }
 });
 
-test("studio shells use UNPKG imports and page-specific example urls", () => {
+test("studio and docs shells use same-origin module paths and page-specific example urls", () => {
   const studioHtml = readFileSync(new URL("../studio/index.html", import.meta.url), "utf8");
   const docsStudioHtml = readFileSync(new URL("../docs/studio/index.html", import.meta.url), "utf8");
+  const docsIndexHtml = readFileSync(new URL("../docs/index.html", import.meta.url), "utf8");
+  const beginnerGuideHtml = readFileSync(new URL("../docs/beginner_guide.html", import.meta.url), "utf8");
 
-  assert.match(studioHtml, /https:\/\/unpkg\.com\/worldorbit@3\.0\.3\/packages\/viewer\/dist\/index\.js/);
-  assert.match(docsStudioHtml, /https:\/\/unpkg\.com\/worldorbit@3\.0\.3\/packages\/viewer\/dist\/index\.js/);
+  assert.match(studioHtml, /"@worldorbit\/viewer": "\.\.\/packages\/viewer\/dist\/index\.js"/);
+  assert.match(docsStudioHtml, /"@worldorbit\/viewer": "\.\.\/\.\.\/packages\/viewer\/dist\/index\.js"/);
   assert.match(studioHtml, /data-example-url="\.\.\/examples\/studio\.schema25\.worldorbit"/);
   assert.match(docsStudioHtml, /data-example-url="\.\.\/\.\.\/examples\/studio\.schema25\.worldorbit"/);
   assert.match(
     studioHtml,
-    /"@worldorbit\/editor": "https:\/\/unpkg\.com\/worldorbit@3\.0\.3\/packages\/editor\/dist\/index\.js"/,
+    /"@worldorbit\/editor": "\.\.\/packages\/editor\/dist\/index\.js"/,
   );
   assert.match(
     docsStudioHtml,
-    /"@worldorbit\/editor": "https:\/\/unpkg\.com\/worldorbit@3\.0\.3\/packages\/editor\/dist\/index\.js"/,
+    /"@worldorbit\/editor": "\.\.\/\.\.\/packages\/editor\/dist\/index\.js"/,
   );
   assert.match(
     studioHtml,
-    /"@worldorbit\/viewer\/viewer-state": "https:\/\/unpkg\.com\/worldorbit@3\.0\.3\/packages\/viewer\/dist\/viewer-state\.js"/,
+    /"@worldorbit\/viewer\/viewer-state": "\.\.\/packages\/viewer\/dist\/viewer-state\.js"/,
   );
   assert.match(
     docsStudioHtml,
-    /"@worldorbit\/viewer\/viewer-state": "https:\/\/unpkg\.com\/worldorbit@3\.0\.3\/packages\/viewer\/dist\/viewer-state\.js"/,
+    /"@worldorbit\/viewer\/viewer-state": "\.\.\/\.\.\/packages\/viewer\/dist\/viewer-state\.js"/,
   );
+  assert.match(docsIndexHtml, /src="\.\.\/dist\/unpkg\/worldorbit\.min\.js"/);
+  assert.match(beginnerGuideHtml, /src="\.\.\/dist\/unpkg\/worldorbit\.min\.js"/);
 });
