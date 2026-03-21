@@ -1,0 +1,11 @@
+import type { AtlasDocumentPath, AtlasResolvedDiagnostic, WorldOrbitAtlasDocument, WorldOrbitAtlasDocumentVersion, WorldOrbitDiagnostic } from "./types.js";
+export declare function createEmptyAtlasDocument(systemId?: string, version?: WorldOrbitAtlasDocumentVersion): WorldOrbitAtlasDocument;
+export declare function cloneAtlasDocument(document: WorldOrbitAtlasDocument): WorldOrbitAtlasDocument;
+export declare function listAtlasDocumentPaths(document: WorldOrbitAtlasDocument): AtlasDocumentPath[];
+export declare function getAtlasDocumentNode(document: WorldOrbitAtlasDocument, path: AtlasDocumentPath): unknown;
+export declare function upsertAtlasDocumentNode(document: WorldOrbitAtlasDocument, path: AtlasDocumentPath, value: unknown): WorldOrbitAtlasDocument;
+export declare function updateAtlasDocumentNode(document: WorldOrbitAtlasDocument, path: AtlasDocumentPath, updater: (value: unknown) => unknown): WorldOrbitAtlasDocument;
+export declare function removeAtlasDocumentNode(document: WorldOrbitAtlasDocument, path: AtlasDocumentPath): WorldOrbitAtlasDocument;
+export declare function resolveAtlasDiagnostics(document: WorldOrbitAtlasDocument, diagnostics: WorldOrbitDiagnostic[]): AtlasResolvedDiagnostic[];
+export declare function resolveAtlasDiagnosticPath(document: WorldOrbitAtlasDocument, diagnostic: WorldOrbitDiagnostic): AtlasDocumentPath | null;
+export declare function validateAtlasDocumentWithDiagnostics(document: WorldOrbitAtlasDocument): AtlasResolvedDiagnostic[];

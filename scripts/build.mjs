@@ -159,6 +159,18 @@ function ensureParentDir(filePath) {
   }
 }
 
+function copyDirectory(sourceDir, targetDir) {
+  rmSync(targetDir, { recursive: true, force: true });
+  ensureParentDir(targetDir);
+  cpSync(sourceDir, targetDir, { recursive: true });
+}
+
+function copyFile(sourceFile, targetFile) {
+  rmSync(targetFile, { force: true });
+  ensureParentDir(targetFile);
+  cpSync(sourceFile, targetFile);
+}
+
 async function buildBundle(entry, outfile, options = {}) {
   ensureParentDir(outfile);
   await esbuild.build({
@@ -227,6 +239,13 @@ try {
       minify: true,
     });
   }
+
+  console.log("Publishing docs assets...");
+  copyFile("dist/unpkg/worldorbit.min.js", "docs/assets/worldorbit/worldorbit.min.js");
+  copyDirectory("dist/browser/core", "docs/assets/browser/core");
+  copyDirectory("dist/browser/viewer", "docs/assets/browser/viewer");
+  copyDirectory("dist/browser/markdown", "docs/assets/browser/markdown");
+  copyDirectory("dist/browser/editor", "docs/assets/browser/editor");
 
   console.log("Browser bundles built!");
 } catch (e) {

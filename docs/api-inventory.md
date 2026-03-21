@@ -1,6 +1,6 @@
 # API Inventory
 
-This inventory highlights the public WorldOrbit APIs that matter most for authoring, loading, validating, rendering, and editing Schema 2.5 documents in the `3.0.3` viewer/runtime family. Schema 2.1, canonical Schema 2.0, Schema 1.0, and legacy `schema 2.0-draft` remain supported compatibility paths.
+This inventory highlights the public WorldOrbit APIs that matter most for authoring, loading, validating, rendering, and editing Schema 2.5 documents in the `3.0.5` viewer/runtime family. Schema 2.1, canonical Schema 2.0, Schema 1.0, and legacy `schema 2.0-draft` remain supported compatibility paths.
 
 ## `@worldorbit/core`
 

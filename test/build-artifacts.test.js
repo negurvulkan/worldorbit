@@ -18,6 +18,13 @@ const requiredArtifacts = [
   "../dist/unpkg/worldorbit.js",
   "../dist/unpkg/worldorbit.min.js",
   "../dist/unpkg/worldorbit-editor.min.js",
+  "../docs/assets/worldorbit/worldorbit.min.js",
+  "../docs/assets/browser/core/dist/index.js",
+  "../docs/assets/browser/viewer/dist/index.js",
+  "../docs/assets/browser/viewer/dist/runtime-3d.js",
+  "../docs/assets/browser/viewer/dist/vendor/three.module.js",
+  "../docs/assets/browser/markdown/dist/index.js",
+  "../docs/assets/browser/editor/dist/index.js",
 ];
 
 test("build emits root dist bundles for all browser packages including editor", () => {
@@ -31,4 +38,7 @@ test("build emits root dist bundles for all browser packages including editor", 
   const rootBundle = readFileSync(new URL("../dist/unpkg/worldorbit.min.js", import.meta.url), "utf8");
   assert.doesNotMatch(rootBundle.slice(0, 200), /\bexport\b/);
   assert.match(rootBundle, /WorldOrbit/);
+
+  const docsBundle = readFileSync(new URL("../docs/assets/worldorbit/worldorbit.min.js", import.meta.url), "utf8");
+  assert.match(docsBundle, /WorldOrbit/);
 });

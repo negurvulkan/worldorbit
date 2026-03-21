@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>WorldOrbit Studio v3.0.3</title>
+  <title>WorldOrbit Studio v3.0.5</title>
   <style>
     :root {
       color-scheme: dark;
@@ -178,11 +178,11 @@
 <body>
   <main>
     <section class="hero">
-      <strong>WorldOrbit Studio v3.0.3</strong>
+      <strong>WorldOrbit Studio v3.0.5</strong>
       <h1>WorldOrbit Visual Editor</h1>
       <p>
-        This reference app loads version-pinned WorldOrbit runtime packages from UNPKG so the
-        browser always resolves a concrete published build instead of a floating package endpoint.
+        This reference app loads WorldOrbit runtime packages from the local docs asset bundle so
+        GitHub Pages can serve a self-contained Studio without external package resolution.
       </p>
     </section>
 
@@ -192,11 +192,11 @@
   <script type="importmap">
       {
         "imports": {
-        "@worldorbit/core": "../../packages/core/dist/index.js",
-        "@worldorbit/viewer": "../../packages/viewer/dist/index.js",
-        "@worldorbit/viewer/viewer-state": "../../packages/viewer/dist/viewer-state.js",
-        "@worldorbit/markdown": "../../packages/markdown/dist/index.js",
-        "@worldorbit/editor": "../../packages/editor/dist/index.js"
+        "@worldorbit/core": "../assets/browser/core/dist/index.js",
+        "@worldorbit/viewer": "../assets/browser/viewer/dist/index.js",
+        "@worldorbit/viewer/viewer-state": "../assets/browser/viewer/dist/viewer-state.js",
+        "@worldorbit/markdown": "../assets/browser/markdown/dist/index.js",
+        "@worldorbit/editor": "../assets/browser/editor/dist/index.js"
         }
       }
       </script>

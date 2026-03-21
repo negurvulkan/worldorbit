@@ -1,5 +1,11 @@
 # Changelog
 
+## v3.0.5
+
+- made the published docs self-contained by copying browser bundles and module-ready browser assets into `docs/assets/` during the build
+- switched `docs/index.html`, `docs/beginner_guide.html`, and `docs/studio/index.html` to load only same-root docs assets so GitHub Pages no longer depends on `dist/`, workspace package paths, or external package CDN resolution
+- bumped the suite and package metadata to `3.0.5` for the docs hotfix release
+
 ## v3.0.3
 
 - switched the main docs landing page and beginner guide back to the bundled browser script `worldorbit.min.js` so direct browser usage no longer depends on the non-self-contained ESM entry
