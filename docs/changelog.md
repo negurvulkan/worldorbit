@@ -1,5 +1,11 @@
 # Changelog
 
+## v3.0.6
+
+- made interactive embeds responsive to their host container with resize tracking and safe height fallbacks
+- moved interactive 2D and 3D labels into screen-space overlays so text keeps a stable on-screen size while zooming
+- regenerated browser bundles and docs assets for the responsive viewer update
+
 ## v3.0.5
 
 - made the published docs self-contained by copying browser bundles and module-ready browser assets into `docs/assets/` during the build

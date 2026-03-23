@@ -117,6 +117,7 @@ export function mountWorldOrbitEmbeds(
   options: MountWorldOrbitEmbedsOptions = {},
 ): MountedWorldOrbitEmbeds {
   const viewers = new Map<HTMLElement, ReturnType<typeof createInteractiveViewer>>();
+  const cleanupCallbacks: Array<() => void> = [];
   const elements = [...root.querySelectorAll<HTMLElement>(EMBED_SELECTOR)];
 
   for (const element of elements) {
@@ -136,15 +137,18 @@ export function mountWorldOrbitEmbeds(
       options.viewer?.viewMode ??
       payload.options?.viewMode ??
       embedModeToViewMode(mode);
+    const measureViewport = (): { width: number; height: number } =>
+      resolveEmbedViewport(element, payload.scene, options);
 
     if (mode === "interactive-2d" || mode === "interactive-3d") {
       try {
+        const viewport = measureViewport();
         const viewer = createInteractiveViewer(element, {
           ...options.viewer,
           scene: payload.scene,
           spatialScene: payload.spatialScene,
-          width: options.width ?? payload.scene.width,
-          height: options.height ?? payload.scene.height,
+          width: viewport.width,
+          height: viewport.height,
           padding: options.padding ?? payload.scene.padding,
           preset,
           theme,
@@ -160,6 +164,15 @@ export function mountWorldOrbitEmbeds(
           viewer.setAtlasState(payload.options.atlasState);
         }
         viewers.set(element, viewer);
+        cleanupCallbacks.push(
+          bindEmbedResize(element, () => {
+            const nextViewport = measureViewport();
+            viewer.setRenderOptions({
+              width: nextViewport.width,
+              height: nextViewport.height,
+            });
+          }),
+        );
         options.onMount?.(viewer, element);
       } catch (error) {
         if (error instanceof WorldOrbit3DUnavailableError && mode === "interactive-3d") {
@@ -170,17 +183,23 @@ export function mountWorldOrbitEmbeds(
         }
       }
     } else {
-      element.innerHTML = renderSceneToSvg(payload.scene, {
-        width: options.width ?? payload.scene.width,
-        height: options.height ?? payload.scene.height,
-        padding: options.padding ?? payload.scene.padding,
-        preset,
-        theme,
-        layers,
-        filter: initialFilter,
-        selectedObjectId: initialSelectionObjectId ?? null,
-        subtitle,
-      });
+      const renderStaticEmbed = (): void => {
+        const viewport = measureViewport();
+        element.innerHTML = renderSceneToSvg(payload.scene, {
+          width: viewport.width,
+          height: viewport.height,
+          padding: options.padding ?? payload.scene.padding,
+          preset,
+          theme,
+          layers,
+          filter: initialFilter,
+          selectedObjectId: initialSelectionObjectId ?? null,
+          subtitle,
+        });
+      };
+
+      renderStaticEmbed();
+      cleanupCallbacks.push(bindEmbedResize(element, renderStaticEmbed));
       options.onMount?.(null, element);
     }
 
@@ -190,12 +209,88 @@ export function mountWorldOrbitEmbeds(
   return {
     viewers: [...viewers.values()],
     destroy(): void {
+      for (const cleanup of cleanupCallbacks) {
+        cleanup();
+      }
       for (const [element, viewer] of viewers.entries()) {
         viewer.destroy();
         element.removeAttribute("data-worldorbit-mounted");
       }
+      for (const element of elements) {
+        element.removeAttribute("data-worldorbit-mounted");
+      }
       viewers.clear();
     },
+  };
+}
+
+function resolveEmbedViewport(
+  element: HTMLElement,
+  scene: RenderScene,
+  options: MountWorldOrbitEmbedsOptions,
+): { width: number; height: number } {
+  const rect = element.getBoundingClientRect();
+  const width =
+    sanitizeViewportDimension(options.width) ??
+    sanitizeViewportDimension(element.clientWidth) ??
+    sanitizeViewportDimension(rect.width) ??
+    scene.width;
+  const explicitHeight =
+    sanitizeViewportDimension(options.height) ??
+    sanitizeViewportDimension(element.clientHeight) ??
+    sanitizeViewportDimension(rect.height);
+  const fallbackHeight = Math.max(
+    Math.round(width * (scene.height / Math.max(scene.width, 1))),
+    Math.min(scene.height, 240),
+  );
+
+  return {
+    width,
+    height: explicitHeight ?? fallbackHeight,
+  };
+}
+
+function sanitizeViewportDimension(value: number | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.round(value)
+    : null;
+}
+
+function bindEmbedResize(element: HTMLElement, callback: () => void): () => void {
+  let lastWidth = -1;
+  let lastHeight = -1;
+  const run = (): void => {
+    const rect = element.getBoundingClientRect();
+    const nextWidth = Math.round(Math.max(element.clientWidth || rect.width, 0));
+    const nextHeight = Math.round(Math.max(element.clientHeight || rect.height, 0));
+
+    if (nextWidth === lastWidth && nextHeight === lastHeight) {
+      return;
+    }
+
+    lastWidth = nextWidth;
+    lastHeight = nextHeight;
+    callback();
+  };
+
+  run();
+
+  if (typeof ResizeObserver !== "undefined") {
+    const observer = new ResizeObserver(() => {
+      run();
+    });
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+    };
+  }
+
+  const handleWindowResize = (): void => {
+    run();
+  };
+  window.addEventListener("resize", handleWindowResize);
+  return () => {
+    window.removeEventListener("resize", handleWindowResize);
   };
 }
 

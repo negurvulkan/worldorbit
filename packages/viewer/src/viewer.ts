@@ -6,6 +6,7 @@ import {
   type CoordinatePoint,
   type LoadedWorldOrbitSource,
   type RenderScene,
+  type RenderSceneEvent,
   type RenderSceneObject,
   type RenderSceneViewpoint,
   type SpatialScene,
@@ -66,6 +67,17 @@ interface TouchGestureState {
   startCenter: CoordinatePoint;
   startViewportCenter: CoordinatePoint;
   startDistance: number;
+}
+
+interface ScreenLabelDescriptor {
+  key: string;
+  kind: "object" | "event";
+  point: CoordinatePoint;
+  textAnchor: "start" | "middle" | "end";
+  objectId?: string;
+  primaryText: string;
+  secondaryText?: string;
+  secondaryOffset?: number;
 }
 
 type ViewerInput =
@@ -147,6 +159,7 @@ export function createInteractiveViewer(
   let cameraRoot: SVGGElement | null = null;
   let runtime3d: Viewer3DRuntime | null = null;
   let minimapRoot: HTMLElement | null = null;
+  let labelRoot: HTMLElement | null = null;
   let tooltipRoot: HTMLElement | null = null;
   let suppressClick = false;
   let activePointerId: number | null = null;
@@ -173,7 +186,7 @@ export function createInteractiveViewer(
     container.tabIndex = 0;
   }
 
-  installViewerTooltipStyles();
+  installViewerOverlayStyles();
   container.classList.add("wo-viewer-container");
   container.style.touchAction = behavior.touch ? "none" : previousTouchAction;
   if (!container.style.position) {
@@ -833,6 +846,8 @@ export function createInteractiveViewer(
       stopAnimationLoop();
       runtime3d?.destroy();
       runtime3d = null;
+      labelRoot?.remove();
+      labelRoot = null;
       tooltipRoot?.remove();
       tooltipRoot = null;
       minimapRoot?.remove();
@@ -866,6 +881,7 @@ export function createInteractiveViewer(
     svgElement = null;
     cameraRoot = null;
     minimapRoot = null;
+    labelRoot = null;
     tooltipRoot = null;
 
     if (is3DView()) {
@@ -887,6 +903,11 @@ export function createInteractiveViewer(
       container.append(minimapRoot);
     }
 
+    labelRoot = document.createElement("div");
+    labelRoot.className = "wo-viewer-label-root";
+    labelRoot.dataset.worldorbitLabelRoot = "true";
+    container.append(labelRoot);
+
     if (behavior.tooltipMode !== "disabled") {
       tooltipRoot = document.createElement("div");
       tooltipRoot.className = "wo-viewer-tooltip-root";
@@ -899,6 +920,8 @@ export function createInteractiveViewer(
     if (!is3DView() && (!svgElement || !cameraRoot)) {
       throw new Error("Interactive viewer could not locate the rendered SVG camera root.");
     }
+
+    suppressStaticLabelLayers();
 
     state = resetView
       ? is3DView()
@@ -962,15 +985,18 @@ export function createInteractiveViewer(
     }
 
     cameraRoot.setAttribute("transform", composeViewerTransform(scene, state));
+    updateScreenLabels();
     updateMinimap();
     updateTooltip();
   }
 
   function applySelection(objectId: string | null, emitCallback = true): void {
     if (!is3DView() && state.selectedObjectId) {
-      container
-        .querySelector<SVGGElement>(`[data-object-id="${cssEscape(state.selectedObjectId)}"]`)
-        ?.classList.remove("wo-object-selected");
+      for (const element of container.querySelectorAll<HTMLElement>(
+        `[data-object-id="${cssEscape(state.selectedObjectId)}"]`,
+      )) {
+        element.classList.remove("wo-object-selected");
+      }
     }
 
     state = {
@@ -982,9 +1008,11 @@ export function createInteractiveViewer(
     };
 
     if (!is3DView() && state.selectedObjectId) {
-      container
-        .querySelector<SVGGElement>(`[data-object-id="${cssEscape(state.selectedObjectId)}"]`)
-        ?.classList.add("wo-object-selected");
+      for (const element of container.querySelectorAll<HTMLElement>(
+        `[data-object-id="${cssEscape(state.selectedObjectId)}"]`,
+      )) {
+        element.classList.add("wo-object-selected");
+      }
     }
 
     syncAtlasHighlights();
@@ -1475,17 +1503,22 @@ export function createInteractiveViewer(
   function project2DTooltipPoint(
     renderObject: RenderSceneObject,
   ): CoordinatePoint | null {
-    if (!svgElement) {
-      return null;
-    }
-
     const anchor = {
       x: renderObject.anchorX ?? renderObject.x,
       y:
         renderObject.anchorY ??
         renderObject.y - Math.max(renderObject.visualRadius, renderObject.radius),
     };
-    const viewportPoint = projectWorldPoint(anchor);
+
+    return project2DScenePointToContainer(anchor);
+  }
+
+  function project2DScenePointToContainer(point: CoordinatePoint): CoordinatePoint | null {
+    if (!svgElement) {
+      return null;
+    }
+
+    const viewportPoint = projectWorldPoint(point);
     const svgRect = svgElement.getBoundingClientRect();
     const containerRect = container.getBoundingClientRect();
 
@@ -1612,8 +1645,182 @@ export function createInteractiveViewer(
       state,
       timeSeconds: animationState.timeSeconds,
     });
+    updateScreenLabels();
     updateMinimap();
     updateTooltip();
+  }
+
+  function suppressStaticLabelLayers(): void {
+    if (is3DView()) {
+      return;
+    }
+
+    container
+      .querySelector<SVGGElement>('[data-layer-id="labels"]')
+      ?.setAttribute("display", "none");
+
+    for (const element of container.querySelectorAll<SVGTextElement>(".wo-event-label")) {
+      element.setAttribute("display", "none");
+    }
+  }
+
+  function updateScreenLabels(): void {
+    if (!labelRoot) {
+      return;
+    }
+
+    const descriptors = buildScreenLabelDescriptors();
+    labelRoot.replaceChildren(
+      ...descriptors.map((descriptor) => createScreenLabelElement(descriptor)),
+    );
+    labelRoot.hidden = descriptors.length === 0;
+  }
+
+  function buildScreenLabelDescriptors(): ScreenLabelDescriptor[] {
+    const descriptors: ScreenLabelDescriptor[] = [];
+    const visibleObjectIds = getVisibleObjectIds();
+
+    if (layerEnabled("labels")) {
+      for (const label of scene.labels) {
+        if (label.hidden || !visibleObjectIds.has(label.objectId)) {
+          continue;
+        }
+
+        const point = is3DView()
+          ? runtime3d?.projectObjectToContainer(label.objectId) ?? null
+          : project2DScenePointToContainer({ x: label.x, y: label.y });
+        if (!point) {
+          continue;
+        }
+
+        descriptors.push({
+          key: `object:${label.renderId}`,
+          kind: "object",
+          point: is3DView()
+            ? { x: point.x, y: point.y - 18 }
+            : point,
+          textAnchor: label.textAnchor,
+          objectId: label.objectId,
+          primaryText: label.label,
+          secondaryText: label.secondaryLabel,
+          secondaryOffset: Math.max(label.secondaryY - label.y, 12),
+        });
+      }
+    }
+
+    if (!is3DView() && layerEnabled("events")) {
+      for (const event of scene.events) {
+        if (event.hidden || !isEventVisible(event, visibleObjectIds)) {
+          continue;
+        }
+
+        const point = project2DScenePointToContainer({ x: event.x, y: event.y - 10 });
+        if (!point) {
+          continue;
+        }
+
+        descriptors.push({
+          key: `event:${event.renderId}`,
+          kind: "event",
+          point,
+          textAnchor: "middle",
+          primaryText: event.event.label || event.event.id,
+        });
+      }
+    }
+
+    return descriptors;
+  }
+
+  function isEventVisible(
+    event: RenderSceneEvent,
+    visibleObjectIds: Set<string>,
+  ): boolean {
+    return event.objectIds.some((objectId) => visibleObjectIds.has(objectId));
+  }
+
+  function createScreenLabelElement(descriptor: ScreenLabelDescriptor): HTMLElement {
+    const element = document.createElement("div");
+    element.className = `wo-viewer-label wo-viewer-label-${descriptor.kind}`;
+    element.dataset.worldorbitScreenLabel = "true";
+    element.dataset.labelKey = descriptor.key;
+    element.dataset.anchor = descriptor.textAnchor;
+    element.style.left = `${descriptor.point.x}px`;
+    element.style.top = `${descriptor.point.y}px`;
+
+    if (descriptor.objectId) {
+      element.dataset.objectId = descriptor.objectId;
+      for (const className of resolveScreenLabelClasses(descriptor.objectId)) {
+        element.classList.add(className);
+      }
+    }
+
+    const primary = document.createElement("span");
+    primary.className = "wo-viewer-label-primary";
+    if (descriptor.kind === "object") {
+      primary.style.fontSize = `${14 * scene.scaleModel.labelMultiplier}px`;
+    }
+    primary.textContent = descriptor.primaryText;
+    element.append(primary);
+
+    if (descriptor.secondaryText) {
+      const secondary = document.createElement("span");
+      secondary.className = "wo-viewer-label-secondary";
+      secondary.style.fontSize = `${11 * scene.scaleModel.labelMultiplier}px`;
+      secondary.style.marginTop = `${Math.max(descriptor.secondaryOffset ?? 12, 10) - 10}px`;
+      secondary.textContent = descriptor.secondaryText;
+      element.append(secondary);
+    }
+
+    return element;
+  }
+
+  function layerEnabled(id: "labels" | "events"): boolean {
+    return renderOptions.layers?.[id] !== false;
+  }
+
+  function resolveScreenLabelClasses(objectId: string): string[] {
+    const classes: string[] = [];
+    const selectedDetails = buildObjectDetails(state.selectedObjectId);
+    const hoveredDetails = buildObjectDetails(hoveredObjectId);
+
+    if (state.selectedObjectId === objectId) {
+      classes.push("wo-object-selected");
+    }
+    if (selectedDetails) {
+      const selectedChain = new Set([
+        selectedDetails.objectId,
+        ...selectedDetails.renderObject.childIds,
+        ...selectedDetails.renderObject.ancestorIds,
+      ]);
+      const selectedAncestors = new Set(
+        selectedDetails.ancestors.map((ancestor) => ancestor.objectId),
+      );
+      if (selectedChain.has(objectId)) {
+        classes.push("wo-chain-selected");
+      }
+      if (selectedAncestors.has(objectId)) {
+        classes.push("wo-ancestor-selected");
+      }
+    }
+    if (hoveredDetails) {
+      const hoveredChain = new Set([
+        hoveredDetails.objectId,
+        ...hoveredDetails.renderObject.childIds,
+        ...hoveredDetails.renderObject.ancestorIds,
+      ]);
+      const hoveredAncestors = new Set(
+        hoveredDetails.ancestors.map((ancestor) => ancestor.objectId),
+      );
+      if (hoveredChain.has(objectId)) {
+        classes.push("wo-chain-hover");
+      }
+      if (hoveredAncestors.has(objectId)) {
+        classes.push("wo-ancestor-hover");
+      }
+    }
+
+    return classes;
   }
 
   function create3DFocusState(objectId: string): ViewerState {
@@ -1958,7 +2165,7 @@ function cssEscape(value: string): string {
   return value.replace(/["\\]/g, "\\$&");
 }
 
-function installViewerTooltipStyles(): void {
+function installViewerOverlayStyles(): void {
   if (typeof document === "undefined" || document.getElementById(TOOLTIP_STYLE_ID)) {
     return;
   }
@@ -1993,6 +2200,56 @@ function installViewerTooltipStyles(): void {
       width: 100%;
       height: 100%;
       min-height: 320px;
+    }
+    .wo-viewer-label-root {
+      position: absolute;
+      inset: 0;
+      z-index: 8;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    .wo-viewer-label {
+      position: absolute;
+      display: grid;
+      gap: 2px;
+      color: #edf6ff;
+      font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+      line-height: 1.15;
+      text-shadow: 0 1px 2px rgba(7, 16, 25, 0.65), 0 0 18px rgba(7, 16, 25, 0.18);
+      white-space: nowrap;
+    }
+    .wo-viewer-label[data-anchor="middle"] { transform: translate(-50%, 0); }
+    .wo-viewer-label[data-anchor="end"] { transform: translate(-100%, 0); }
+    .wo-viewer-label-primary {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .wo-viewer-label-secondary {
+      font-size: 11px;
+      font-weight: 500;
+      color: rgba(237, 246, 255, 0.72);
+    }
+    .wo-viewer-label-event {
+      color: #ffce8a;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .wo-viewer-label-event .wo-viewer-label-primary {
+      font-size: 10px;
+      font-weight: 700;
+    }
+    .wo-viewer-label.wo-object-selected .wo-viewer-label-primary,
+    .wo-viewer-label.wo-chain-selected .wo-viewer-label-primary,
+    .wo-viewer-label.wo-chain-hover .wo-viewer-label-primary {
+      color: #ffce8a;
+    }
+    .wo-viewer-label.wo-object-selected .wo-viewer-label-secondary {
+      color: #8fcaff;
+    }
+    .wo-viewer-label.wo-ancestor-selected .wo-viewer-label-primary,
+    .wo-viewer-label.wo-ancestor-hover .wo-viewer-label-primary {
+      opacity: 0.82;
     }
     .wo-viewer-tooltip-root {
       position: absolute;

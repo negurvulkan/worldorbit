@@ -39546,6 +39546,7 @@ void main() {
     let cameraRoot = null;
     let runtime3d = null;
     let minimapRoot = null;
+    let labelRoot = null;
     let tooltipRoot = null;
     let suppressClick = false;
     let activePointerId = null;
@@ -39570,7 +39571,7 @@ void main() {
     if (previousTabIndex === null) {
       container.tabIndex = 0;
     }
-    installViewerTooltipStyles();
+    installViewerOverlayStyles();
     container.classList.add("wo-viewer-container");
     container.style.touchAction = behavior.touch ? "none" : previousTouchAction;
     if (!container.style.position) {
@@ -40120,6 +40121,8 @@ void main() {
         stopAnimationLoop();
         runtime3d?.destroy();
         runtime3d = null;
+        labelRoot?.remove();
+        labelRoot = null;
         tooltipRoot?.remove();
         tooltipRoot = null;
         minimapRoot?.remove();
@@ -40150,6 +40153,7 @@ void main() {
       svgElement = null;
       cameraRoot = null;
       minimapRoot = null;
+      labelRoot = null;
       tooltipRoot = null;
       if (is3DView()) {
         spatialScene = spatialScene ?? renderSpatialSceneFromInput(currentInput, renderOptions, providedSpatialScene);
@@ -40168,6 +40172,10 @@ void main() {
         minimapRoot.dataset.worldorbitMinimapRoot = "true";
         container.append(minimapRoot);
       }
+      labelRoot = document.createElement("div");
+      labelRoot.className = "wo-viewer-label-root";
+      labelRoot.dataset.worldorbitLabelRoot = "true";
+      container.append(labelRoot);
       if (behavior.tooltipMode !== "disabled") {
         tooltipRoot = document.createElement("div");
         tooltipRoot.className = "wo-viewer-tooltip-root";
@@ -40179,6 +40187,7 @@ void main() {
       if (!is3DView() && (!svgElement || !cameraRoot)) {
         throw new Error("Interactive viewer could not locate the rendered SVG camera root.");
       }
+      suppressStaticLabelLayers();
       state = resetView ? is3DView() ? { ...DEFAULT_VIEWER_STATE } : fitViewerState(scene, { ...DEFAULT_VIEWER_STATE }, constraints) : sanitizeState(state);
       applySelection(state.selectedObjectId && getObjectById(state.selectedObjectId) ? state.selectedObjectId : null, false);
       applyHover(hoveredObjectId && getObjectById(hoveredObjectId) ? hoveredObjectId : null, false);
@@ -40213,19 +40222,24 @@ void main() {
         return;
       }
       cameraRoot.setAttribute("transform", composeViewerTransform(scene, state));
+      updateScreenLabels();
       updateMinimap();
       updateTooltip();
     }
     function applySelection(objectId, emitCallback = true) {
       if (!is3DView() && state.selectedObjectId) {
-        container.querySelector(`[data-object-id="${cssEscape(state.selectedObjectId)}"]`)?.classList.remove("wo-object-selected");
+        for (const element of container.querySelectorAll(`[data-object-id="${cssEscape(state.selectedObjectId)}"]`)) {
+          element.classList.remove("wo-object-selected");
+        }
       }
       state = {
         ...state,
         selectedObjectId: objectId && getObjectById(objectId) ? objectId : null
       };
       if (!is3DView() && state.selectedObjectId) {
-        container.querySelector(`[data-object-id="${cssEscape(state.selectedObjectId)}"]`)?.classList.add("wo-object-selected");
+        for (const element of container.querySelectorAll(`[data-object-id="${cssEscape(state.selectedObjectId)}"]`)) {
+          element.classList.add("wo-object-selected");
+        }
       }
       syncAtlasHighlights();
       updateTooltip();
@@ -40558,14 +40572,17 @@ void main() {
       };
     }
     function project2DTooltipPoint(renderObject) {
-      if (!svgElement) {
-        return null;
-      }
       const anchor = {
         x: renderObject.anchorX ?? renderObject.x,
         y: renderObject.anchorY ?? renderObject.y - Math.max(renderObject.visualRadius, renderObject.radius)
       };
-      const viewportPoint = projectWorldPoint(anchor);
+      return project2DScenePointToContainer(anchor);
+    }
+    function project2DScenePointToContainer(point) {
+      if (!svgElement) {
+        return null;
+      }
+      const viewportPoint = projectWorldPoint(point);
       const svgRect = svgElement.getBoundingClientRect();
       const containerRect = container.getBoundingClientRect();
       return {
@@ -40664,8 +40681,144 @@ void main() {
         state,
         timeSeconds: animationState.timeSeconds
       });
+      updateScreenLabels();
       updateMinimap();
       updateTooltip();
+    }
+    function suppressStaticLabelLayers() {
+      if (is3DView()) {
+        return;
+      }
+      container.querySelector('[data-layer-id="labels"]')?.setAttribute("display", "none");
+      for (const element of container.querySelectorAll(".wo-event-label")) {
+        element.setAttribute("display", "none");
+      }
+    }
+    function updateScreenLabels() {
+      if (!labelRoot) {
+        return;
+      }
+      const descriptors = buildScreenLabelDescriptors();
+      labelRoot.replaceChildren(...descriptors.map((descriptor) => createScreenLabelElement(descriptor)));
+      labelRoot.hidden = descriptors.length === 0;
+    }
+    function buildScreenLabelDescriptors() {
+      const descriptors = [];
+      const visibleObjectIds = getVisibleObjectIds();
+      if (layerEnabled("labels")) {
+        for (const label of scene.labels) {
+          if (label.hidden || !visibleObjectIds.has(label.objectId)) {
+            continue;
+          }
+          const point = is3DView() ? runtime3d?.projectObjectToContainer(label.objectId) ?? null : project2DScenePointToContainer({ x: label.x, y: label.y });
+          if (!point) {
+            continue;
+          }
+          descriptors.push({
+            key: `object:${label.renderId}`,
+            kind: "object",
+            point: is3DView() ? { x: point.x, y: point.y - 18 } : point,
+            textAnchor: label.textAnchor,
+            objectId: label.objectId,
+            primaryText: label.label,
+            secondaryText: label.secondaryLabel,
+            secondaryOffset: Math.max(label.secondaryY - label.y, 12)
+          });
+        }
+      }
+      if (!is3DView() && layerEnabled("events")) {
+        for (const event of scene.events) {
+          if (event.hidden || !isEventVisible(event, visibleObjectIds)) {
+            continue;
+          }
+          const point = project2DScenePointToContainer({ x: event.x, y: event.y - 10 });
+          if (!point) {
+            continue;
+          }
+          descriptors.push({
+            key: `event:${event.renderId}`,
+            kind: "event",
+            point,
+            textAnchor: "middle",
+            primaryText: event.event.label || event.event.id
+          });
+        }
+      }
+      return descriptors;
+    }
+    function isEventVisible(event, visibleObjectIds) {
+      return event.objectIds.some((objectId) => visibleObjectIds.has(objectId));
+    }
+    function createScreenLabelElement(descriptor) {
+      const element = document.createElement("div");
+      element.className = `wo-viewer-label wo-viewer-label-${descriptor.kind}`;
+      element.dataset.worldorbitScreenLabel = "true";
+      element.dataset.labelKey = descriptor.key;
+      element.dataset.anchor = descriptor.textAnchor;
+      element.style.left = `${descriptor.point.x}px`;
+      element.style.top = `${descriptor.point.y}px`;
+      if (descriptor.objectId) {
+        element.dataset.objectId = descriptor.objectId;
+        for (const className of resolveScreenLabelClasses(descriptor.objectId)) {
+          element.classList.add(className);
+        }
+      }
+      const primary = document.createElement("span");
+      primary.className = "wo-viewer-label-primary";
+      if (descriptor.kind === "object") {
+        primary.style.fontSize = `${14 * scene.scaleModel.labelMultiplier}px`;
+      }
+      primary.textContent = descriptor.primaryText;
+      element.append(primary);
+      if (descriptor.secondaryText) {
+        const secondary = document.createElement("span");
+        secondary.className = "wo-viewer-label-secondary";
+        secondary.style.fontSize = `${11 * scene.scaleModel.labelMultiplier}px`;
+        secondary.style.marginTop = `${Math.max(descriptor.secondaryOffset ?? 12, 10) - 10}px`;
+        secondary.textContent = descriptor.secondaryText;
+        element.append(secondary);
+      }
+      return element;
+    }
+    function layerEnabled(id) {
+      return renderOptions.layers?.[id] !== false;
+    }
+    function resolveScreenLabelClasses(objectId) {
+      const classes = [];
+      const selectedDetails = buildObjectDetails(state.selectedObjectId);
+      const hoveredDetails = buildObjectDetails(hoveredObjectId);
+      if (state.selectedObjectId === objectId) {
+        classes.push("wo-object-selected");
+      }
+      if (selectedDetails) {
+        const selectedChain = /* @__PURE__ */ new Set([
+          selectedDetails.objectId,
+          ...selectedDetails.renderObject.childIds,
+          ...selectedDetails.renderObject.ancestorIds
+        ]);
+        const selectedAncestors = new Set(selectedDetails.ancestors.map((ancestor) => ancestor.objectId));
+        if (selectedChain.has(objectId)) {
+          classes.push("wo-chain-selected");
+        }
+        if (selectedAncestors.has(objectId)) {
+          classes.push("wo-ancestor-selected");
+        }
+      }
+      if (hoveredDetails) {
+        const hoveredChain = /* @__PURE__ */ new Set([
+          hoveredDetails.objectId,
+          ...hoveredDetails.renderObject.childIds,
+          ...hoveredDetails.renderObject.ancestorIds
+        ]);
+        const hoveredAncestors = new Set(hoveredDetails.ancestors.map((ancestor) => ancestor.objectId));
+        if (hoveredChain.has(objectId)) {
+          classes.push("wo-chain-hover");
+        }
+        if (hoveredAncestors.has(objectId)) {
+          classes.push("wo-ancestor-hover");
+        }
+      }
+      return classes;
     }
     function create3DFocusState(objectId) {
       const target = spatialScene?.focusTargets.find((entry) => entry.objectId === objectId);
@@ -40918,7 +41071,7 @@ void main() {
     }
     return value.replace(/["\\]/g, "\\$&");
   }
-  function installViewerTooltipStyles() {
+  function installViewerOverlayStyles() {
     if (typeof document === "undefined" || document.getElementById(TOOLTIP_STYLE_ID)) {
       return;
     }
@@ -40952,6 +41105,56 @@ void main() {
       width: 100%;
       height: 100%;
       min-height: 320px;
+    }
+    .wo-viewer-label-root {
+      position: absolute;
+      inset: 0;
+      z-index: 8;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    .wo-viewer-label {
+      position: absolute;
+      display: grid;
+      gap: 2px;
+      color: #edf6ff;
+      font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+      line-height: 1.15;
+      text-shadow: 0 1px 2px rgba(7, 16, 25, 0.65), 0 0 18px rgba(7, 16, 25, 0.18);
+      white-space: nowrap;
+    }
+    .wo-viewer-label[data-anchor="middle"] { transform: translate(-50%, 0); }
+    .wo-viewer-label[data-anchor="end"] { transform: translate(-100%, 0); }
+    .wo-viewer-label-primary {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .wo-viewer-label-secondary {
+      font-size: 11px;
+      font-weight: 500;
+      color: rgba(237, 246, 255, 0.72);
+    }
+    .wo-viewer-label-event {
+      color: #ffce8a;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .wo-viewer-label-event .wo-viewer-label-primary {
+      font-size: 10px;
+      font-weight: 700;
+    }
+    .wo-viewer-label.wo-object-selected .wo-viewer-label-primary,
+    .wo-viewer-label.wo-chain-selected .wo-viewer-label-primary,
+    .wo-viewer-label.wo-chain-hover .wo-viewer-label-primary {
+      color: #ffce8a;
+    }
+    .wo-viewer-label.wo-object-selected .wo-viewer-label-secondary {
+      color: #8fcaff;
+    }
+    .wo-viewer-label.wo-ancestor-selected .wo-viewer-label-primary,
+    .wo-viewer-label.wo-ancestor-hover .wo-viewer-label-primary {
+      opacity: 0.82;
     }
     .wo-viewer-tooltip-root {
       position: absolute;
@@ -41087,6 +41290,7 @@ void main() {
   }
   function mountWorldOrbitEmbeds(root = document, options = {}) {
     const viewers = /* @__PURE__ */ new Map();
+    const cleanupCallbacks = [];
     const elements = [...root.querySelectorAll(EMBED_SELECTOR)];
     for (const element of elements) {
       const payload = deserializePayloadFromElement(element);
@@ -41100,14 +41304,16 @@ void main() {
       const initialSelectionObjectId = options.viewer?.initialSelectionObjectId ?? payload.options?.initialSelectionObjectId;
       const minimap = options.viewer?.minimap ?? payload.options?.minimap;
       const viewMode = options.viewer?.viewMode ?? payload.options?.viewMode ?? embedModeToViewMode(mode);
+      const measureViewport = () => resolveEmbedViewport(element, payload.scene, options);
       if (mode === "interactive-2d" || mode === "interactive-3d") {
         try {
+          const viewport = measureViewport();
           const viewer = createInteractiveViewer(element, {
             ...options.viewer,
             scene: payload.scene,
             spatialScene: payload.spatialScene,
-            width: options.width ?? payload.scene.width,
-            height: options.height ?? payload.scene.height,
+            width: viewport.width,
+            height: viewport.height,
             padding: options.padding ?? payload.scene.padding,
             preset,
             theme,
@@ -41123,6 +41329,13 @@ void main() {
             viewer.setAtlasState(payload.options.atlasState);
           }
           viewers.set(element, viewer);
+          cleanupCallbacks.push(bindEmbedResize(element, () => {
+            const nextViewport = measureViewport();
+            viewer.setRenderOptions({
+              width: nextViewport.width,
+              height: nextViewport.height
+            });
+          }));
           options.onMount?.(viewer, element);
         } catch (error2) {
           if (error2 instanceof WorldOrbit3DUnavailableError && mode === "interactive-3d") {
@@ -41133,17 +41346,22 @@ void main() {
           }
         }
       } else {
-        element.innerHTML = renderSceneToSvg(payload.scene, {
-          width: options.width ?? payload.scene.width,
-          height: options.height ?? payload.scene.height,
-          padding: options.padding ?? payload.scene.padding,
-          preset,
-          theme,
-          layers,
-          filter: initialFilter,
-          selectedObjectId: initialSelectionObjectId ?? null,
-          subtitle
-        });
+        const renderStaticEmbed = () => {
+          const viewport = measureViewport();
+          element.innerHTML = renderSceneToSvg(payload.scene, {
+            width: viewport.width,
+            height: viewport.height,
+            padding: options.padding ?? payload.scene.padding,
+            preset,
+            theme,
+            layers,
+            filter: initialFilter,
+            selectedObjectId: initialSelectionObjectId ?? null,
+            subtitle
+          });
+        };
+        renderStaticEmbed();
+        cleanupCallbacks.push(bindEmbedResize(element, renderStaticEmbed));
         options.onMount?.(null, element);
       }
       element.dataset.worldorbitMounted = "true";
@@ -41151,12 +41369,63 @@ void main() {
     return {
       viewers: [...viewers.values()],
       destroy() {
+        for (const cleanup of cleanupCallbacks) {
+          cleanup();
+        }
         for (const [element, viewer] of viewers.entries()) {
           viewer.destroy();
           element.removeAttribute("data-worldorbit-mounted");
         }
+        for (const element of elements) {
+          element.removeAttribute("data-worldorbit-mounted");
+        }
         viewers.clear();
       }
+    };
+  }
+  function resolveEmbedViewport(element, scene, options) {
+    const rect = element.getBoundingClientRect();
+    const width = sanitizeViewportDimension(options.width) ?? sanitizeViewportDimension(element.clientWidth) ?? sanitizeViewportDimension(rect.width) ?? scene.width;
+    const explicitHeight = sanitizeViewportDimension(options.height) ?? sanitizeViewportDimension(element.clientHeight) ?? sanitizeViewportDimension(rect.height);
+    const fallbackHeight = Math.max(Math.round(width * (scene.height / Math.max(scene.width, 1))), Math.min(scene.height, 240));
+    return {
+      width,
+      height: explicitHeight ?? fallbackHeight
+    };
+  }
+  function sanitizeViewportDimension(value) {
+    return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.round(value) : null;
+  }
+  function bindEmbedResize(element, callback) {
+    let lastWidth = -1;
+    let lastHeight = -1;
+    const run = () => {
+      const rect = element.getBoundingClientRect();
+      const nextWidth = Math.round(Math.max(element.clientWidth || rect.width, 0));
+      const nextHeight = Math.round(Math.max(element.clientHeight || rect.height, 0));
+      if (nextWidth === lastWidth && nextHeight === lastHeight) {
+        return;
+      }
+      lastWidth = nextWidth;
+      lastHeight = nextHeight;
+      callback();
+    };
+    run();
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(() => {
+        run();
+      });
+      observer.observe(element);
+      return () => {
+        observer.disconnect();
+      };
+    }
+    const handleWindowResize = () => {
+      run();
+    };
+    window.addEventListener("resize", handleWindowResize);
+    return () => {
+      window.removeEventListener("resize", handleWindowResize);
     };
   }
   function deserializePayloadFromElement(element) {

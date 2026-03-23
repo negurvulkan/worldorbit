@@ -3,11 +3,14 @@ import test from "node:test";
 
 import { JSDOM } from "jsdom";
 
-import { parse } from "@worldorbit/core";
+import { parse, renderDocumentToScene } from "@worldorbit/core";
 import {
   WorldOrbit3DUnavailableError,
+  createEmbedPayload,
+  createWorldOrbitEmbedMarkup,
   createAtlasViewer,
   createInteractiveViewer,
+  mountWorldOrbitEmbeds,
 } from "@worldorbit/viewer";
 
 const source = `
@@ -252,6 +255,7 @@ function installDomGlobals(window) {
     SVGSVGElement: globalThis.SVGSVGElement,
     SVGGElement: globalThis.SVGGElement,
     CSS: globalThis.CSS,
+    ResizeObserver: globalThis.ResizeObserver,
   };
 
   globalThis.window = window;
@@ -261,6 +265,7 @@ function installDomGlobals(window) {
   globalThis.SVGSVGElement = window.SVGSVGElement;
   globalThis.SVGGElement = window.SVGGElement;
   globalThis.CSS = window.CSS ?? { escape: (value) => value };
+  globalThis.ResizeObserver = window.ResizeObserver;
 
   return () => {
     globalThis.window = previous.window;
@@ -270,6 +275,23 @@ function installDomGlobals(window) {
     globalThis.SVGSVGElement = previous.SVGSVGElement;
     globalThis.SVGGElement = previous.SVGGElement;
     globalThis.CSS = previous.CSS;
+    globalThis.ResizeObserver = previous.ResizeObserver;
+  };
+}
+
+function createRect(width, height) {
+  return {
+    x: 0,
+    y: 0,
+    left: 0,
+    top: 0,
+    right: width,
+    bottom: height,
+    width,
+    height,
+    toJSON() {
+      return {};
+    },
   };
 }
 
@@ -460,6 +482,172 @@ test("interactive viewer can load schema 2.0 source and preserve atlas preset de
     assert.ok(preview.querySelector("svg"));
 
     viewer.destroy();
+  } finally {
+    restoreGlobals();
+    dom.window.close();
+  }
+});
+
+test("interactive viewer keeps screen-space labels at a stable font size while zooming", () => {
+  const dom = new JSDOM(`<div id="preview"></div>`, {
+    pretendToBeVisual: true,
+  });
+  const restoreGlobals = installDomGlobals(dom.window);
+  const preview = dom.window.document.getElementById("preview");
+
+  preview.getBoundingClientRect = () => createRect(1080, 720);
+
+  try {
+    const viewer = createInteractiveViewer(preview, {
+      source,
+      preset: "atlas-card",
+      width: 1080,
+      height: 720,
+    });
+    const svg = preview.querySelector("svg");
+    svg.getBoundingClientRect = () => createRect(1080, 720);
+    viewer.setState(viewer.getState());
+
+    const initialLabel = preview.querySelector('[data-worldorbit-screen-label="true"][data-object-id="Relay"]');
+    const initialPrimary = initialLabel?.querySelector(".wo-viewer-label-primary");
+    const initialLeft = initialLabel?.style.left;
+    const initialFontSize = initialPrimary?.style.fontSize;
+
+    assert.equal(
+      preview.querySelector('[data-layer-id="labels"]')?.getAttribute("display"),
+      "none",
+    );
+    assert.equal(initialFontSize, `${14 * viewer.getScene().scaleModel.labelMultiplier}px`);
+
+    viewer.zoomBy(1.8, { x: 120, y: 120 });
+
+    const zoomedLabel = preview.querySelector('[data-worldorbit-screen-label="true"][data-object-id="Relay"]');
+    const zoomedPrimary = zoomedLabel?.querySelector(".wo-viewer-label-primary");
+
+    assert.equal(zoomedPrimary?.style.fontSize, initialFontSize);
+    assert.notEqual(zoomedLabel?.style.left, initialLeft);
+
+    viewer.destroy();
+  } finally {
+    restoreGlobals();
+    dom.window.close();
+  }
+});
+
+test("mounted embeds size interactive viewers from their container and react to resize", () => {
+  const dom = new JSDOM(`<div id="root"></div>`, {
+    pretendToBeVisual: true,
+  });
+  const restoreGlobals = installDomGlobals(dom.window);
+  const root = dom.window.document.getElementById("root");
+  const scene = renderDocumentToScene(parse(source).document);
+  const payload = createEmbedPayload(scene, "interactive-2d");
+  const observers = [];
+  let width = 640;
+  let height = 360;
+
+  class FakeResizeObserver {
+    constructor(callback) {
+      this.callback = callback;
+      observers.push(this);
+    }
+
+    observe() {}
+
+    disconnect() {
+      this.disconnected = true;
+    }
+
+    trigger() {
+      this.callback();
+    }
+  }
+
+  dom.window.ResizeObserver = FakeResizeObserver;
+  globalThis.ResizeObserver = FakeResizeObserver;
+
+  root.innerHTML = `<div id="embed-host" style="width:${width}px;height:${height}px"></div>`;
+  const host = dom.window.document.getElementById("embed-host");
+  host.insertAdjacentHTML("beforeend", createWorldOrbitEmbedMarkup(payload));
+  const embed = host.querySelector("[data-worldorbit-embed]");
+
+  Object.defineProperty(embed, "clientWidth", {
+    configurable: true,
+    get() {
+      return width;
+    },
+  });
+  Object.defineProperty(embed, "clientHeight", {
+    configurable: true,
+    get() {
+      return height;
+    },
+  });
+  embed.getBoundingClientRect = () => createRect(width, height);
+
+  try {
+    const mounted = mountWorldOrbitEmbeds(root);
+    const viewer = mounted.viewers[0];
+
+    assert.equal(viewer.getRenderOptions().width, 640);
+    assert.equal(viewer.getRenderOptions().height, 360);
+
+    width = 480;
+    height = 240;
+    observers[0]?.trigger();
+
+    assert.equal(viewer.getRenderOptions().width, 480);
+    assert.equal(viewer.getRenderOptions().height, 240);
+
+    mounted.destroy();
+    assert.equal(observers[0]?.disconnected, true);
+  } finally {
+    restoreGlobals();
+    dom.window.close();
+  }
+});
+
+test("mounted embeds derive a stable fallback height when the host has no explicit height", () => {
+  const dom = new JSDOM(`<div id="root"></div>`, {
+    pretendToBeVisual: true,
+  });
+  const restoreGlobals = installDomGlobals(dom.window);
+  const root = dom.window.document.getElementById("root");
+  const scene = renderDocumentToScene(parse(source).document);
+  const payload = createEmbedPayload(scene, "interactive-2d");
+  let width = 600;
+
+  root.innerHTML = `<div id="embed-host"></div>`;
+  const host = dom.window.document.getElementById("embed-host");
+  host.insertAdjacentHTML("beforeend", createWorldOrbitEmbedMarkup(payload));
+  const embed = host.querySelector("[data-worldorbit-embed]");
+
+  Object.defineProperty(embed, "clientWidth", {
+    configurable: true,
+    get() {
+      return width;
+    },
+  });
+  Object.defineProperty(embed, "clientHeight", {
+    configurable: true,
+    get() {
+      return 0;
+    },
+  });
+  embed.getBoundingClientRect = () => createRect(width, 0);
+
+  try {
+    const mounted = mountWorldOrbitEmbeds(root);
+    const viewer = mounted.viewers[0];
+    const expectedHeight = Math.max(
+      Math.round(width * (scene.height / scene.width)),
+      Math.min(scene.height, 240),
+    );
+
+    assert.equal(viewer.getRenderOptions().width, 600);
+    assert.equal(viewer.getRenderOptions().height, expectedHeight);
+
+    mounted.destroy();
   } finally {
     restoreGlobals();
     dom.window.close();
