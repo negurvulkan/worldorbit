@@ -1,6 +1,6 @@
 # Changelog
 
-## v3.0.6
+## v3.0.7
 
 - made interactive embeds responsive to their host container with resize tracking and safe height fallbacks
 - moved interactive 2D and 3D labels into screen-space overlays so text keeps a stable on-screen size while zooming

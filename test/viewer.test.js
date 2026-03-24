@@ -946,3 +946,37 @@ test("interactive viewer keeps 2D animation disabled and fails clearly when 3D i
     dom.window.close();
   }
 });
+
+test("interactive viewer applies stable defaults for 3D quality options", () => {
+  const dom = new JSDOM(`<div id="preview"></div>`, {
+    pretendToBeVisual: true,
+  });
+  const restoreGlobals = installDomGlobals(dom.window);
+  const preview = dom.window.document.getElementById("preview");
+
+  preview.getBoundingClientRect = () => createRect(960, 560);
+
+  try {
+    const viewer = createInteractiveViewer(preview, {
+      source: schema25Source,
+      width: 960,
+      height: 560,
+    });
+
+    assert.equal(viewer.getRenderOptions().quality, "balanced");
+    assert.equal(viewer.getRenderOptions().style3d, "symbolic");
+
+    viewer.setRenderOptions({
+      quality: "high",
+      style3d: "cinematic",
+    });
+
+    assert.equal(viewer.getRenderOptions().quality, "high");
+    assert.equal(viewer.getRenderOptions().style3d, "cinematic");
+
+    viewer.destroy();
+  } finally {
+    restoreGlobals();
+    dom.window.close();
+  }
+});

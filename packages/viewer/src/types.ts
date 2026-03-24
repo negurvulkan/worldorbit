@@ -20,6 +20,8 @@ import type {
 
 export type WorldOrbitThemeName = "atlas" | "nightglass" | "ember";
 export type WorldOrbitViewMode = "2d" | "3d";
+export type WorldOrbit3DQuality = "low" | "balanced" | "high";
+export type WorldOrbit3DStyle = "symbolic" | "cinematic";
 export type WorldOrbitEmbedMode =
   | "static"
   | "interactive"
@@ -47,6 +49,15 @@ export interface WorldOrbitTheme {
   starCore: string;
   starStroke: string;
   starGlow: string;
+  spaceFog: string;
+  starfield: string;
+  starfieldDim: string;
+  objectSpecular: string;
+  orbitOpacity: number;
+  orbitBandOpacity: number;
+  selectionHalo: string;
+  atmosphere: string;
+  cometTail: string;
   fontFamily: string;
   displayFont: string;
 }
@@ -94,6 +105,8 @@ export interface ViewerRenderOptions
   projection?: "document" | ViewProjection;
   scaleModel?: Partial<RenderScaleModel>;
   viewMode?: WorldOrbitViewMode;
+  quality?: WorldOrbit3DQuality;
+  style3d?: WorldOrbit3DStyle;
 }
 
 export interface ViewerState {
@@ -153,6 +166,8 @@ export interface ViewerAtlasState {
     scaleModel?: Partial<RenderScaleModel>;
     activeEventId?: string | null;
     viewMode?: WorldOrbitViewMode;
+    quality?: WorldOrbit3DQuality;
+    style3d?: WorldOrbit3DStyle;
   };
   filter: ViewerFilter | null;
 }
@@ -322,6 +337,8 @@ export interface WorldOrbitEmbedPayload {
     subtitle?: string;
     preset?: SceneRenderOptions["preset"];
     viewMode?: WorldOrbitViewMode;
+    quality?: WorldOrbit3DQuality;
+    style3d?: WorldOrbit3DStyle;
     initialViewpointId?: string;
     initialSelectionObjectId?: string;
     initialFilter?: ViewerFilter | null;

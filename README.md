@@ -138,7 +138,7 @@ For direct browser usage, use the browser bundle:
       import {
         createInteractiveViewer,
         loadWorldOrbitSource
-      } from "https://unpkg.com/worldorbit@3.0.6/dist/unpkg/worldorbit.esm.js";
+      } from "https://unpkg.com/worldorbit@3.0.7/dist/unpkg/worldorbit.esm.js";
 
       const source = `
 schema 2.5
@@ -432,7 +432,7 @@ const scene = renderDocumentToScene(loaded.document, {
 
 ## Viewer Capabilities
 
-Viewer features in `v3.0.6` include:
+Viewer features in `v3.0.7` include:
 
 * scene-based SVG rendering
 * renderer-neutral spatial scenes through `renderDocumentToSpatialScene(...)`

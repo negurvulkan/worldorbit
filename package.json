@@ -1,6 +1,6 @@
 {
   "name": "worldorbit",
-  "version": "3.0.6",
+  "version": "3.0.7",
   "description": "A text-based DSL and parser pipeline for orbital worldbuilding",
   "type": "module",
   "main": "./dist/unpkg/worldorbit.esm.js",

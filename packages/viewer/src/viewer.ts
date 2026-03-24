@@ -135,6 +135,8 @@ export function createInteractiveViewer(
     preset: options.preset,
     projection: options.projection,
     viewMode: options.viewMode ?? "2d",
+    quality: options.quality ?? "balanced",
+    style3d: options.style3d ?? "symbolic",
     camera: options.camera ? { ...options.camera } : null,
     scaleModel: options.scaleModel ? { ...options.scaleModel } : undefined,
     theme: options.theme,
@@ -1685,6 +1687,9 @@ export function createInteractiveViewer(
         if (label.hidden || !visibleObjectIds.has(label.objectId)) {
           continue;
         }
+        if (is3DView() && !shouldRender3DLabel(label.objectId, visibleObjectIds)) {
+          continue;
+        }
 
         const point = is3DView()
           ? runtime3d?.projectObjectToContainer(label.objectId) ?? null
@@ -1737,6 +1742,55 @@ export function createInteractiveViewer(
     visibleObjectIds: Set<string>,
   ): boolean {
     return event.objectIds.some((objectId) => visibleObjectIds.has(objectId));
+  }
+
+  function shouldRender3DLabel(
+    objectId: string,
+    visibleObjectIds: Set<string>,
+  ): boolean {
+    if (!is3DView()) {
+      return true;
+    }
+
+    if (objectId === state.selectedObjectId || objectId === hoveredObjectId) {
+      return true;
+    }
+
+    const object = getObjectById(objectId);
+    if (!object || object.hidden || !visibleObjectIds.has(objectId)) {
+      return false;
+    }
+
+    if (object.object.type === "star") {
+      return true;
+    }
+
+    const selected = state.selectedObjectId ? buildObjectDetails(state.selectedObjectId) : null;
+    const hovered = hoveredObjectId ? buildObjectDetails(hoveredObjectId) : null;
+    const selectedFocus = selected
+      ? new Set([
+          selected.objectId,
+          ...selected.renderObject.ancestorIds,
+          ...selected.renderObject.childIds,
+        ])
+      : null;
+    const hoveredFocus = hovered
+      ? new Set([
+          hovered.objectId,
+          ...hovered.renderObject.ancestorIds,
+          ...hovered.renderObject.childIds,
+        ])
+      : null;
+
+    if (selectedFocus?.has(objectId) || hoveredFocus?.has(objectId)) {
+      return true;
+    }
+
+    if (object.semanticGroupIds.length > 0 && object.visualRadius >= 12) {
+      return true;
+    }
+
+    return object.childIds.length > 0 && object.visualRadius >= 10;
   }
 
   function createScreenLabelElement(descriptor: ScreenLabelDescriptor): HTMLElement {
@@ -1909,11 +1963,13 @@ function cloneRenderOptions(renderOptions: ViewerRenderOptions): ViewerRenderOpt
     scaleModel: renderOptions.scaleModel ? { ...renderOptions.scaleModel } : undefined,
     layers: renderOptions.layers ? { ...renderOptions.layers } : undefined,
     theme:
-      renderOptions.theme && typeof renderOptions.theme === "object"
-        ? { ...renderOptions.theme }
-        : renderOptions.theme,
+        renderOptions.theme && typeof renderOptions.theme === "object"
+          ? { ...renderOptions.theme }
+          : renderOptions.theme,
     activeEventId: renderOptions.activeEventId ?? null,
     viewMode: renderOptions.viewMode ?? "2d",
+    quality: renderOptions.quality ?? "balanced",
+    style3d: renderOptions.style3d ?? "symbolic",
   };
 }
 
@@ -1954,12 +2010,14 @@ function mergeRenderOptions(
       : current.layers
         ? { ...current.layers }
         : undefined,
-    theme:
-      next.theme && typeof next.theme === "object"
-        ? { ...next.theme }
-        : next.theme ?? current.theme,
-    viewMode: next.viewMode ?? current.viewMode ?? "2d",
-  };
+      theme:
+        next.theme && typeof next.theme === "object"
+          ? { ...next.theme }
+          : next.theme ?? current.theme,
+      viewMode: next.viewMode ?? current.viewMode ?? "2d",
+      quality: next.quality ?? current.quality ?? "balanced",
+      style3d: next.style3d ?? current.style3d ?? "symbolic",
+    };
 }
 
 function hasSceneAffectingRenderOptions(options: Partial<ViewerRenderOptions>): boolean {
@@ -2212,6 +2270,10 @@ function installViewerOverlayStyles(): void {
       position: absolute;
       display: grid;
       gap: 2px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, rgba(5, 16, 26, 0.72), rgba(5, 16, 26, 0.38));
+      border: 1px solid rgba(164, 194, 228, 0.16);
       color: #edf6ff;
       font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
       line-height: 1.15;
