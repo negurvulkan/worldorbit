@@ -61,8 +61,23 @@ export interface TokenizeOptions {
   columnOffset?: number;
 }
 
+export interface AstThemeNode {
+  type: "theme";
+  preset: string | null;
+  blocks: AstThemeBlockNode[];
+  location: AstSourceLocation;
+}
+
+export interface AstThemeBlockNode {
+  type: "theme-block";
+  target: string;
+  fields: AstFieldNode[];
+  location: AstSourceLocation;
+}
+
 export interface AstDocument {
   type: "document";
+  theme: AstThemeNode | null;
   objects: AstObjectNode[];
 }
 
@@ -90,9 +105,15 @@ export interface AstInfoEntryNode {
   location: AstSourceLocation;
 }
 
+export interface NormalizedTheme {
+  preset: string | null;
+  styles: Record<string, Record<string, NormalizedValue>>;
+}
+
 export interface WorldOrbitDocument {
   format: "worldorbit";
   version: "0.1";
+  theme: NormalizedTheme | null;
   system: WorldOrbitSystem | null;
   objects: WorldOrbitObject[];
 }

@@ -11,6 +11,7 @@ const URL_SCHEME_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*:/;
 export function normalizeDocument(ast) {
     let system = null;
     const objects = [];
+    const theme = ast.theme ? normalizeTheme(ast.theme) : null;
     for (const node of ast.objects) {
         const normalized = normalizeObject(node);
         if (node.objectType === "system") {
@@ -27,12 +28,47 @@ export function normalizeDocument(ast) {
         format: "worldorbit",
         version: "1.0",
         schemaVersion: "1.0",
+        theme,
         system,
         groups: [],
         relations: [],
         events: [],
         objects,
     };
+}
+function normalizeTheme(node) {
+    const styles = {};
+    for (const block of node.blocks) {
+        const fieldMap = collectFields(block.fields);
+        styles[block.target] = normalizeThemeProperties(fieldMap);
+    }
+    return {
+        preset: node.preset,
+        styles,
+    };
+}
+function normalizeThemeProperties(fieldMap) {
+    const result = {};
+    for (const [key, field] of fieldMap.entries()) {
+        if (field.values.length === 1) {
+            const rawValue = field.values[0];
+            if (rawValue === "true") {
+                result[key] = true;
+                continue;
+            }
+            if (rawValue === "false") {
+                result[key] = false;
+                continue;
+            }
+            const num = Number(rawValue);
+            if (!Number.isNaN(num) && rawValue.trim() !== "") {
+                result[key] = num;
+                continue;
+            }
+        }
+        result[key] = field.values.join(" ");
+    }
+    return result;
 }
 function normalizeObject(node) {
     const mergedFields = [...node.inlineFields, ...node.blockFields];

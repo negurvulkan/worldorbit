@@ -534,7 +534,7 @@ test("editor preserves schema 2.5 viewpoint camera blocks and projection choices
 
     const updatedViewpoint = editor.getAtlasDocument().system?.viewpoints.find((entry) => entry.id === "overview");
     assert.equal(updatedViewpoint?.camera?.azimuth, 40);
-    assert.match(editor.getSource(), /^schema 2\.5/m);
+    assert.match(editor.getSource(), /^schema 2.5/m);
     assert.match(editor.getSource(), /camera[\s\S]*azimuth 40/);
   } finally {
     editor?.destroy();

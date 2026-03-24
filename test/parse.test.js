@@ -177,3 +177,27 @@ structure Relay kind relay at Naar:L4
   assert.match(svg, /Naar/);
   assert.match(svg, /wo-orbit/);
 });
+
+test("parser supports theme block with preset and nested styles", () => {
+  const input = `
+system Iyath
+theme
+  preset "blueprint"
+  star
+    core "#ff00ff"
+    emissive true
+    intensity 1.5
+  planet
+    color "blue"
+`.trim();
+
+  const result = parse(input);
+  const theme = result.document.theme;
+
+  assert.ok(theme);
+  assert.equal(theme.preset, "blueprint");
+  assert.equal(theme.styles.star?.core, "#ff00ff");
+  assert.equal(theme.styles.star?.emissive, true);
+  assert.equal(theme.styles.star?.intensity, 1.5);
+  assert.equal(theme.styles.planet?.color, "blue");
+});

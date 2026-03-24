@@ -1544,6 +1544,7 @@ function parseViewpointGroups(
     if (
       document.schemaVersion === "2.1" ||
       document.schemaVersion === "2.5" ||
+      document.schemaVersion === "2.6.1" ||
       document.groups.some((group) => group.id === entry)
     ) {
       return entry;

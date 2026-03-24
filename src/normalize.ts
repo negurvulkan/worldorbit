@@ -11,8 +11,10 @@ import type {
   AstFieldNode,
   AstInfoEntryNode,
   AstObjectNode,
+  AstThemeNode,
   AtReference,
   LagrangeReference,
+  NormalizedTheme,
   NormalizedValue,
   Placement,
   SpecialPoint,
@@ -36,6 +38,8 @@ export function normalizeDocument(ast: AstDocument): WorldOrbitDocument {
   let system: WorldOrbitSystem | null = null;
   const objects: WorldOrbitObject[] = [];
 
+  const theme = ast.theme ? normalizeTheme(ast.theme) : null;
+
   for (const node of ast.objects) {
     const normalized = normalizeObject(node);
 
@@ -55,9 +59,52 @@ export function normalizeDocument(ast: AstDocument): WorldOrbitDocument {
   return {
     format: "worldorbit",
     version: "0.1",
+    theme,
     system,
     objects,
   };
+}
+
+function normalizeTheme(node: AstThemeNode): NormalizedTheme {
+  const styles: Record<string, Record<string, NormalizedValue>> = {};
+
+  for (const block of node.blocks) {
+    const fieldMap = collectFields(block.fields);
+    styles[block.target] = normalizeThemeProperties(fieldMap);
+  }
+
+  return {
+    preset: node.preset,
+    styles,
+  };
+}
+
+function normalizeThemeProperties(
+  fieldMap: Map<string, AstFieldNode>,
+): Record<string, NormalizedValue> {
+  const result: Record<string, NormalizedValue> = {};
+
+  for (const [key, field] of fieldMap.entries()) {
+    if (field.values.length === 1) {
+      const rawValue = field.values[0];
+      if (rawValue === "true") {
+        result[key] = true;
+        continue;
+      }
+      if (rawValue === "false") {
+        result[key] = false;
+        continue;
+      }
+      const num = Number(rawValue);
+      if (!Number.isNaN(num) && rawValue.trim() !== "") {
+        result[key] = num;
+        continue;
+      }
+    }
+    result[key] = field.values.join(" ");
+  }
+
+  return result;
 }
 
 function normalizeObject(

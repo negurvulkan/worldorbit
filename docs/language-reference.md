@@ -143,6 +143,30 @@ Supported fields:
 - `orthographic`, Schema 2.5+
 - `perspective`, Schema 2.5+
 
+### `theme`
+
+Optional section to define platform-independent (2D, 2.5D, 3D) design rules and visual overrides for the output.
+
+```worldorbit
+theme
+  preset "blueprint"
+
+  star
+    color "#ff00ff"
+    emissive true
+
+  planet
+    texture "earth_diffuse.jpg"
+
+  orbit
+    style "dashed"
+```
+
+Supported properties:
+
+- `preset`: Inherits from a built-in renderer design.
+- Nested blocks for any valid object type (e.g. `star`, `planet`) or visual elements like `orbit`, which can contain rendering properties like `color`, `emissive`, `texture`, `width`, `style`, etc.
+
 ### `atlas`
 
 Optional metadata section.

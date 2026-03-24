@@ -22,7 +22,7 @@ export function detectWorldOrbitSchemaVersion(source) {
             return "2.1";
         }
         if (ATLAS_SCHEMA_25_PATTERN.test(trimmed)) {
-            return "2.5";
+            return "2.6.1";
         }
         if (ATLAS_SCHEMA_PATTERN.test(trimmed)) {
             return "2.0";
@@ -87,7 +87,8 @@ export function loadWorldOrbitSourceWithDiagnostics(source) {
     if (schemaVersion === "2.0" ||
         schemaVersion === "2.0-draft" ||
         schemaVersion === "2.1" ||
-        schemaVersion === "2.5") {
+        schemaVersion === "2.5" ||
+        schemaVersion === "2.6.1") {
         return loadAtlasSourceWithDiagnostics(source, schemaVersion);
     }
     let ast;

@@ -18,13 +18,17 @@ import type {
 
 export function createEmptyAtlasDocument(
   systemId = "WorldOrbit",
-  version: WorldOrbitAtlasDocumentVersion = "2.5",
+  version: WorldOrbitAtlasDocumentVersion = "2.6.1",
 ): WorldOrbitAtlasDocument {
   return {
     format: "worldorbit",
     version,
     schemaVersion: version,
     sourceVersion: "1.0",
+    theme: {
+      preset: "blueprint",
+      styles: {},
+    },
     system: {
       type: "system",
       id: systemId,

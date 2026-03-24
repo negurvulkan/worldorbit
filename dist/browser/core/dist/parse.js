@@ -4,9 +4,14 @@ import { getIndent, tokenizeLineDetailed } from "./tokenize.js";
 export function parseWorldOrbit(source) {
     const lines = source.split(/\r?\n/);
     const objects = [];
+    let themeNode = null;
     let currentObject = null;
     let inInfoBlock = false;
+    let inThemeBlock = false;
     let infoIndent = null;
+    let themeIndent = null;
+    let themeBlockIndent = null;
+    let currentThemeBlock = null;
     for (let index = 0; index < lines.length; index++) {
         const rawLine = lines[index];
         const lineNumber = index + 1;
@@ -23,10 +28,47 @@ export function parseWorldOrbit(source) {
         }
         if (indent === 0) {
             inInfoBlock = false;
+            inThemeBlock = false;
             infoIndent = null;
+            themeIndent = null;
+            themeBlockIndent = null;
+            currentThemeBlock = null;
+            if (tokens.length >= 1 && tokens[0].value === "theme") {
+                inThemeBlock = true;
+                themeIndent = 0;
+                themeNode = {
+                    type: "theme",
+                    preset: tokens.length >= 2 ? tokens[1].value : null,
+                    blocks: [],
+                    location: { line: lineNumber, column: tokens[0].column },
+                };
+                continue;
+            }
             const objectNode = parseObjectHeader(tokens, lineNumber);
             objects.push(objectNode);
             currentObject = objectNode;
+            continue;
+        }
+        if (inThemeBlock) {
+            if (tokens.length >= 2 && tokens[0].value === "preset" && (!themeBlockIndent || indent <= themeBlockIndent)) {
+                if (themeNode) {
+                    themeNode.preset = tokens[1].value;
+                }
+                continue;
+            }
+            if (currentThemeBlock && themeBlockIndent !== null && indent > themeBlockIndent) {
+                currentThemeBlock.fields.push(parseThemeField(tokens, lineNumber));
+            }
+            else {
+                themeBlockIndent = indent;
+                currentThemeBlock = {
+                    type: "theme-block",
+                    target: tokens[0].value,
+                    fields: [],
+                    location: { line: lineNumber, column: tokens[0].column },
+                };
+                themeNode?.blocks.push(currentThemeBlock);
+            }
             continue;
         }
         if (!currentObject) {
@@ -49,6 +91,7 @@ export function parseWorldOrbit(source) {
     }
     return {
         type: "document",
+        theme: themeNode,
         objects,
     };
 }
@@ -112,6 +155,17 @@ function parseField(tokens, line) {
     }
     if (!getFieldSchema(tokens[0].value)) {
         throw new WorldOrbitError(`Unknown field "${tokens[0].value}"`, line, tokens[0].column);
+    }
+    return {
+        type: "field",
+        key: tokens[0].value,
+        values: tokens.slice(1).map((token) => token.value),
+        location: { line, column: tokens[0].column },
+    };
+}
+function parseThemeField(tokens, line) {
+    if (tokens.length < 2) {
+        throw new WorldOrbitError("Invalid theme field line", line, tokens[0]?.column ?? 1);
     }
     return {
         type: "field",

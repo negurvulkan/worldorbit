@@ -309,8 +309,8 @@ test("upgradeDocumentToV2 promotes viewpoints, metadata, and annotations into th
   const result = parse(source);
   const atlas = upgradeDocumentToV2(result.document, { preset: "atlas-card" });
 
-  assert.equal(atlas.version, "2.5");
-  assert.equal(atlas.schemaVersion, "2.5");
+  assert.equal(atlas.version, "2.6.1");
+  assert.equal(atlas.schemaVersion, "2.6.1");
   assert.equal(atlas.sourceVersion, "1.0");
   assert.equal(atlas.system?.defaults.view, "isometric");
   assert.equal(atlas.system?.defaults.preset, "atlas-card");
@@ -546,7 +546,7 @@ test("schema 2.5 documents roundtrip through formatting without losing camera or
     .find((entry) => entry.id === "aster-eclipse")
     ?.positions.find((entry) => entry.objectId === "Beryl");
 
-  assert.match(formatted, /^schema 2\.5/m);
+  assert.match(formatted, /^schema 2.5/m);
   assert.match(formatted, /^  camera$/m);
   assert.match(formatted, /^    azimuth 30$/m);
   assert.match(formatted, /^  epoch JY-0214\.0$/m);
@@ -579,14 +579,14 @@ object star Helion
     result.diagnostics.some(
       (diagnostic) =>
         diagnostic.source === "parse" &&
-        /Feature "projection" requires schema 2\.5/i.test(diagnostic.message),
+        /Feature "projection" requires schema 2.5/i.test(diagnostic.message),
     ),
   );
   assert.ok(
     result.diagnostics.some(
       (diagnostic) =>
         diagnostic.source === "parse" &&
-        /Feature "viewpoint\.camera" requires schema 2\.5/i.test(diagnostic.message),
+        /Feature "viewpoint\.camera" requires schema 2.5/i.test(diagnostic.message),
     ),
   );
 });

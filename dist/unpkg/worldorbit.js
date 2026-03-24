@@ -31171,9 +31171,14 @@ void main() {
   function parseWorldOrbit(source) {
     const lines = source.split(/\r?\n/);
     const objects = [];
+    let themeNode = null;
     let currentObject = null;
     let inInfoBlock = false;
+    let inThemeBlock = false;
     let infoIndent = null;
+    let themeIndent = null;
+    let themeBlockIndent = null;
+    let currentThemeBlock = null;
     for (let index = 0; index < lines.length; index++) {
       const rawLine = lines[index];
       const lineNumber = index + 1;
@@ -31190,10 +31195,46 @@ void main() {
       }
       if (indent === 0) {
         inInfoBlock = false;
+        inThemeBlock = false;
         infoIndent = null;
+        themeIndent = null;
+        themeBlockIndent = null;
+        currentThemeBlock = null;
+        if (tokens.length >= 1 && tokens[0].value === "theme") {
+          inThemeBlock = true;
+          themeIndent = 0;
+          themeNode = {
+            type: "theme",
+            preset: tokens.length >= 2 ? tokens[1].value : null,
+            blocks: [],
+            location: { line: lineNumber, column: tokens[0].column }
+          };
+          continue;
+        }
         const objectNode = parseObjectHeader(tokens, lineNumber);
         objects.push(objectNode);
         currentObject = objectNode;
+        continue;
+      }
+      if (inThemeBlock) {
+        if (tokens.length >= 2 && tokens[0].value === "preset" && (!themeBlockIndent || indent <= themeBlockIndent)) {
+          if (themeNode) {
+            themeNode.preset = tokens[1].value;
+          }
+          continue;
+        }
+        if (currentThemeBlock && themeBlockIndent !== null && indent > themeBlockIndent) {
+          currentThemeBlock.fields.push(parseThemeField(tokens, lineNumber));
+        } else {
+          themeBlockIndent = indent;
+          currentThemeBlock = {
+            type: "theme-block",
+            target: tokens[0].value,
+            fields: [],
+            location: { line: lineNumber, column: tokens[0].column }
+          };
+          themeNode?.blocks.push(currentThemeBlock);
+        }
         continue;
       }
       if (!currentObject) {
@@ -31215,6 +31256,7 @@ void main() {
     }
     return {
       type: "document",
+      theme: themeNode,
       objects
     };
   }
@@ -31285,6 +31327,17 @@ void main() {
       location: { line, column: tokens[0].column }
     };
   }
+  function parseThemeField(tokens, line) {
+    if (tokens.length < 2) {
+      throw new WorldOrbitError("Invalid theme field line", line, tokens[0]?.column ?? 1);
+    }
+    return {
+      type: "field",
+      key: tokens[0].value,
+      values: tokens.slice(1).map((token) => token.value),
+      location: { line, column: tokens[0].column }
+    };
+  }
   function parseInfoEntry(tokens, line) {
     if (tokens.length < 2) {
       throw new WorldOrbitError("Invalid info entry", line, tokens[0]?.column ?? 1);
@@ -31309,6 +31362,7 @@ void main() {
   function normalizeDocument(ast) {
     let system = null;
     const objects = [];
+    const theme = ast.theme ? normalizeTheme(ast.theme) : null;
     for (const node of ast.objects) {
       const normalized = normalizeObject(node);
       if (node.objectType === "system") {
@@ -31324,12 +31378,47 @@ void main() {
       format: "worldorbit",
       version: "1.0",
       schemaVersion: "1.0",
+      theme,
       system,
       groups: [],
       relations: [],
       events: [],
       objects
     };
+  }
+  function normalizeTheme(node) {
+    const styles = {};
+    for (const block of node.blocks) {
+      const fieldMap = collectFields(block.fields);
+      styles[block.target] = normalizeThemeProperties(fieldMap);
+    }
+    return {
+      preset: node.preset,
+      styles
+    };
+  }
+  function normalizeThemeProperties(fieldMap) {
+    const result = {};
+    for (const [key, field] of fieldMap.entries()) {
+      if (field.values.length === 1) {
+        const rawValue = field.values[0];
+        if (rawValue === "true") {
+          result[key] = true;
+          continue;
+        }
+        if (rawValue === "false") {
+          result[key] = false;
+          continue;
+        }
+        const num = Number(rawValue);
+        if (!Number.isNaN(num) && rawValue.trim() !== "") {
+          result[key] = num;
+          continue;
+        }
+      }
+      result[key] = field.values.join(" ");
+    }
+    return result;
   }
   function normalizeObject(node) {
     const mergedFields = [...node.inlineFields, ...node.blockFields];
@@ -32751,7 +32840,7 @@ void main() {
   }
   function parseViewpointGroups(value, document2, relationships, objectMap) {
     return splitListValue(value).map((entry) => {
-      if (document2.schemaVersion === "2.1" || document2.schemaVersion === "2.5" || document2.groups.some((group) => group.id === entry)) {
+      if (document2.schemaVersion === "2.1" || document2.schemaVersion === "2.5" || document2.schemaVersion === "2.6.1" || document2.groups.some((group) => group.id === entry)) {
         return entry;
       }
       if (entry.startsWith("wo-") && entry.endsWith("-group")) {
@@ -33941,9 +34030,10 @@ void main() {
     }
     return {
       format: "worldorbit",
-      version: "2.5",
-      schemaVersion: "2.5",
+      version: "2.6.1",
+      schemaVersion: "2.6.1",
       sourceVersion: document2.version,
+      theme: document2.theme ?? null,
       system,
       groups: structuredClone(document2.groups ?? []),
       relations: structuredClone(document2.relations ?? []),
@@ -33972,6 +34062,7 @@ void main() {
       format: "worldorbit",
       version: "1.0",
       schemaVersion: document2.version,
+      theme: document2.theme ?? null,
       system,
       groups: structuredClone(document2.groups ?? []),
       relations: structuredClone(document2.relations ?? []),
@@ -34397,22 +34488,22 @@ void main() {
   ];
   function formatDocument(document2, options = {}) {
     const schema = options.schema ?? "auto";
-    const useDraft = schema === "2.0" || schema === "2.1" || schema === "2.5" || schema === "2.0-draft" || document2.version === "2.0" || document2.version === "2.1" || document2.version === "2.5" || document2.version === "2.0-draft";
+    const useDraft = schema === "2.0" || schema === "2.1" || schema === "2.5" || schema === "2.6.1" || schema === "2.0-draft" || document2.version === "2.0" || document2.version === "2.1" || document2.version === "2.5" || document2.version === "2.6.1" || document2.version === "2.0-draft";
     if (useDraft) {
       if (schema === "2.0-draft") {
-        const legacyDraftDocument = document2.version === "2.0-draft" ? document2 : document2.version === "2.0" || document2.version === "2.1" || document2.version === "2.5" ? {
+        const legacyDraftDocument = document2.version === "2.0-draft" ? document2 : document2.version === "2.0" || document2.version === "2.1" || document2.version === "2.5" || document2.version === "2.6.1" ? {
           ...document2,
           version: "2.0-draft",
           schemaVersion: "2.0-draft"
         } : upgradeDocumentToDraftV2(document2);
         return formatDraftDocument(legacyDraftDocument);
       }
-      const atlasDocument = document2.version === "2.0" || document2.version === "2.1" || document2.version === "2.5" ? document2 : document2.version === "2.0-draft" ? {
+      const atlasDocument = document2.version === "2.0" || document2.version === "2.1" || document2.version === "2.5" || document2.version === "2.6.1" ? document2 : document2.version === "2.0-draft" ? {
         ...document2,
         version: "2.0",
         schemaVersion: "2.0"
       } : upgradeDocumentToV2(document2);
-      if ((schema === "2.0" || schema === "2.1" || schema === "2.5") && atlasDocument.version !== schema) {
+      if ((schema === "2.0" || schema === "2.1" || schema === "2.5" || schema === "2.6.1") && atlasDocument.version !== schema) {
         return formatAtlasDocument({
           ...atlasDocument,
           version: schema,
@@ -35166,7 +35257,7 @@ void main() {
   }
   function validateViewpoint(viewpoint, groupIds, eventIds, sourceSchemaVersion, diagnostics, objectMap) {
     const filter = viewpoint.filter;
-    if (sourceSchemaVersion === "2.1" || sourceSchemaVersion === "2.5") {
+    if (sourceSchemaVersion === "2.1" || sourceSchemaVersion === "2.5" || sourceSchemaVersion === "2.6.1") {
       if (filter) {
         for (const groupId of filter.groupIds) {
           if (!groupIds.has(groupId)) {
@@ -35730,6 +35821,7 @@ void main() {
     const baseDocument = {
       format: "worldorbit",
       sourceVersion: "1.0",
+      theme: null,
       system,
       groups,
       relations,
@@ -35763,11 +35855,11 @@ void main() {
     return document2;
   }
   function assertDraftSchemaHeader(tokens, line) {
-    if (tokens.length !== 2 || tokens[0].value.toLowerCase() !== "schema" || !["2.0-draft", "2.0", "2.1", "2.5"].includes(tokens[1].value.toLowerCase())) {
-      throw new WorldOrbitError('Expected atlas header "schema 2.0", "schema 2.1", "schema 2.5", or legacy "schema 2.0-draft"', line, tokens[0]?.column ?? 1);
+    if (tokens.length !== 2 || tokens[0].value.toLowerCase() !== "schema" || !["2.0-draft", "2.0", "2.1", "2.5", "2.6.1"].includes(tokens[1].value.toLowerCase())) {
+      throw new WorldOrbitError('Expected atlas header "schema 2.0", "schema 2.1", "schema 2.5", "schema 2.6.1", or legacy "schema 2.0-draft"', line, tokens[0]?.column ?? 1);
     }
     const version = tokens[1].value.toLowerCase();
-    return version === "2.5" ? "2.5" : version === "2.1" ? "2.1" : version === "2.0-draft" ? "2.0-draft" : "2.0";
+    return version === "2.6.1" ? "2.6.1" : version === "2.5" ? "2.5" : version === "2.1" ? "2.1" : version === "2.0-draft" ? "2.0-draft" : "2.0";
   }
   function startTopLevelSection(tokens, line, sourceSchemaVersion, diagnostics, system, objectNodes, groups, relations, events, eventPoseNodes, viewpointIds, annotationIds, groupIds, relationIds, eventIds, flags) {
     const keyword = tokens[0]?.value.toLowerCase();
@@ -37063,6 +37155,8 @@ void main() {
         return 2;
       case "2.5":
         return 3;
+      case "2.6.1":
+        return 4;
     }
   }
   function preprocessAtlasSource(source) {
@@ -37152,12 +37246,16 @@ void main() {
   }
 
   // packages/core/dist/atlas-edit.js
-  function createEmptyAtlasDocument(systemId = "WorldOrbit", version = "2.5") {
+  function createEmptyAtlasDocument(systemId = "WorldOrbit", version = "2.6.1") {
     return {
       format: "worldorbit",
       version,
       schemaVersion: version,
       sourceVersion: "1.0",
+      theme: {
+        preset: "blueprint",
+        styles: {}
+      },
       system: {
         type: "system",
         id: systemId,
@@ -37516,7 +37614,7 @@ void main() {
         return "2.1";
       }
       if (ATLAS_SCHEMA_25_PATTERN.test(trimmed)) {
-        return "2.5";
+        return "2.6.1";
       }
       if (ATLAS_SCHEMA_PATTERN.test(trimmed)) {
         return "2.0";
@@ -37578,7 +37676,7 @@ void main() {
   }
   function loadWorldOrbitSourceWithDiagnostics(source) {
     const schemaVersion = detectWorldOrbitSchemaVersion(source);
-    if (schemaVersion === "2.0" || schemaVersion === "2.0-draft" || schemaVersion === "2.1" || schemaVersion === "2.5") {
+    if (schemaVersion === "2.0" || schemaVersion === "2.0-draft" || schemaVersion === "2.1" || schemaVersion === "2.5" || schemaVersion === "2.6.1") {
       return loadAtlasSourceWithDiagnostics(source, schemaVersion);
     }
     let ast;

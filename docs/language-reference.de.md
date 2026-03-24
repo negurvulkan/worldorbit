@@ -143,6 +143,30 @@ Unterstuetzte Felder:
 - `orthographic`, Schema 2.5+
 - `perspective`, Schema 2.5+
 
+### `theme`
+
+Optionale Sektion zur plattformübergreifenden (2D, 2.5D, 3D) Definition von Design-Vorgaben und visuellen Overrides.
+
+```worldorbit
+theme
+  preset "blueprint"
+
+  star
+    color "#ff00ff"
+    emissive true
+
+  planet
+    texture "earth_diffuse.jpg"
+
+  orbit
+    style "dashed"
+```
+
+Unterstützte Eigenschaften:
+
+- `preset`: Erbt von einem vordefinierten Renderer-Design.
+- Verschachtelte Blöcke für jeden gültigen Objekttyp (z. B. `star`, `planet`) oder visuelle Elemente wie `orbit`, die beliebige Darstellungs-Eigenschaften wie `color`, `emissive`, `texture`, `width`, `style` usw. enthalten können.
+
 ### `atlas`
 
 Optionale Metadaten-Sektion.

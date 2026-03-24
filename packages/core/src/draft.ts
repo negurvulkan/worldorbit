@@ -57,9 +57,10 @@ export function upgradeDocumentToV2(
 
   return {
     format: "worldorbit",
-    version: "2.5",
-    schemaVersion: "2.5",
+    version: "2.6.1",
+    schemaVersion: "2.6.1",
     sourceVersion: document.version,
+    theme: document.theme ?? null,
     system,
     groups: structuredClone(document.groups ?? []),
     relations: structuredClone(document.relations ?? []),
@@ -100,6 +101,7 @@ export function materializeAtlasDocument(
     format: "worldorbit",
     version: "1.0",
     schemaVersion: document.version,
+    theme: document.theme ?? null,
     system,
     groups: structuredClone(document.groups ?? []),
     relations: structuredClone(document.relations ?? []),

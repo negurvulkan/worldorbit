@@ -35,7 +35,7 @@ export function detectWorldOrbitSchemaVersion(source: string): WorldOrbitAnyDocu
     }
 
     if (ATLAS_SCHEMA_25_PATTERN.test(trimmed)) {
-      return "2.5";
+      return "2.6.1";
     }
 
     if (ATLAS_SCHEMA_PATTERN.test(trimmed)) {
@@ -123,7 +123,8 @@ export function loadWorldOrbitSourceWithDiagnostics(
     schemaVersion === "2.0" ||
     schemaVersion === "2.0-draft" ||
     schemaVersion === "2.1" ||
-    schemaVersion === "2.5"
+    schemaVersion === "2.5" ||
+    schemaVersion === "2.6.1"
   ) {
     return loadAtlasSourceWithDiagnostics(source, schemaVersion);
   }
@@ -176,7 +177,7 @@ export function loadWorldOrbitSourceWithDiagnostics(
 
 function loadAtlasSourceWithDiagnostics(
   source: string,
-  schemaVersion: "2.0" | "2.0-draft" | "2.1" | "2.5",
+  schemaVersion: "2.0" | "2.0-draft" | "2.1" | "2.5" | "2.6.1",
 ): DiagnosticResult<LoadedWorldOrbitSource> {
   let atlasDocument: WorldOrbitAtlasDocument;
   try {

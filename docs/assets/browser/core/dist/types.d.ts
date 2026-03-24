@@ -2,7 +2,7 @@ export type WorldOrbitObjectType = "system" | "star" | "planet" | "moon" | "belt
 export type PlacementMode = "orbit" | "at" | "surface" | "free";
 export type Unit = "au" | "km" | "m" | "ly" | "pc" | "kpc" | "re" | "rj" | "sol" | "me" | "mj" | "s" | "min" | "h" | "d" | "y" | "ky" | "my" | "gy" | "K" | "deg";
 export type WorldOrbitDocumentVersion = "1.0";
-export type WorldOrbitAtlasDocumentVersion = "2.0" | "2.1" | "2.5";
+export type WorldOrbitAtlasDocumentVersion = "2.0" | "2.1" | "2.5" | "2.6.1";
 export type WorldOrbitDraftDocumentVersion = "2.0-draft";
 export type WorldOrbitAnyDocumentVersion = WorldOrbitDocumentVersion | WorldOrbitAtlasDocumentVersion | WorldOrbitDraftDocumentVersion;
 export type ViewProjection = "topdown" | "isometric" | "orthographic" | "perspective";
@@ -34,8 +34,21 @@ export interface TokenizeOptions {
     line?: number;
     columnOffset?: number;
 }
+export interface AstThemeNode {
+    type: "theme";
+    preset: string | null;
+    blocks: AstThemeBlockNode[];
+    location: AstSourceLocation;
+}
+export interface AstThemeBlockNode {
+    type: "theme-block";
+    target: string;
+    fields: AstFieldNode[];
+    location: AstSourceLocation;
+}
 export interface AstDocument {
     type: "document";
+    theme: AstThemeNode | null;
     objects: AstObjectNode[];
 }
 export interface AstObjectNode {
@@ -59,10 +72,15 @@ export interface AstInfoEntryNode {
     value: string;
     location: AstSourceLocation;
 }
+export interface NormalizedTheme {
+    preset: string | null;
+    styles: Record<string, Record<string, NormalizedValue>>;
+}
 export interface WorldOrbitDocument {
     format: "worldorbit";
     version: WorldOrbitDocumentVersion;
     schemaVersion: WorldOrbitAnyDocumentVersion;
+    theme: NormalizedTheme | null;
     system: WorldOrbitSystem | null;
     groups: WorldOrbitGroup[];
     relations: WorldOrbitRelation[];
@@ -74,6 +92,7 @@ export interface WorldOrbitAtlasDocument {
     version: WorldOrbitAtlasDocumentVersion;
     schemaVersion: WorldOrbitAtlasDocumentVersion;
     sourceVersion: WorldOrbitDocumentVersion;
+    theme: NormalizedTheme | null;
     system: WorldOrbitAtlasSystem | null;
     groups: WorldOrbitGroup[];
     relations: WorldOrbitRelation[];
@@ -86,6 +105,7 @@ export interface WorldOrbitDraftDocument {
     version: WorldOrbitDraftDocumentVersion;
     schemaVersion: WorldOrbitDraftDocumentVersion;
     sourceVersion: WorldOrbitDocumentVersion;
+    theme: NormalizedTheme | null;
     system: WorldOrbitAtlasSystem | null;
     groups: WorldOrbitGroup[];
     relations: WorldOrbitRelation[];

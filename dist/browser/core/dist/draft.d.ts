@@ -7,6 +7,7 @@ export declare function upgradeDocumentToDraftV2(document: WorldOrbitDocument, o
     schemaVersion: "2.0-draft";
     format: "worldorbit";
     sourceVersion: import("./types.js").WorldOrbitDocumentVersion;
+    theme: import("./types.js").NormalizedTheme | null;
     system: WorldOrbitAtlasSystem | null;
     groups: import("./types.js").WorldOrbitGroup[];
     relations: import("./types.js").WorldOrbitRelation[];

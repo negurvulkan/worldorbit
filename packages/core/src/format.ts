@@ -64,10 +64,12 @@ export function formatDocument(
     schema === "2.0" ||
     schema === "2.1" ||
     schema === "2.5" ||
+    schema === "2.6.1" ||
     schema === "2.0-draft" ||
     document.version === "2.0" ||
     document.version === "2.1" ||
     document.version === "2.5" ||
+    document.version === "2.6.1" ||
     document.version === "2.0-draft";
 
   if (useDraft) {
@@ -75,7 +77,7 @@ export function formatDocument(
       const legacyDraftDocument =
         document.version === "2.0-draft"
           ? document
-          : document.version === "2.0" || document.version === "2.1" || document.version === "2.5"
+          : document.version === "2.0" || document.version === "2.1" || document.version === "2.5" || document.version === "2.6.1"
             ? {
                 ...document,
                 version: "2.0-draft" as const,
@@ -86,7 +88,7 @@ export function formatDocument(
     }
 
     const atlasDocument =
-      document.version === "2.0" || document.version === "2.1" || document.version === "2.5"
+      document.version === "2.0" || document.version === "2.1" || document.version === "2.5" || document.version === "2.6.1"
         ? document
         : document.version === "2.0-draft"
           ? {
@@ -95,7 +97,7 @@ export function formatDocument(
               schemaVersion: "2.0" as const,
             }
           : upgradeDocumentToV2(document as WorldOrbitDocument);
-    if ((schema === "2.0" || schema === "2.1" || schema === "2.5") && atlasDocument.version !== schema) {
+    if ((schema === "2.0" || schema === "2.1" || schema === "2.5" || schema === "2.6.1") && atlasDocument.version !== schema) {
       return formatAtlasDocument({
         ...atlasDocument,
         version: schema,

@@ -1,10 +1,14 @@
 import { collectAtlasDiagnostics } from "./atlas-validate.js";
-export function createEmptyAtlasDocument(systemId = "WorldOrbit", version = "2.5") {
+export function createEmptyAtlasDocument(systemId = "WorldOrbit", version = "2.6.1") {
     return {
         format: "worldorbit",
         version,
         schemaVersion: version,
         sourceVersion: "1.0",
+        theme: {
+            preset: "blueprint",
+            styles: {},
+        },
         system: {
             type: "system",
             id: systemId,
