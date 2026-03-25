@@ -869,12 +869,12 @@ event eclipse-window
   target Naar
   participants Iyath Naar Leth`;
 
-    const example3Source = `schema 2.6
+    const example3Source = `schema 2.5
 
 system Sol
   title "Solar System"
   description "Reference atlas showing most Schema 2.5 authoring features in one place."
-  epoch "J2000.0"
+  epoch J2000.0
   referencePlane ecliptic
 
 defaults
@@ -884,34 +884,11 @@ defaults
   preset atlas-card
   theme atlas
 
-group inner-system
-  label "Inner System"
-  summary "Sun through Mars and the Earth-Moon system."
-  color "#d9b37a"
-  tags rocky inhabited
-
-group outer-system
-  label "Outer System"
-  summary "Gas giants, rings, ice giants, and deep-space markers."
-  color "#8fb7d9"
-  tags giant frontier
-
-group orbital-infrastructure
-  label "Orbital Infrastructure"
-  summary "Stations, telescopes, and surface networks."
-  color "#c8d4e8"
-  tags infrastructure science
-
-group event-tracked
-  label "Event Tracked"
-  summary "Objects curated for named event snapshots."
-  color "#7ecb74"
-  tags events diagnostics
-
 viewpoint overview
   label "Solar System Overview"
   summary "Major planets, reference moons, rings, belts, and key infrastructure."
   projection orthographic
+  preset atlas-card
   camera
     azimuth 22
     elevation 18
@@ -921,12 +898,13 @@ viewpoint earth-system
   focus Earth
   summary "Earth, the Moon, and nearby infrastructure with a curated eclipse snapshot."
   projection perspective
+  preset atlas-card
   zoom 5.5
   camera
     azimuth 38
     elevation 24
     distance 6
-  layers background guides orbits-back events objects labels metadata
+  layers orbits background guides events objects labels metadata
   events total-solar-eclipse-2027
   filter
     groups inner-system orbital-infrastructure event-tracked
@@ -936,7 +914,30 @@ annotation inner-worlds
   target Earth
   body "Mercury, Venus, Earth, and Mars form the rocky inner system."
 
-# Semantic group metadata and relations stay outside orbital placement.
+group event-tracked
+  label "Event Tracked"
+  summary "Objects curated for named event snapshots."
+  color #7ecb74
+  tags events diagnostics
+
+group inner-system
+  label "Inner System"
+  summary "Sun through Mars and the Earth-Moon system."
+  color #d9b37a
+  tags rocky inhabited
+
+group orbital-infrastructure
+  label "Orbital Infrastructure"
+  summary "Stations, telescopes, and surface networks."
+  color #c8d4e8
+  tags infrastructure science
+
+group outer-system
+  label "Outer System"
+  summary "Gas giants, rings, ice giants, and deep-space markers."
+  color #8fb7d9
+  tags giant frontier
+
 relation deep-space-network
   from DSN
   to JWST
@@ -944,34 +945,42 @@ relation deep-space-network
   label "Deep Space Network"
   summary "Earth-based network linking mission control to outer observatories."
   tags infrastructure science
-  color "#89b8ff"
+  color #89b8ff
+
+event total-solar-eclipse-2027
+  kind solar-eclipse
+  label "Total Solar Eclipse"
+  summary "Curated eclipse alignment for Earth-system previews."
+  target Earth
+  participants Sun Earth Moon
+  timing 2027-08-02
+  visibility "Northern Africa and the Arabian Peninsula"
+  epoch J2000.0
+  referencePlane ecliptic
+  tags eclipse earth-system
+  color #7ecb74
+
+  positions
+    pose Earth
+      orbit Sun
+      semiMajor 1au
+      phase 132deg
+    pose Moon
+      orbit Earth
+      distance 384400km
+      phase 132deg
 
 object star Sun
   class G2V
-  groups inner-system outer-system event-tracked
-  color "#f3c56b"
+  color #f3c56b
   radius 1sol
   mass 1sol
   temperature 5778K
+  groups inner-system outer-system event-tracked
 
   info
-    role "Primary star of the system"
     note "Used here as the central reference mass for validator examples"
-
-object planet Mercury
-  orbit Sun
-  semiMajor 0.39au
-  phase 20deg
-  class rocky
-  groups inner-system
-
-object planet Venus
-  orbit Sun
-  semiMajor 0.72au
-  phase 75deg
-  class rocky
-  atmosphere carbon-dioxide
-  groups inner-system
+    role "Primary star of the system"
 
 object planet Earth
   orbit Sun
@@ -979,6 +988,9 @@ object planet Earth
   period 365.25d
   phase 135deg
   class habitable
+  image https://blenderartists.org/uploads/default/original/4X/5/0/2/5029a48052f6f91a399a41dcd1004adf854b17ea.jpeg
+  hidden false
+  radius 6378km
   atmosphere nitrogen-oxygen
   groups inner-system event-tracked
   renderPriority 6
@@ -995,22 +1007,115 @@ object planet Earth
 
   habitability
     biosphere complex
-    inhabited true
     compatibility native
+    inhabited true
 
   settlement
     population "8.1 billion"
     status homeworld
 
+object planet Jupiter
+  orbit Sun
+  semiMajor 5.2au
+  phase 300deg
+  class gas-giant
+  groups outer-system
+
+object planet Mars
+  orbit Sun
+  semiMajor 1.52au
+  phase 210deg
+  class rocky
+  image https://upload.wikimedia.org/wikipedia/commons/7/70/Solarsystemscope_texture_8k_mars.jpg
+  hidden false
+  radius 3390km
+  groups inner-system
+  derive period kepler
+
+object planet Mercury
+  orbit Sun
+  semiMajor 0.39au
+  phase 20deg
+  class rocky
+  groups inner-system
+
+object planet Neptune
+  orbit Sun
+  semiMajor 30.05au
+  phase 175deg
+  class ice-giant
+  groups outer-system
+
+object planet Saturn
+  orbit Sun
+  semiMajor 9.58au
+  phase 20deg
+  class gas-giant
+  groups outer-system
+
+object planet Uranus
+  orbit Sun
+  semiMajor 19.2au
+  phase 95deg
+  class ice-giant
+  groups outer-system
+
+object planet Venus
+  orbit Sun
+  semiMajor 0.72au
+  phase 75deg
+  class rocky
+  image https://www.planetaryvisions.com/images_new/32.jpg
+  hidden false
+  radius 6378km
+  atmosphere carbon-dioxide
+  groups inner-system
+
+object moon Europa
+  orbit Jupiter
+  distance 671100km
+  phase 40deg
+  groups outer-system
+  referencePlane jovian-equatorial
+  tidalLock true
+  resonance Io 2:1
+
+object moon Io
+  orbit Jupiter
+  distance 421700km
+  phase 15deg
+  groups outer-system
+  tidalLock true
+
 object moon Moon
   orbit Earth
   distance 384400km
   phase 220deg
-  epoch "J2000.0"
+  image https://t4.ftcdn.net/jpg/03/38/48/83/360_F_338488339_JId8KdzhK8bgVZcTtlT7zwL9RNbzVXxf.jpg
+  hidden false
+  radius 1738km
+  groups inner-system event-tracked
+  epoch J2000.0
   referencePlane earth-equatorial
   tidalLock true
-  groups inner-system event-tracked
   renderPriority 7
+
+object belt Main-Belt
+  orbit Sun
+  inner 2.1au
+  outer 3.3au
+  groups outer-system
+
+object ring Saturn-Rings
+  orbit Saturn
+  inner 67000km
+  outer 140000km
+  groups outer-system
+
+object structure DSN
+  surface Earth
+  kind network
+  groups orbital-infrastructure
 
 object structure ISS
   orbit Earth
@@ -1021,80 +1126,11 @@ object structure ISS
   renderOrbit false
   renderPriority 10
 
-object structure DSN
-  surface Earth
-  kind network
-  groups orbital-infrastructure
-
 object structure JWST
   at Earth:L2
   kind telescope
   groups orbital-infrastructure event-tracked
   renderPriority 8
-
-object planet Mars
-  orbit Sun
-  semiMajor 1.52au
-  phase 210deg
-  class rocky
-  groups inner-system
-  derive period kepler
-
-object belt Main-Belt
-  orbit Sun
-  inner 2.1au
-  outer 3.3au
-  groups outer-system
-
-object planet Jupiter
-  orbit Sun
-  semiMajor 5.20au
-  phase 300deg
-  class gas-giant
-  groups outer-system
-
-object moon Io
-  orbit Jupiter
-  distance 421700km
-  phase 15deg
-  tidalLock true
-  groups outer-system
-
-object moon Europa
-  orbit Jupiter
-  distance 671100km
-  phase 40deg
-  tidalLock true
-  referencePlane jovian-equatorial
-  resonance Io 2:1
-  groups outer-system
-
-object planet Saturn
-  orbit Sun
-  semiMajor 9.58au
-  phase 20deg
-  class gas-giant
-  groups outer-system
-
-object ring Saturn-Rings
-  orbit Saturn
-  inner 67000km
-  outer 140000km
-  groups outer-system
-
-object planet Uranus
-  orbit Sun
-  semiMajor 19.2au
-  phase 95deg
-  class ice-giant
-  groups outer-system
-
-object planet Neptune
-  orbit Sun
-  semiMajor 30.05au
-  phase 175deg
-  class ice-giant
-  groups outer-system
 
 object structure Voyager-1
   free 160au
