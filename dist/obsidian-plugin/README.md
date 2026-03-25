@@ -1,6 +1,14 @@
+# WorldOrbit for Obsidian
 
+<p align="center">
+  <img src="https://img.shields.io/badge/version-1.0.0-gold?style=for-the-badge" alt="Version 1.0.0">
+  <img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="License MIT">
+  <img src="https://img.shields.io/badge/Obsidian-v1.5.0+-purple?style=for-the-badge&logo=obsidian" alt="Obsidian v1.5.0+">
+</p>
 
- Treat your Obsidian Vault as a stellar atlas. WorldOrbit provides a text-first DSL (Domain Specific Language) to render fictional star systems, orbital mechanics, and space infrastructure directly inside your notes.
+---
+
+Treat your Obsidian Vault as a stellar atlas. WorldOrbit provides a text-first DSL (Domain Specific Language) to render fictional star systems, orbital mechanics, and space infrastructure directly inside your notes.
 
 See the **Examples** section below for a quick start, or the [full reference](https://github.com/negurvulkan/worldorbit) for all the details.
 
@@ -24,7 +32,12 @@ object planet Earth
 ```
 
   
-*Visualisierung eines einfachen Sternensystems in der Obsidian Live-Vorschau.*
+*.*
+<p align="center">
+  <img src="https://negurvulkan.github.io/worldorbit/obsidian_scsh_1.png" width="700" alt="WorldOrbit Simple System Preview">
+  <br>
+  <em>WorldOrbit Simple System Preview</em>
+</p>
 
 Visualize complex orbital hierarchies including moons and rings:
 
@@ -56,8 +69,12 @@ object moon Titan
   distance 1221870km
 ```
 
-  
-*Darstellung komplexer orbitaler Hierarchien mit Ringen und Monden.*
+
+<p align="center">
+  <img src="https://negurvulkan.github.io/worldorbit/obsidian_scsh_2.png" width="700" alt="WorldOrbit Advanced System Preview">
+  <br>
+  <em>WorldOrbit Advanced System</em>
+</p>
 
 ## Usage
 
@@ -119,6 +136,6 @@ npm run build
 
 Licensed under the **MIT License**.
 
-NPM Version|97
-Downloads
-GitHub stars
+![NPM Version](https://img.shields.io/npm/v/worldorbit?style=flat-square&color=cb3837&logo=npm)
+![Downloads](https://img.shields.io/npm/dm/worldorbit?style=flat-square&color=blue)
+![GitHub stars](https://img.shields.io/github/stars/negurvulkan/worldorbit?style=flat-square&color=gold)
