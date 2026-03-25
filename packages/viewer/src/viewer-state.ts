@@ -1,9 +1,9 @@
 import {
-  rotatePoint,
   type CoordinatePoint,
   type RenderBounds,
   type RenderScene,
-} from "@worldorbit/core";
+} from "@worldorbit/core/types";
+import { rotatePoint } from "@worldorbit/core/scene";
 
 import type { ViewerState } from "./types.js";
 

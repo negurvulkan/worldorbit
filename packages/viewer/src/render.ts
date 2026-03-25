@@ -1,14 +1,14 @@
 import {
-  loadWorldOrbitSource,
-  renderDocumentToScene,
-  type NormalizedValue,
   type LoadedWorldOrbitSource,
+  type NormalizedValue,
   type RenderScene,
   type RenderSceneObject,
   type UnitValue,
   type WorldOrbitDocument,
   type WorldOrbitObject,
-} from "@worldorbit/core";
+} from "@worldorbit/core/types";
+import { loadWorldOrbitSource } from "@worldorbit/core/load";
+import { renderDocumentToScene } from "@worldorbit/core/scene";
 
 import { computeVisibleObjectIds } from "./atlas-state.js";
 import { resolveLayers, resolveTheme } from "./theme.js";

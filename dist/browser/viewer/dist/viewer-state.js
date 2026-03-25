@@ -1,4 +1,4 @@
-import { rotatePoint, } from "@worldorbit/core";
+import { rotatePoint } from "@worldorbit/core/scene";
 export const DEFAULT_VIEWER_STATE = {
     scale: 1,
     rotationDeg: 0,

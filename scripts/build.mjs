@@ -13,9 +13,47 @@ const projects = [
           import: "./index.js",
           types: "./index.d.ts",
         },
+        "./load": {
+          import: "./load.js",
+          types: "./load.d.ts",
+        },
+        "./scene": {
+          import: "./scene.js",
+          types: "./scene.d.ts",
+        },
+        "./types": {
+          import: "./types.js",
+          types: "./types.d.ts",
+        },
       },
       js: 'export * from "../../../packages/core/dist/index.js";\n',
       dts: 'export * from "../../../packages/core/dist/index.js";\n',
+      extra: [
+        {
+          file: "load.js",
+          contents: 'export * from "../../../packages/core/dist/load.js";\n',
+        },
+        {
+          file: "load.d.ts",
+          contents: 'export * from "../../../packages/core/dist/load.js";\n',
+        },
+        {
+          file: "scene.js",
+          contents: 'export * from "../../../packages/core/dist/scene.js";\n',
+        },
+        {
+          file: "scene.d.ts",
+          contents: 'export * from "../../../packages/core/dist/scene.js";\n',
+        },
+        {
+          file: "types.js",
+          contents: 'export * from "../../../packages/core/dist/types.js";\n',
+        },
+        {
+          file: "types.d.ts",
+          contents: 'export * from "../../../packages/core/dist/types.js";\n',
+        },
+      ],
     },
   },
   {
@@ -27,6 +65,10 @@ const projects = [
         ".": {
           import: "./index.js",
           types: "./index.d.ts",
+        },
+        "./interactive-2d": {
+          import: "./interactive-2d.js",
+          types: "./interactive-2d.d.ts",
         },
         "./viewer-state": {
           import: "./viewer-state.js",
@@ -43,6 +85,14 @@ const projects = [
         {
           file: "viewer-state.d.ts",
           contents: 'export * from "../../../packages/viewer/dist/viewer-state.js";\n',
+        },
+        {
+          file: "interactive-2d.js",
+          contents: 'export * from "../../../packages/viewer/dist/interactive-2d.js";\n',
+        },
+        {
+          file: "interactive-2d.d.ts",
+          contents: 'export * from "../../../packages/viewer/dist/interactive-2d.js";\n',
         },
       ],
     },
@@ -75,6 +125,21 @@ const projects = [
       },
       js: 'export * from "../../../packages/editor/dist/index.js";\n',
       dts: 'export * from "../../../packages/editor/dist/index.js";\n',
+    },
+  },
+  {
+    project: "packages/obsidian-plugin",
+    shim: {
+      name: "@worldorbit/obsidian-plugin",
+      dir: "obsidian-plugin",
+      exports: {
+        ".": {
+          import: "./index.js",
+          types: "./index.d.ts",
+        },
+      },
+      js: 'export * from "../../../packages/obsidian-plugin/dist/index.js";\n',
+      dts: 'export * from "../../../packages/obsidian-plugin/dist/index.js";\n',
     },
   },
 ];
@@ -181,6 +246,7 @@ async function buildBundle(entry, outfile, options = {}) {
     globalName: options.globalName,
     minify: options.minify ?? true,
     platform: "browser",
+    external: options.external ?? [],
   });
 }
 
@@ -248,6 +314,37 @@ try {
   copyDirectory("dist/browser/editor", "docs/assets/browser/editor");
   copyFile("studio/studio.js", "docs/studio/studio.js");
   copyFile("studio/studio-app.js", "docs/studio/studio-app.js");
+  copyFile("packages/obsidian-plugin/manifest.json", "dist/obsidian-plugin/manifest.json");
+  copyFile("packages/obsidian-plugin/styles.css", "dist/obsidian-plugin/styles.css");
+  await buildBundle("packages/obsidian-plugin/src/main.ts", "dist/obsidian-plugin/main.js", {
+    format: "cjs",
+    minify: true,
+    target: ["es2020"],
+    external: ["obsidian"],
+    metafile: true,
+  });
+
+  const obsidianPluginStats = await esbuild.build({
+    entryPoints: ["packages/obsidian-plugin/src/main.ts"],
+    bundle: true,
+    format: "cjs",
+    minify: true,
+    platform: "browser",
+    target: ["es2020"],
+    external: ["obsidian"],
+    write: false,
+    metafile: true,
+  });
+  const mainBytes = obsidianPluginStats.outputFiles[0]?.contents.length ?? 0;
+  const topInputs = Object.entries(obsidianPluginStats.metafile.inputs)
+    .map(([path, meta]) => ({ path, bytes: meta.bytes }))
+    .sort((left, right) => right.bytes - left.bytes)
+    .slice(0, 8);
+  console.log(`Obsidian plugin bundle: ${mainBytes} bytes (minified)`);
+  console.log("Obsidian plugin top inputs:");
+  for (const item of topInputs) {
+    console.log(`- ${item.path}: ${item.bytes} bytes`);
+  }
 
   console.log("Browser bundles built!");
 } catch (e) {

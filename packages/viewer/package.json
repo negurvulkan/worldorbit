@@ -7,6 +7,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./interactive-2d": {
+      "types": "./dist/interactive-2d.d.ts",
+      "import": "./dist/interactive-2d.js"
+    },
     "./viewer-state": {
       "types": "./dist/viewer-state.d.ts",
       "import": "./dist/viewer-state.js"

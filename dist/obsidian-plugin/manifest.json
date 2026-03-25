@@ -1,0 +1,9 @@
+{
+  "id": "worldorbit",
+  "name": "WorldOrbit",
+  "version": "3.2.1",
+  "minAppVersion": "1.5.0",
+  "description": "Render WorldOrbit code blocks in Obsidian with diagnostics and interactive 2D previews.",
+  "author": "Hanjo Winter",
+  "isDesktopOnly": false
+}

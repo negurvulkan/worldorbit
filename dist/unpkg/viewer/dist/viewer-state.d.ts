@@ -1,4 +1,4 @@
-import { type CoordinatePoint, type RenderBounds, type RenderScene } from "@worldorbit/core";
+import { type CoordinatePoint, type RenderBounds, type RenderScene } from "@worldorbit/core/types";
 import type { ViewerState } from "./types.js";
 export interface ViewerConstraints {
     minScale: number;

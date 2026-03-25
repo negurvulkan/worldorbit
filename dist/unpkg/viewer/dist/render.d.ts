@@ -1,4 +1,4 @@
-import { type RenderScene, type WorldOrbitDocument } from "@worldorbit/core";
+import { type RenderScene, type WorldOrbitDocument } from "@worldorbit/core/types";
 import type { SvgRenderOptions } from "./types.js";
 export declare const WORLD_LAYER_ID = "worldorbit-camera-root";
 export declare function renderSceneToSvg(scene: RenderScene, options?: SvgRenderOptions): string;

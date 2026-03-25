@@ -1,0 +1,20 @@
+{
+  "name": "@worldorbit/obsidian-plugin",
+  "version": "3.2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "manifest.json",
+    "styles.css",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "obsidian": ">=1.5.0"
+  },
+  "dependencies": {
+    "@worldorbit/core": "3.2.0",
+    "@worldorbit/viewer": "3.2.0"
+  }
+}

@@ -3,6 +3,8 @@
   "references": [
     { "path": "./packages/core" },
     { "path": "./packages/viewer" },
-    { "path": "./packages/markdown" }
+    { "path": "./packages/markdown" },
+    { "path": "./packages/editor" },
+    { "path": "./packages/obsidian-plugin" }
   ]
 }

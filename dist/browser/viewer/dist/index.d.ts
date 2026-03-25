@@ -8,3 +8,4 @@ export { createEmbedPayload, createWorldOrbitEmbedMarkup, deserializeWorldOrbitE
 export { defineWorldOrbitViewerElement } from "./custom-element.js";
 export { createAtlasViewer } from "./atlas-viewer.js";
 export { createInteractiveViewer } from "./viewer.js";
+export { createInteractiveViewer2D } from "./interactive-2d.js";

@@ -1,0 +1,164 @@
+.worldorbit-obsidian-block {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 14px;
+  background: var(--background-primary);
+  overflow: hidden;
+}
+
+.worldorbit-obsidian-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.75rem 0.9rem;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+}
+
+.worldorbit-obsidian-status {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  margin-right: auto;
+}
+
+.worldorbit-obsidian-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.worldorbit-obsidian-host {
+  position: relative;
+  min-height: 280px;
+  background:
+    radial-gradient(circle at top, color-mix(in srgb, var(--interactive-accent) 12%, transparent), transparent 48%),
+    linear-gradient(180deg, var(--background-primary), var(--background-secondary));
+}
+
+.worldorbit-obsidian-host.is-locked {
+  cursor: default;
+}
+
+.worldorbit-obsidian-host .wo-viewer-container,
+.worldorbit-obsidian-host svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.worldorbit-obsidian-empty {
+  padding: 1rem;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.worldorbit-obsidian-example {
+  margin: 0 1rem 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  overflow: auto;
+}
+
+.worldorbit-obsidian-diagnostics {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.9rem;
+  border-top: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+}
+
+.worldorbit-obsidian-diagnostic {
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+  background: var(--background-primary);
+}
+
+.worldorbit-obsidian-diagnostic[data-severity="error"] {
+  border-color: color-mix(in srgb, var(--color-red) 45%, var(--background-modifier-border));
+}
+
+.worldorbit-obsidian-diagnostic[data-severity="warning"] {
+  border-color: color-mix(in srgb, var(--color-orange) 45%, var(--background-modifier-border));
+}
+
+.worldorbit-obsidian-diagnostic-meta {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 0.4rem;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.worldorbit-obsidian-diagnostic-badge {
+  padding: 0.16rem 0.5rem;
+  border-radius: 999px;
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+}
+
+.worldorbit-obsidian-diagnostic-message {
+  color: var(--text-normal);
+  line-height: 1.45;
+}
+
+.worldorbit-obsidian-diagnostic-actions {
+  margin-top: 0.65rem;
+}
+
+.worldorbit-obsidian-button {
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  background: var(--background-primary-alt, var(--background-primary));
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+}
+
+.worldorbit-obsidian-button.mod-cta {
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+  color: var(--text-on-accent, white);
+}
+
+.worldorbit-obsidian-button[disabled] {
+  opacity: 0.55;
+}
+
+.worldorbit-obsidian-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0;
+}
+
+.worldorbit-obsidian-help {
+  color: var(--text-normal);
+  line-height: 1.6;
+}
+
+.worldorbit-obsidian-modal {
+  min-height: 60vh;
+}
+
+.worldorbit-obsidian-modal-host {
+  min-height: 60vh;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 16px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top, color-mix(in srgb, var(--interactive-accent) 12%, transparent), transparent 48%),
+    linear-gradient(180deg, var(--background-primary), var(--background-secondary));
+}

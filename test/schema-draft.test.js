@@ -309,8 +309,8 @@ test("upgradeDocumentToV2 promotes viewpoints, metadata, and annotations into th
   const result = parse(source);
   const atlas = upgradeDocumentToV2(result.document, { preset: "atlas-card" });
 
-  assert.equal(atlas.version, "2.6.1");
-  assert.equal(atlas.schemaVersion, "2.6.1");
+  assert.equal(atlas.version, "2.6");
+  assert.equal(atlas.schemaVersion, "2.6");
   assert.equal(atlas.sourceVersion, "1.0");
   assert.equal(atlas.system?.defaults.view, "isometric");
   assert.equal(atlas.system?.defaults.preset, "atlas-card");

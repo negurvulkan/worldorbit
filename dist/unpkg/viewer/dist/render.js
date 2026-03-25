@@ -1,4 +1,5 @@
-import { loadWorldOrbitSource, renderDocumentToScene, } from "@worldorbit/core";
+import { loadWorldOrbitSource } from "@worldorbit/core/load";
+import { renderDocumentToScene } from "@worldorbit/core/scene";
 import { computeVisibleObjectIds } from "./atlas-state.js";
 import { resolveLayers, resolveTheme } from "./theme.js";
 export const WORLD_LAYER_ID = "worldorbit-camera-root";
