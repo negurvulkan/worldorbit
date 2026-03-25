@@ -39,18 +39,18 @@ export function formatDocument(document, options = {}) {
     const useDraft = schema === "2.0" ||
         schema === "2.1" ||
         schema === "2.5" ||
-        schema === "2.6.1" ||
+        schema === "2.6" ||
         schema === "2.0-draft" ||
         document.version === "2.0" ||
         document.version === "2.1" ||
         document.version === "2.5" ||
-        document.version === "2.6.1" ||
+        document.version === "2.6" ||
         document.version === "2.0-draft";
     if (useDraft) {
         if (schema === "2.0-draft") {
             const legacyDraftDocument = document.version === "2.0-draft"
                 ? document
-                : document.version === "2.0" || document.version === "2.1" || document.version === "2.5" || document.version === "2.6.1"
+                : document.version === "2.0" || document.version === "2.1" || document.version === "2.5" || document.version === "2.6"
                     ? {
                         ...document,
                         version: "2.0-draft",
@@ -59,7 +59,7 @@ export function formatDocument(document, options = {}) {
                     : upgradeDocumentToDraftV2(document);
             return formatDraftDocument(legacyDraftDocument);
         }
-        const atlasDocument = document.version === "2.0" || document.version === "2.1" || document.version === "2.5" || document.version === "2.6.1"
+        const atlasDocument = document.version === "2.0" || document.version === "2.1" || document.version === "2.5" || document.version === "2.6"
             ? document
             : document.version === "2.0-draft"
                 ? {
@@ -68,7 +68,7 @@ export function formatDocument(document, options = {}) {
                     schemaVersion: "2.0",
                 }
                 : upgradeDocumentToV2(document);
-        if ((schema === "2.0" || schema === "2.1" || schema === "2.5" || schema === "2.6.1") && atlasDocument.version !== schema) {
+        if ((schema === "2.0" || schema === "2.1" || schema === "2.5" || schema === "2.6") && atlasDocument.version !== schema) {
             return formatAtlasDocument({
                 ...atlasDocument,
                 version: schema,

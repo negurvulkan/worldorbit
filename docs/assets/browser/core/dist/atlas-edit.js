@@ -1,5 +1,5 @@
 import { collectAtlasDiagnostics } from "./atlas-validate.js";
-export function createEmptyAtlasDocument(systemId = "WorldOrbit", version = "2.6.1") {
+export function createEmptyAtlasDocument(systemId = "WorldOrbit", version = "2.6") {
     return {
         format: "worldorbit",
         version,

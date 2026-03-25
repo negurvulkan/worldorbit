@@ -57,8 +57,8 @@ export function upgradeDocumentToV2(
 
   return {
     format: "worldorbit",
-    version: "2.6.1",
-    schemaVersion: "2.6.1",
+    version: "2.6",
+    schemaVersion: "2.6",
     sourceVersion: document.version,
     theme: document.theme ?? null,
     system,

@@ -67,7 +67,7 @@ function validateRelation(relation, objectMap, diagnostics) {
 }
 function validateViewpoint(viewpoint, groupIds, eventIds, sourceSchemaVersion, diagnostics, objectMap) {
     const filter = viewpoint.filter;
-    if (sourceSchemaVersion === "2.1" || sourceSchemaVersion === "2.5" || sourceSchemaVersion === "2.6.1") {
+    if (sourceSchemaVersion === "2.1" || sourceSchemaVersion === "2.5" || sourceSchemaVersion === "2.6") {
         if (filter) {
             for (const groupId of filter.groupIds) {
                 if (!groupIds.has(groupId)) {

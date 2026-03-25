@@ -152,7 +152,7 @@ type DraftSectionState =
 
 interface DraftObjectFieldSpec {
   key: string;
-  version: "2.0" | "2.1" | "2.5" | "2.6.1";
+  version: "2.0" | "2.1" | "2.5" | "2.6";
   inlineMode: "single" | "multiple" | "pair";
   allowRepeat: boolean;
   legacySchema?: WorldOrbitFieldSchema;
@@ -423,18 +423,18 @@ function assertDraftSchemaHeader(
   if (
     tokens.length !== 2 ||
     tokens[0].value.toLowerCase() !== "schema" ||
-    !["2.0-draft", "2.0", "2.1", "2.5", "2.6.1"].includes(tokens[1].value.toLowerCase())
+    !["2.0-draft", "2.0", "2.1", "2.5", "2.6"].includes(tokens[1].value.toLowerCase())
   ) {
     throw new WorldOrbitError(
-      'Expected atlas header "schema 2.0", "schema 2.1", "schema 2.5", "schema 2.6.1", or legacy "schema 2.0-draft"',
+      'Expected atlas header "schema 2.0", "schema 2.1", "schema 2.5", "schema 2.6", or legacy "schema 2.0-draft"',
       line,
       tokens[0]?.column ?? 1,
     );
   }
 
   const version = tokens[1].value.toLowerCase();
-  return version === "2.6.1"
-    ? "2.6.1"
+  return version === "2.6"
+    ? "2.6"
     : version === "2.5"
     ? "2.5"
     : version === "2.1"
@@ -2371,13 +2371,13 @@ function warnIfSchema25Feature(
 
 function isSchemaOlderThan(
   sourceSchemaVersion: SourceSchemaVersion,
-  requiredVersion: "2.1" | "2.5" | "2.6.1",
+  requiredVersion: "2.1" | "2.5" | "2.6",
 ): boolean {
   return schemaVersionRank(sourceSchemaVersion) < schemaVersionRank(requiredVersion);
 }
 
 function schemaVersionRank(
-  version: SourceSchemaVersion | "2.1" | "2.5" | "2.6.1",
+  version: SourceSchemaVersion | "2.1" | "2.5" | "2.6",
 ): number {
   switch (version) {
     case "2.0-draft":
@@ -2388,8 +2388,10 @@ function schemaVersionRank(
       return 2;
     case "2.5":
       return 3;
-    case "2.6.1":
+    case "2.6":
       return 4;
+    default:
+      return 5;
   }
 }
 
