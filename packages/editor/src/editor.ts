@@ -6,6 +6,7 @@ import {
   loadWorldOrbitSourceWithDiagnostics,
   materializeAtlasDocument,
   removeAtlasDocumentNode,
+  renderDocumentToScene,
   resolveAtlasDiagnostics,
   rotatePoint,
   upgradeDocumentToV2,
@@ -68,8 +69,10 @@ interface DiagnosticBucket {
 }
 
 interface OrbitRadiusDragContext {
+  mode: "linear" | "log";
   innerPx: number;
   stepPx: number;
+  pixelsPerMetric: number | null;
   radiusOffsetPx: number;
   preferredUnit: UnitValue["unit"];
 }
@@ -1556,6 +1559,7 @@ export function createWorldOrbitEditor(
             atlasDocument,
             dragState.path,
             dragState.objectId,
+            viewer!.getScene(),
             details,
             pointer,
             dragState.orbitRadiusContext ?? null,
@@ -3244,6 +3248,7 @@ function updateOrbitRadius(
   document: WorldOrbitAtlasDocument,
   path: AtlasDocumentPath,
   objectId: string,
+  scene: RenderScene,
   details: ViewerObjectDetails,
   pointer: CoordinatePoint,
   dragContext: OrbitRadiusDragContext | null,
@@ -3263,16 +3268,25 @@ function updateOrbitRadius(
     nextBaseRadius,
     dragContext.innerPx,
     dragContext.stepPx,
+    dragContext.mode,
+    dragContext.pixelsPerMetric,
   );
   const next = cloneAtlasDocument(document);
   const placementOwner = findEditablePlacementOwner(next, path, objectId);
   if (!placementOwner || placementOwner.placement.mode !== "orbit") {
     return document;
   }
+  const orbitPlacementOwner = placementOwner as typeof placementOwner & {
+    placement: {
+      mode: "orbit";
+      semiMajor?: UnitValue;
+      distance?: UnitValue;
+    };
+  };
 
   const currentValue =
-    placementOwner.placement.semiMajor ??
-    placementOwner.placement.distance ?? {
+    orbitPlacementOwner.placement.semiMajor ??
+    orbitPlacementOwner.placement.distance ?? {
       value: 1,
       unit: "au" as const,
     };
@@ -3280,12 +3294,62 @@ function updateOrbitRadius(
     Math.max(nextMetric, 0),
     dragContext.preferredUnit ?? currentValue.unit,
   );
-  if (placementOwner.placement.semiMajor) {
-    placementOwner.placement.semiMajor = scaled;
-  } else {
-    placementOwner.placement.distance = scaled;
+  applyOrbitDistanceValue(orbitPlacementOwner, scaled);
+
+  const targetDisplayedRadius = nextDisplayedRadius;
+  let correctedMetric = nextMetric;
+
+  for (let iteration = 0; iteration < 3; iteration += 1) {
+    const candidateScene = renderDocumentToScene(materializeAtlasDocument(next), {
+      width: scene.width,
+      height: scene.height,
+      padding: scene.padding,
+      preset: scene.renderPreset ?? undefined,
+      projection: scene.projection,
+      camera: scene.camera,
+      scaleModel: { ...scene.scaleModel },
+      bodyScaleMode: scene.scaleModel.bodyScaleMode,
+      activeEventId: scene.activeEventId,
+    });
+    const renderedOrbit = candidateScene.orbitVisuals.find((entry) => entry.objectId === objectId);
+    const renderedRadius =
+      renderedOrbit?.kind === "circle"
+        ? renderedOrbit.radius ?? 0
+        : renderedOrbit?.rx ?? 0;
+
+    if (renderedRadius >= targetDisplayedRadius - 1) {
+      break;
+    }
+
+    const correctionFactor = targetDisplayedRadius / Math.max(renderedRadius, 1);
+    correctedMetric *= Math.max(correctionFactor, 1.02);
+    applyOrbitDistanceValue(
+      orbitPlacementOwner,
+      distanceMetricToUnitValue(
+        Math.max(correctedMetric, 0),
+        dragContext.preferredUnit ?? currentValue.unit,
+      ),
+    );
   }
+
   return next;
+}
+
+function applyOrbitDistanceValue(
+  placementOwner: {
+    placement: {
+      mode: "orbit";
+      semiMajor?: UnitValue;
+      distance?: UnitValue;
+    };
+  },
+  value: UnitValue,
+): void {
+  if (placementOwner.placement.semiMajor) {
+    placementOwner.placement.semiMajor = value;
+  } else {
+    placementOwner.placement.distance = value;
+  }
 }
 
 function updateAtReference(
@@ -3354,22 +3418,35 @@ function createOrbitRadiusDragContext(
   const spacingFactor = layoutPresetSpacingForScene(scene.layoutPreset);
   const stepPx =
     (siblingCount > 2 ? 54 : 64) * spacingFactor * scene.scaleModel.orbitDistanceMultiplier;
+  const minimumGapPx =
+    scene.scaleModel.bodyScaleMode === "strict"
+      ? Math.max(2, 8 * spacingFactor * scene.scaleModel.orbitDistanceMultiplier)
+      : stepPx * 0.42;
   const innerPx =
     details.parent.radius +
-    56 * spacingFactor * scene.scaleModel.orbitDistanceMultiplier;
+    Math.max(minimumGapPx * 1.2, 24 * spacingFactor);
   const currentValue = details.object.placement.semiMajor ?? details.object.placement.distance ?? null;
   const currentMetric = unitValueToDistanceMetric(currentValue);
   const displayedRadius =
     details.orbit.kind === "circle" ? details.orbit.radius ?? 1 : details.orbit.rx ?? 1;
-  const baseRadius = orbitMetricToRadiusPx(
-    currentMetric ?? 0,
-    innerPx,
-    stepPx,
-  );
+  const usesLinearScale = currentMetric !== null && currentMetric > 0;
+  const pixelsPerMetric =
+    usesLinearScale
+      ? displayedRadius / Math.max(currentMetric, 0.0001)
+      : null;
+  const baseRadius = usesLinearScale
+    ? currentMetric * Math.max(pixelsPerMetric ?? 0, 0)
+    : orbitMetricToRadiusPx(
+        currentMetric ?? 0,
+        innerPx,
+        stepPx,
+      );
 
   return {
+    mode: usesLinearScale ? "linear" : "log",
     innerPx,
     stepPx,
+    pixelsPerMetric,
     radiusOffsetPx: displayedRadius - baseRadius,
     preferredUnit: currentValue?.unit ?? null,
   };
@@ -4165,7 +4242,17 @@ function orbitMetricToRadiusPx(metric: number, innerPx: number, stepPx: number):
   return innerPx + stepPx * log2(Math.max(metric, 0) + 1);
 }
 
-function orbitRadiusPxToMetric(radiusPx: number, innerPx: number, stepPx: number): number {
+function orbitRadiusPxToMetric(
+  radiusPx: number,
+  innerPx: number,
+  stepPx: number,
+  mode: OrbitRadiusDragContext["mode"],
+  pixelsPerMetric: number | null,
+): number {
+  if (mode === "linear" && pixelsPerMetric !== null && pixelsPerMetric > 0) {
+    return Math.max(radiusPx / pixelsPerMetric, 0);
+  }
+
   if (radiusPx <= innerPx) {
     return 0;
   }

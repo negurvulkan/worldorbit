@@ -44,6 +44,7 @@ export function createInteractiveViewer(container, options) {
         padding: options.padding,
         preset: options.preset,
         projection: options.projection,
+        bodyScaleMode: options.bodyScaleMode,
         viewMode: options.viewMode ?? "2d",
         quality: options.quality ?? "balanced",
         style3d: options.style3d ?? "symbolic",
@@ -1595,6 +1596,7 @@ function hasSceneAffectingRenderOptions(options) {
         options.projection !== undefined ||
         options.camera !== undefined ||
         options.scaleModel !== undefined ||
+        options.bodyScaleMode !== undefined ||
         options.activeEventId !== undefined);
 }
 function resolveSourceRenderOptions(loaded, renderOptions) {

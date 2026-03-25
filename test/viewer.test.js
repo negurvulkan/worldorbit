@@ -374,12 +374,14 @@ test("interactive viewer mounts, updates, selects, exports, and destroys cleanly
     viewer.setRenderOptions({
       preset: "diagram",
       projection: "topdown",
+      bodyScaleMode: "strict",
       scaleModel: {
         bodyRadiusMultiplier: 1.4,
       },
     });
     assert.equal(viewer.getRenderOptions().preset, "diagram");
     assert.equal(viewer.getRenderOptions().projection, "topdown");
+    assert.equal(viewer.getRenderOptions().bodyScaleMode, "strict");
     assert.equal(viewer.getRenderOptions().scaleModel?.bodyRadiusMultiplier, 1.4);
     assert.equal(viewer.getScene().projection, "topdown");
 

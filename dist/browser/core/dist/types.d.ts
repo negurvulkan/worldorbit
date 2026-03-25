@@ -8,6 +8,7 @@ export type WorldOrbitAnyDocumentVersion = WorldOrbitDocumentVersion | WorldOrbi
 export type ViewProjection = "topdown" | "isometric" | "orthographic" | "perspective";
 export type RenderProjectionFallback = "topdown" | "isometric";
 export type RenderPresetName = "diagram" | "presentation" | "atlas-card" | "markdown";
+export type BodyScaleMode = "readable" | "strict";
 export interface CoordinatePoint {
     x: number;
     y: number;
@@ -263,6 +264,7 @@ export interface RenderScaleModel {
     ringThicknessMultiplier: number;
     minBodyRadius: number;
     maxBodyRadius: number;
+    bodyScaleMode: BodyScaleMode;
 }
 export interface SceneRenderOptions {
     width?: number;
@@ -272,6 +274,7 @@ export interface SceneRenderOptions {
     projection?: "document" | ViewProjection;
     camera?: WorldOrbitViewCamera | null;
     scaleModel?: Partial<RenderScaleModel>;
+    bodyScaleMode?: BodyScaleMode;
     activeEventId?: string | null;
 }
 export interface SpatialScaleModel {

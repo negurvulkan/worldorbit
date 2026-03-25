@@ -36,6 +36,7 @@ export function renderDocumentToSpatialScene(
     projection: options.projection,
     camera: options.camera,
     scaleModel: options.scaleModel,
+    bodyScaleMode: options.bodyScaleMode,
     activeEventId: options.activeEventId,
   };
   const scene = renderDocumentToScene(document, renderOptions);

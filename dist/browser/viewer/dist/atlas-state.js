@@ -72,6 +72,7 @@ export function createAtlasStateSnapshot(viewerState, renderOptions, filter, vie
             camera: renderOptions.camera ? { ...renderOptions.camera } : null,
             layers: renderOptions.layers ? { ...renderOptions.layers } : undefined,
             scaleModel: renderOptions.scaleModel ? { ...renderOptions.scaleModel } : undefined,
+            bodyScaleMode: renderOptions.bodyScaleMode,
             activeEventId: renderOptions.activeEventId ?? null,
             viewMode: renderOptions.viewMode ?? "2d",
         },
@@ -102,6 +103,7 @@ export function deserializeViewerAtlasState(serialized) {
             scaleModel: raw.renderOptions?.scaleModel
                 ? { ...raw.renderOptions.scaleModel }
                 : undefined,
+            bodyScaleMode: raw.renderOptions?.bodyScaleMode,
             activeEventId: raw.activeEventId ?? raw.renderOptions?.activeEventId ?? null,
             viewMode: raw.renderOptions?.viewMode ?? "2d",
         },
@@ -126,6 +128,7 @@ export function createViewerBookmark(name, label, atlasState) {
                 scaleModel: atlasState.renderOptions.scaleModel
                     ? { ...atlasState.renderOptions.scaleModel }
                     : undefined,
+                bodyScaleMode: atlasState.renderOptions.bodyScaleMode,
                 activeEventId: atlasState.renderOptions.activeEventId ?? null,
                 viewMode: atlasState.renderOptions.viewMode ?? "2d",
             },

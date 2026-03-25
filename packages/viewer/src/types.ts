@@ -164,6 +164,7 @@ export interface ViewerAtlasState {
     camera?: WorldOrbitViewCamera | null;
     layers?: ViewerLayerOptions;
     scaleModel?: Partial<RenderScaleModel>;
+    bodyScaleMode?: SceneRenderOptions["bodyScaleMode"];
     activeEventId?: string | null;
     viewMode?: WorldOrbitViewMode;
     quality?: WorldOrbit3DQuality;

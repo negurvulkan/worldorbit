@@ -354,6 +354,30 @@ object structure Seyra-Basen
   kind outpost
 `.trim();
 
+const radiusScaleSource = `
+system Caldera
+  title "Caldera"
+  view topdown
+  scale presentation
+
+star Helios
+  radius 700000km
+
+planet Brim
+  orbit Helios
+  distance 7000000km
+  radius 70000km
+
+moon Cinder
+  orbit Brim
+  distance 700000km
+  radius 7000km
+
+planet Fallback
+  orbit Helios
+  distance 12000000km
+`.trim();
+
 test("scene creation exposes objects, visuals, visible-content bounds, and metadata", () => {
   const result = parse(source);
   const scene = renderDocumentToScene(result.document, {
@@ -478,8 +502,8 @@ structure HiddenFarGate kind gate free 80au
   });
 
   assert.ok(
-    visibleScene.contentBounds.minX < hiddenScene.contentBounds.minX,
-    "hidden free objects should not expand visible content bounds",
+    visibleScene.contentBounds.maxX > hiddenScene.contentBounds.maxX,
+    "visible free objects should expand visible content bounds while hidden ones stay excluded",
   );
 });
 
@@ -572,6 +596,98 @@ test("label placement keeps orbiting body names readable near local infrastructu
   );
 });
 
+test("strict body scaling derives explicit radii from the same metric scale as orbit distances", () => {
+  const scene = renderDocumentToScene(parse(radiusScaleSource).document, {
+    width: 960,
+    height: 640,
+    bodyScaleMode: "strict",
+  });
+
+  const star = scene.objects.find((object) => object.objectId === "Helios");
+  const planet = scene.objects.find((object) => object.objectId === "Brim");
+  const orbit = scene.orbitVisuals.find((visual) => visual.objectId === "Brim");
+
+  assert.ok(star);
+  assert.ok(planet);
+  assert.ok(orbit);
+
+  if (!star || !planet || !orbit) {
+    assert.fail("Expected Helios, Brim, and Brim's orbit to exist");
+  }
+
+  const orbitRadius = orbit.radius ?? orbit.rx ?? 0;
+  const starPlanetRatio = star.radius / Math.max(planet.radius, 0.0001);
+  const orbitPlanetRatio = orbitRadius / Math.max(planet.radius, 0.0001);
+  const expectedOrbitPlanetRatio = 100 / scene.scaleModel.bodyRadiusMultiplier;
+
+  assert.ok(Math.abs(starPlanetRatio - 10) < 0.2, "700000km vs 70000km should stay at a 10:1 visual ratio in strict mode");
+  assert.ok(
+    Math.abs(orbitPlanetRatio - expectedOrbitPlanetRatio) < 1.5,
+    "7000000km orbit vs 70000km radius should share the same scene scale, adjusted only by the body style multiplier",
+  );
+});
+
+test("readable body scaling keeps tiny explicit radii visible while strict mode stays physically smaller", () => {
+  const tinySource = `
+system Tiny
+  scale presentation
+
+star Helios
+  radius 700000km
+
+planet Needle
+  orbit Helios
+  distance 1au
+  radius 1re
+`.trim();
+
+  const readableScene = renderDocumentToScene(parse(tinySource).document, {
+    width: 960,
+    height: 640,
+  });
+  const strictScene = renderDocumentToScene(parse(tinySource).document, {
+    width: 960,
+    height: 640,
+    bodyScaleMode: "strict",
+  });
+
+  const readablePlanet = readableScene.objects.find((object) => object.objectId === "Needle");
+  const strictPlanet = strictScene.objects.find((object) => object.objectId === "Needle");
+
+  assert.ok(readablePlanet);
+  assert.ok(strictPlanet);
+
+  if (!readablePlanet || !strictPlanet) {
+    assert.fail("Expected Needle to exist in both scenes");
+  }
+
+  assert.equal(readableScene.scaleModel.bodyScaleMode, "readable");
+  assert.equal(strictScene.scaleModel.bodyScaleMode, "strict");
+  assert.ok(readablePlanet.radius >= readableScene.scaleModel.minBodyRadius);
+  assert.ok(strictPlanet.radius < readablePlanet.radius);
+});
+
+test("explicit radii can drive shared scale without hiding fallback bodies", () => {
+  const scene = renderDocumentToScene(parse(radiusScaleSource).document, {
+    width: 960,
+    height: 640,
+  });
+
+  const explicitPlanet = scene.objects.find((object) => object.objectId === "Brim");
+  const fallbackPlanet = scene.objects.find((object) => object.objectId === "Fallback");
+
+  assert.ok(explicitPlanet);
+  assert.ok(fallbackPlanet);
+
+  if (!explicitPlanet || !fallbackPlanet) {
+    assert.fail("Expected both Brim and Fallback to exist");
+  }
+
+  assert.ok(explicitPlanet.radius > 0);
+  assert.ok(fallbackPlanet.radius >= scene.scaleModel.minBodyRadius);
+  assert.ok(fallbackPlanet.radius !== explicitPlanet.radius, "Fallback sizing should remain heuristic instead of collapsing onto explicit-radius scaling");
+});
+
 test("scene svg keeps a dedicated transformable world layer, image clips, and configurable layers", () => {
   const result = parse(source);
   const scene = renderDocumentToScene(result.document, { preset: "markdown" });
@@ -590,6 +706,29 @@ test("scene svg keeps a dedicated transformable world layer, image clips, and co
   assert.doesNotMatch(svg, /data-object-id="HiddenGate"/);
   assert.match(svg, /Topdown view/);
   assert.match(svg, /data-layer-id="labels"/);
+});
+
+test("scene svg reflects radius-driven scale changes from the core scene", () => {
+  const scene = renderDocumentToScene(parse(radiusScaleSource).document, {
+    width: 960,
+    height: 640,
+    bodyScaleMode: "strict",
+  });
+  const svg = renderSceneToSvg(scene);
+  const planet = scene.objects.find((object) => object.objectId === "Brim");
+
+  assert.ok(planet);
+
+  if (!planet) {
+    assert.fail("Expected Brim to exist");
+  }
+
+  assert.match(
+    svg,
+    new RegExp(
+      `data-object-id="Brim"[\\s\\S]*?<circle cx="${planet.x}" cy="${planet.y}" r="${planet.radius}"`,
+    ),
+  );
 });
 
 test("isometric svg renders split orbit paths, atmosphere styling, and projected ring bands", () => {

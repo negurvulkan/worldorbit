@@ -55,6 +55,7 @@ export type ViewProjection =
   | "perspective";
 export type RenderProjectionFallback = "topdown" | "isometric";
 export type RenderPresetName = "diagram" | "presentation" | "atlas-card" | "markdown";
+export type BodyScaleMode = "readable" | "strict";
 
 export interface CoordinatePoint {
   x: number;
@@ -366,6 +367,7 @@ export interface RenderScaleModel {
   ringThicknessMultiplier: number;
   minBodyRadius: number;
   maxBodyRadius: number;
+  bodyScaleMode: BodyScaleMode;
 }
 
 export interface SceneRenderOptions {
@@ -376,6 +378,7 @@ export interface SceneRenderOptions {
   projection?: "document" | ViewProjection;
   camera?: WorldOrbitViewCamera | null;
   scaleModel?: Partial<RenderScaleModel>;
+  bodyScaleMode?: BodyScaleMode;
   activeEventId?: string | null;
 }
 

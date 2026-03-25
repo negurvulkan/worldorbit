@@ -31873,11 +31873,12 @@ void main() {
     const schemaProjection = resolveProjection(document2, options.projection);
     const camera = normalizeViewCamera(options.camera ?? null);
     const renderProjection = resolveRenderProjection(schemaProjection, camera);
-    const scaleModel = resolveScaleModel(layoutPreset, options.scaleModel);
     const spacingFactor = layoutPresetSpacing(layoutPreset);
+    const scaleModel = resolveScaleModel(layoutPreset, options.scaleModel, options.bodyScaleMode);
     const systemId = document2.system?.id ?? null;
     const activeEventId = options.activeEventId ?? null;
     const effectiveObjects = createEffectiveObjects(document2.objects, document2.events ?? [], activeEventId);
+    const sceneMetricScale = resolveSceneMetricScale(effectiveObjects, width, height, padding, spacingFactor, scaleModel);
     const objectMap = new Map(effectiveObjects.map((object) => [object.id, object]));
     const relationships = buildSceneRelationships(effectiveObjects, objectMap);
     const positions = /* @__PURE__ */ new Map();
@@ -31916,7 +31917,8 @@ void main() {
       objectMap,
       spacingFactor,
       projection: renderProjection,
-      scaleModel
+      scaleModel,
+      sceneMetricScale
     };
     const primaryRoot = rootObjects.find((object) => object.type === "star") ?? rootObjects[0] ?? null;
     if (primaryRoot) {
@@ -31932,14 +31934,14 @@ void main() {
       });
     }
     freeObjects.forEach((object, index) => {
-      const x = width - padding - 140 - freePlacementOffsetPx(object.placement?.mode === "free" ? object.placement.distance : void 0, scaleModel);
+      const x = width - padding - 140 - freePlacementOffsetPx(object.placement?.mode === "free" ? object.placement.distance : void 0, scaleModel, sceneMetricScale);
       const rowStep = Math.max(76, (height - padding * 2 - 180) / Math.max(1, freeObjects.length) * spacingFactor) * scaleModel.freePlacementMultiplier;
       const y = padding + 92 + index * rowStep;
       positions.set(object.id, {
         object,
         x,
         y,
-        radius: visualRadiusFor(object, 0, scaleModel),
+        radius: visualRadiusFor(object, 0, scaleModel, sceneMetricScale),
         sortKey: computeSortKey(x, y, 0)
       });
       leaderDrafts.push({
@@ -31962,7 +31964,7 @@ void main() {
         object,
         x: resolved.x,
         y: resolved.y,
-        radius: visualRadiusFor(object, 2, scaleModel),
+        radius: visualRadiusFor(object, 2, scaleModel, sceneMetricScale),
         sortKey: computeSortKey(resolved.x, resolved.y, 2),
         anchorX: resolved.anchorX,
         anchorY: resolved.anchorY
@@ -32013,6 +32015,7 @@ void main() {
         scale: String(document2.system?.properties.scale ?? layoutPreset),
         units: String(document2.system?.properties.units ?? "mixed"),
         preset: frame.preset ?? "custom",
+        "body.scaleMode": scaleModel.bodyScaleMode,
         ...camera?.azimuth !== null ? { "camera.azimuth": String(camera?.azimuth) } : {},
         ...camera?.elevation !== null ? { "camera.elevation": String(camera?.elevation) } : {},
         ...camera?.roll !== null ? { "camera.roll": String(camera?.roll) } : {},
@@ -32183,10 +32186,11 @@ void main() {
     }
     return parts.join(" - ");
   }
-  function resolveScaleModel(layoutPreset, overrides) {
+  function resolveScaleModel(layoutPreset, overrides, bodyScaleMode) {
     const defaults = defaultScaleModel(layoutPreset);
     return {
       ...defaults,
+      ...bodyScaleMode ? { bodyScaleMode } : {},
       ...overrides
     };
   }
@@ -32200,7 +32204,8 @@ void main() {
           freePlacementMultiplier: 0.9,
           ringThicknessMultiplier: 0.92,
           minBodyRadius: 4,
-          maxBodyRadius: 36
+          maxBodyRadius: 36,
+          bodyScaleMode: "readable"
         };
       case "presentation":
         return {
@@ -32210,7 +32215,8 @@ void main() {
           freePlacementMultiplier: 1.05,
           ringThicknessMultiplier: 1.16,
           minBodyRadius: 5,
-          maxBodyRadius: 48
+          maxBodyRadius: 48,
+          bodyScaleMode: "readable"
         };
       default:
         return {
@@ -32220,7 +32226,8 @@ void main() {
           freePlacementMultiplier: 1,
           ringThicknessMultiplier: 1,
           minBodyRadius: 4,
-          maxBodyRadius: 40
+          maxBodyRadius: 40,
+          bodyScaleMode: "readable"
         };
     }
   }
@@ -32233,6 +32240,48 @@ void main() {
       default:
         return 1;
     }
+  }
+  function resolveSceneMetricScale(objects, width, height, padding, spacingFactor, scaleModel) {
+    const orbitMetrics = [];
+    const bodyMetrics = [];
+    for (const object of objects) {
+      const radiusMetric = objectRadiusMetric(object);
+      if (radiusMetric !== null && radiusMetric > 0) {
+        bodyMetrics.push(radiusMetric);
+      }
+      const placement = object.placement;
+      if (!placement) {
+        continue;
+      }
+      if (placement.mode === "orbit") {
+        const orbitMetricValue = toDistanceMetric(placement.semiMajor ?? placement.distance ?? null);
+        if (orbitMetricValue !== null && orbitMetricValue > 0) {
+          orbitMetrics.push(orbitMetricValue);
+        }
+        continue;
+      }
+      if (placement.mode === "free") {
+        const freeMetric = toDistanceMetric(placement.distance ?? null);
+        if (freeMetric !== null && freeMetric > 0) {
+          orbitMetrics.push(freeMetric);
+        }
+      }
+    }
+    const maxDistanceMetric = Math.max(...orbitMetrics, 0);
+    const maxBodyMetric = Math.max(...bodyMetrics, 0);
+    const baseMetric = Math.max(maxDistanceMetric, maxBodyMetric * 6, 0);
+    const referenceMetric = baseMetric + Math.max(Math.sqrt(baseMetric), maxBodyMetric * 2, maxDistanceMetric > 0 ? 0.25 : 0);
+    if (referenceMetric <= 0) {
+      return {
+        pixelsPerMetric: null,
+        hasExplicitScale: false
+      };
+    }
+    const availableRadius = Math.max(Math.min(width, height) / 2 - padding - 24, 120) * spacingFactor * scaleModel.orbitDistanceMultiplier;
+    return {
+      pixelsPerMetric: availableRadius / referenceMetric,
+      hasExplicitScale: true
+    };
   }
   function createSceneObject(position, scaleModel, relationships) {
     const { object, x, y, radius, sortKey, anchorX, anchorY } = position;
@@ -32958,7 +33007,7 @@ void main() {
       object,
       x,
       y,
-      radius: visualRadiusFor(object, depth, context.scaleModel),
+      radius: visualRadiusFor(object, depth, context.scaleModel, context.sceneMetricScale),
       sortKey: computeSortKey(x, y, depth)
     });
     placeOrbitingChildren(object, positions, orbitDrafts, leaderDrafts, context, depth + 1);
@@ -32969,7 +33018,7 @@ void main() {
       return;
     }
     const orbiting = [...context.orbitChildren.get(object.id) ?? []].sort(compareOrbiting);
-    const orbitMetricContext = computeOrbitMetricContext(orbiting, parent.radius, context.spacingFactor, context.scaleModel);
+    const orbitMetricContext = computeOrbitMetricContext(orbiting, parent.radius, context.spacingFactor, context.scaleModel, context.sceneMetricScale);
     const orbitRadiiPx = resolveOrbitRadiiPx(orbiting, orbitMetricContext);
     orbiting.forEach((child, index) => {
       const orbitGeometry = resolveOrbitGeometry(child, index, orbiting.length, parent, orbitMetricContext, orbitRadiiPx[index] ?? orbitMetricContext.innerPx, context);
@@ -33004,7 +33053,7 @@ void main() {
         object: child,
         x,
         y,
-        radius: visualRadiusFor(child, depth + 1, context.scaleModel),
+        radius: visualRadiusFor(child, depth + 1, context.scaleModel, context.sceneMetricScale),
         sortKey: computeSortKey(x, y, depth + 1),
         anchorX,
         anchorY
@@ -33033,10 +33082,11 @@ void main() {
       return 1;
     return left.id.localeCompare(right.id);
   }
-  function computeOrbitMetricContext(objects, parentRadius, spacingFactor, scaleModel) {
+  function computeOrbitMetricContext(objects, parentRadius, spacingFactor, scaleModel, sceneMetricScale) {
     const metrics = objects.map((object) => orbitMetric(object));
     const presentMetrics = metrics.filter((value) => value !== null);
-    const innerPx = parentRadius + 56 * spacingFactor * scaleModel.orbitDistanceMultiplier;
+    const minimumGapPx = scaleModel.bodyScaleMode === "strict" ? Math.max(2, 8 * spacingFactor * scaleModel.orbitDistanceMultiplier) : (objects.length > 2 ? 54 : 64) * spacingFactor * scaleModel.orbitDistanceMultiplier * 0.42;
+    const innerPx = parentRadius + Math.max(minimumGapPx * 1.2, 24 * spacingFactor);
     const stepPx = (objects.length > 2 ? 54 : 64) * spacingFactor * scaleModel.orbitDistanceMultiplier;
     if (presentMetrics.length === 0) {
       return {
@@ -33047,7 +33097,8 @@ void main() {
         innerPx,
         stepPx,
         pixelSpread: Math.max(stepPx * Math.max(objects.length - 1, 1), stepPx),
-        minimumGapPx: stepPx * 0.42
+        minimumGapPx,
+        pixelsPerMetric: sceneMetricScale.pixelsPerMetric
       };
     }
     const minMetric = Math.min(...presentMetrics);
@@ -33061,7 +33112,8 @@ void main() {
       innerPx,
       stepPx,
       pixelSpread: Math.max(stepPx * Math.max(objects.length - 1, 1), stepPx),
-      minimumGapPx: stepPx * 0.42
+      minimumGapPx,
+      pixelsPerMetric: sceneMetricScale.pixelsPerMetric
     };
   }
   function resolveOrbitGeometry(object, index, count, parent, metricContext, orbitRadiusPx, context) {
@@ -33113,6 +33165,9 @@ void main() {
     };
   }
   function resolveOrbitRadiusPx(metric, metricContext) {
+    if (metricContext.pixelsPerMetric !== null) {
+      return metric * metricContext.pixelsPerMetric;
+    }
     return metricContext.innerPx + metricContext.stepPx * log2(Math.max(metric, 0) + 1);
   }
   function resolveOrbitRadiiPx(objects, metricContext) {
@@ -33147,6 +33202,10 @@ void main() {
     const outerMetric = toDistanceMetric(toUnitValue(object.properties.outer));
     if (innerMetric !== null && outerMetric !== null) {
       const thicknessMetric = Math.abs(outerMetric - innerMetric);
+      if (metricContext.pixelsPerMetric !== null) {
+        const thicknessPx = thicknessMetric * metricContext.pixelsPerMetric;
+        return scaleModel.bodyScaleMode === "strict" ? Math.max(thicknessPx * scaleModel.ringThicknessMultiplier, 1) : clampNumber(Math.max(thicknessPx * scaleModel.ringThicknessMultiplier, 8), 8, 54);
+      }
       if (metricContext.metricSpread > 0) {
         return clampNumber(thicknessMetric / metricContext.metricSpread * metricContext.pixelSpread * scaleModel.ringThicknessMultiplier, 8, 54);
       }
@@ -33426,8 +33485,8 @@ void main() {
     }
     return positions.get(object.placement.target);
   }
-  function visualRadiusFor(object, depth, scaleModel) {
-    const explicitRadius = toVisualSizeMetric(object.properties.radius, scaleModel);
+  function visualRadiusFor(object, depth, scaleModel, sceneMetricScale) {
+    const explicitRadius = toVisualSizeMetric(object.properties.radius, scaleModel, sceneMetricScale);
     if (explicitRadius !== null) {
       return explicitRadius;
     }
@@ -33492,17 +33551,26 @@ void main() {
         return value.value;
     }
   }
-  function freePlacementOffsetPx(distance, scaleModel) {
+  function freePlacementOffsetPx(distance, scaleModel, sceneMetricScale) {
     const metric = toDistanceMetric(distance ?? null);
     if (metric === null || metric <= 0) {
       return 0;
     }
+    if (sceneMetricScale.pixelsPerMetric !== null) {
+      const scaled = metric * sceneMetricScale.pixelsPerMetric * scaleModel.freePlacementMultiplier;
+      return scaleModel.bodyScaleMode === "strict" ? Math.max(scaled, 0) : clampNumber(scaled, 0, 420);
+    }
     return clampNumber(metric * 96 * scaleModel.freePlacementMultiplier, 0, 420);
   }
-  function toVisualSizeMetric(value, scaleModel) {
+  function toVisualSizeMetric(value, scaleModel, sceneMetricScale) {
     const unitValue = toUnitValue(value);
     if (!unitValue) {
       return null;
+    }
+    const physicalMetric = toDistanceMetric(unitValue);
+    if (sceneMetricScale.pixelsPerMetric !== null && physicalMetric !== null && physicalMetric > 0) {
+      const scaled = physicalMetric * sceneMetricScale.pixelsPerMetric * scaleModel.bodyRadiusMultiplier;
+      return scaleModel.bodyScaleMode === "strict" ? Math.max(scaled, 0.1) : clampNumber(Math.max(scaled, scaleModel.minBodyRadius), scaleModel.minBodyRadius, scaleModel.maxBodyRadius);
     }
     let size;
     switch (unitValue.unit) {
@@ -33520,6 +33588,9 @@ void main() {
         break;
     }
     return clampNumber(size * scaleModel.bodyRadiusMultiplier, scaleModel.minBodyRadius, scaleModel.maxBodyRadius);
+  }
+  function objectRadiusMetric(object) {
+    return toDistanceMetric(toUnitValue(object.properties.radius));
   }
   function toUnitValue(value) {
     if (!value || typeof value !== "object" || !("value" in value)) {
@@ -33629,6 +33700,7 @@ void main() {
       projection: options.projection,
       camera: options.camera,
       scaleModel: options.scaleModel,
+      bodyScaleMode: options.bodyScaleMode,
       activeEventId: options.activeEventId
     };
     const scene = renderDocumentToScene(document2, renderOptions);
@@ -38040,6 +38112,7 @@ void main() {
         camera: renderOptions.camera ? { ...renderOptions.camera } : null,
         layers: renderOptions.layers ? { ...renderOptions.layers } : void 0,
         scaleModel: renderOptions.scaleModel ? { ...renderOptions.scaleModel } : void 0,
+        bodyScaleMode: renderOptions.bodyScaleMode,
         activeEventId: renderOptions.activeEventId ?? null,
         viewMode: renderOptions.viewMode ?? "2d"
       },
@@ -38068,6 +38141,7 @@ void main() {
         camera: raw.renderOptions?.camera ? { ...raw.renderOptions.camera } : null,
         layers: raw.renderOptions?.layers ? { ...raw.renderOptions.layers } : void 0,
         scaleModel: raw.renderOptions?.scaleModel ? { ...raw.renderOptions.scaleModel } : void 0,
+        bodyScaleMode: raw.renderOptions?.bodyScaleMode,
         activeEventId: raw.activeEventId ?? raw.renderOptions?.activeEventId ?? null,
         viewMode: raw.renderOptions?.viewMode ?? "2d"
       },
@@ -38087,6 +38161,7 @@ void main() {
           camera: atlasState.renderOptions.camera ? { ...atlasState.renderOptions.camera } : null,
           layers: atlasState.renderOptions.layers ? { ...atlasState.renderOptions.layers } : void 0,
           scaleModel: atlasState.renderOptions.scaleModel ? { ...atlasState.renderOptions.scaleModel } : void 0,
+          bodyScaleMode: atlasState.renderOptions.bodyScaleMode,
           activeEventId: atlasState.renderOptions.activeEventId ?? null,
           viewMode: atlasState.renderOptions.viewMode ?? "2d"
         },
@@ -39922,6 +39997,7 @@ void main() {
       padding: options.padding,
       preset: options.preset,
       projection: options.projection,
+      bodyScaleMode: options.bodyScaleMode,
       viewMode: options.viewMode ?? "2d",
       quality: options.quality ?? "balanced",
       style3d: options.style3d ?? "symbolic",
@@ -41346,7 +41422,7 @@ void main() {
     };
   }
   function hasSceneAffectingRenderOptions(options) {
-    return options.width !== void 0 || options.height !== void 0 || options.padding !== void 0 || options.preset !== void 0 || options.projection !== void 0 || options.camera !== void 0 || options.scaleModel !== void 0 || options.activeEventId !== void 0;
+    return options.width !== void 0 || options.height !== void 0 || options.padding !== void 0 || options.preset !== void 0 || options.projection !== void 0 || options.camera !== void 0 || options.scaleModel !== void 0 || options.bodyScaleMode !== void 0 || options.activeEventId !== void 0;
   }
   function resolveSourceRenderOptions2(loaded, renderOptions) {
     const atlasDocument = loaded.atlasDocument ?? loaded.draftDocument;
