@@ -42,7 +42,7 @@ export type Unit =
   | "deg"; // degrees
 
 export type WorldOrbitDocumentVersion = "1.0";
-export type WorldOrbitAtlasDocumentVersion = "2.0" | "2.1" | "2.5" | "2.6.1";
+export type WorldOrbitAtlasDocumentVersion = "2.0" | "2.1" | "2.5" | "2.6";
 export type WorldOrbitDraftDocumentVersion = "2.0-draft";
 export type WorldOrbitAnyDocumentVersion =
   | WorldOrbitDocumentVersion

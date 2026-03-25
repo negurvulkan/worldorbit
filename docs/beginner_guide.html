@@ -238,7 +238,7 @@
         <article class="card">
           <span class="pill">1</span>
           <h3>Start with the schema</h3>
-          <p>Use <code>schema 2.5</code> for new documents. <code>schema 2.1</code> and <code>schema 2.0</code> still load, but 2.5 is the clearest default going forward and adds camera-ready viewpoints, stronger event snapshots, comments, groups, relations, and events.</p>
+          <p>Use <code>schema 2.6</code> for new documents. <code>schema 2.5</code> and earlier still load, but 2.6 adds support for galactic-scale units (ly, pc, kpc), new masses (mj), and specialized phenomenon kinds like galaxies and black holes.</p>
         </article>
         <article class="card">
           <span class="pill">2</span>
@@ -273,7 +273,7 @@
           <div>
             <div class="code-box">
               <div class="code-box-header"><span>Source</span><span>minimal</span></div>
-              <pre class="code">schema 2.5
+              <pre class="code">schema 2.6
 
 system Sol
 
@@ -296,7 +296,7 @@ object star Sun</pre>
           <div>
             <div class="code-box">
               <div class="code-box-header"><span>Source</span><span>intermediate</span></div>
-              <pre class="code">schema 2.5
+              <pre class="code">schema 2.6
 
 system Iyath
   title "Iyath System"
@@ -367,7 +367,7 @@ event eclipse-window
           <div>
             <div class="code-box">
               <div class="code-box-header"><span>Source</span><span>advanced</span></div>
-              <pre class="code">schema 2.5
+              <pre class="code">schema 2.6
 
 system Sol
   title "Solar System"
@@ -633,7 +633,7 @@ event total-solar-eclipse-2027
           </div>
           <div>
             <div class="preview-box"><div id="example-3-preview"></div></div>
-            <div class="status">Rendered result: a dense Schema 2.5 atlas with groups, typed lore, infrastructure links, camera-ready viewpoints, render hints, and a named eclipse snapshot, shown here in symbolic 3D.</div>
+            <div class="status">Rendered result: a dense Schema 2.6 atlas with galactic units, groups, lore, infrastructure links, and event snapshots.</div>
           </div>
         </div>
       </div>
@@ -650,7 +650,7 @@ event total-solar-eclipse-2027
         <div>
           <div class="code-box">
             <div class="code-box-header"><span>Editable source</span><span>live preview</span></div>
-            <textarea id="playground-source" class="code" spellcheck="false">schema 2.5
+            <textarea id="playground-source" class="code" spellcheck="false">schema 2.6
 
 system Demo
   title "Demo System"
@@ -728,7 +728,7 @@ event belis-eclipse
       <div class="tip" style="margin-top:18px;">
         <strong>What beginners usually need first</strong>
         <ul class="checks">
-          <li><code>schema 2.5</code></li>
+          <li><code>schema 2.6</code></li>
           <li><code>system Name</code></li>
           <li><code>object star Name</code></li>
           <li><code>object planet Name</code> with <code>orbit</code> and <code>semiMajor</code></li>
@@ -746,8 +746,8 @@ event belis-eclipse
       </div>
       <div class="faq-list">
         <div class="faq-item">
-          <h3>Do I always need <code>schema 2.5</code>?</h3>
-          <p>For new documents, yes. Older <code>schema 2.1</code> and <code>schema 2.0</code> atlases still work, but 2.5 is the recommended explicit header.</p>
+          <h3>Do I always need <code>schema 2.6</code>?</h3>
+          <p>For new documents, yes. Older <code>schema 2.5</code> and <code>schema 2.1</code> atlases still work, but 2.6 is the recommended explicit header for galactic-scale features.</p>
         </div>
         <div class="faq-item">
           <h3>Do I have to use every parameter?</h3>
@@ -778,7 +778,7 @@ event belis-eclipse
 
   <script src="./assets/worldorbit/worldorbit.min.js"></script>
   <script>
-    const heroSource = `schema 2.5
+    const heroSource = `schema 2.6
 
 system Iyath
 
@@ -814,13 +814,13 @@ event naar-eclipse
   target Naar
   participants Iyath Naar Seyra`;
 
-    const example1Source = `schema 2.5
+    const example1Source = `schema 2.6
 
 system Sol
 
 object star Sun`;
 
-    const example2Source = `schema 2.5
+    const example2Source = `schema 2.6
 
 system Iyath
   title "Iyath System"
@@ -869,7 +869,7 @@ event eclipse-window
   target Naar
   participants Iyath Naar Leth`;
 
-    const example3Source = `schema 2.5
+    const example3Source = `schema 2.6
 
 system Sol
   title "Solar System"
@@ -1132,7 +1132,7 @@ event total-solar-eclipse-2027
       distance 384400km
       phase 132deg`;
 
-    const playgroundDefaultSource = `schema 2.5
+    const playgroundDefaultSource = `schema 2.6
 
 system Demo
   title "Demo System"

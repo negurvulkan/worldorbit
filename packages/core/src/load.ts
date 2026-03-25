@@ -14,9 +14,10 @@ import type {
 } from "./types.js";
 import { validateDocument } from "./validate.js";
 
-const ATLAS_SCHEMA_PATTERN = /^schema\s+2(?:\.0|\.1|\.5)?$/i;
+const ATLAS_SCHEMA_PATTERN = /^schema\s+2(?:\.0|\.1|\.5|\.6)?$/i;
 const ATLAS_SCHEMA_21_PATTERN = /^schema\s+2\.1$/i;
 const ATLAS_SCHEMA_25_PATTERN = /^schema\s+2\.5$/i;
+const ATLAS_SCHEMA_26_PATTERN = /^schema\s+2\.6$/i;
 const LEGACY_DRAFT_SCHEMA_PATTERN = /^schema\s+2\.0-draft$/i;
 
 export function detectWorldOrbitSchemaVersion(source: string): WorldOrbitAnyDocumentVersion {
@@ -35,7 +36,11 @@ export function detectWorldOrbitSchemaVersion(source: string): WorldOrbitAnyDocu
     }
 
     if (ATLAS_SCHEMA_25_PATTERN.test(trimmed)) {
-      return "2.6.1";
+      return "2.5";
+    }
+
+    if (ATLAS_SCHEMA_26_PATTERN.test(trimmed)) {
+      return "2.6";
     }
 
     if (ATLAS_SCHEMA_PATTERN.test(trimmed)) {
@@ -124,7 +129,7 @@ export function loadWorldOrbitSourceWithDiagnostics(
     schemaVersion === "2.0-draft" ||
     schemaVersion === "2.1" ||
     schemaVersion === "2.5" ||
-    schemaVersion === "2.6.1"
+    schemaVersion === "2.6"
   ) {
     return loadAtlasSourceWithDiagnostics(source, schemaVersion);
   }
@@ -177,7 +182,7 @@ export function loadWorldOrbitSourceWithDiagnostics(
 
 function loadAtlasSourceWithDiagnostics(
   source: string,
-  schemaVersion: "2.0" | "2.0-draft" | "2.1" | "2.5" | "2.6.1",
+  schemaVersion: "2.0" | "2.0-draft" | "2.1" | "2.5" | "2.6",
 ): DiagnosticResult<LoadedWorldOrbitSource> {
   let atlasDocument: WorldOrbitAtlasDocument;
   try {

@@ -1,0 +1,66 @@
+schema 2.6
+
+system Galactic-Atlas
+  title "Galactic Atlas Studio"
+  description "Showcasing Schema 2.6 with new units and galactic phenomena."
+
+defaults
+  view orthographic
+  scale presentation
+  preset atlas-card
+  theme atlas
+
+viewpoint galactic-overview
+  label "Milky Way Galaxy"
+  projection orthographic
+  camera
+    azimuth 28
+    elevation 20
+
+viewpoint solar-neighbor
+  label "Solar Neighborhood"
+  focus Sol
+  projection perspective
+  zoom 4.0
+  camera
+    azimuth 42
+    elevation 24
+    distance 5
+
+object phenomenon Milky-Way
+  kind galaxy
+  radius 52850ly
+  color #d0d8ff
+  info
+    type "Spiral Galaxy"
+    stars "100–400 billion"
+
+object system Sol
+  at Milky-Way:orion-arm
+  title "Solar System"
+
+object star Sun
+  on Sol
+  radius 1sol
+  mass 1sol
+  temperature 5778K
+  color #fdfbd3
+
+object planet Earth
+  orbit Sun
+  semiMajor 1au
+  radius 1re
+  mass 1me
+  atmosphere "nitrogen-oxygen"
+
+object phenomenon Sgr-A-Star
+  at Milky-Way:center
+  kind black-hole
+  mass 4.1mj
+  color #000000
+
+object phenomenon Orion-Nebula
+  free 1344ly
+  kind nebula
+  radius 12ly
+  color #ffb0b0

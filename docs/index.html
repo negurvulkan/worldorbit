@@ -604,7 +604,7 @@
           <p>
             WorldOrbit is a text-first DSL, viewer, and optional editor platform for orbital worldbuilding.
             Write systems in plain text, embed them in Markdown, render them as static diagrams, explore
-            them interactively in 2D, or switch the same document into a symbolic 3D view with animated orbits.
+            them interactively in 2D, or switch the same document into a symbolic 3D view with animated orbits. Scale your systems from small moons to entire galaxies (ly, pc, kpc).
           </p>
           <div class="hero-actions">
             <a class="button button-primary" href="#start">Get Started</a>
@@ -625,9 +625,9 @@
         <div class="hero-card">
           <div class="code-title">
             <span>Example source</span>
-            <span>schema 2.5</span>
+            <span>schema 2.6</span>
           </div>
-          <div class="code-view">schema 2.5
+          <div class="code-view">schema 2.6
 
             system Iyath
             title "Iyath System"
@@ -690,7 +690,7 @@
           <p>
             Generic diagram tools can draw connections. WorldOrbit is built specifically for fictional orbital systems,
             Markdown-based lore repositories, codices, browser viewers, and content-first worldbuilding workflows.
-            Schema 2.5 now adds orthographic and perspective viewpoints, camera blocks, clearer event snapshot context, comments, semantic groups, relations, and light validation metadata. WorldOrbit 3.0 then turns those same documents into shared 2D and 3D viewer inputs without introducing a separate 3D DSL.
+            Schema 2.6 now adds support for galactic scales (light-years, parsecs), specialized kinds like black holes and galaxies, alongside viewpoints, camera blocks, comments, and semantic groups. WorldOrbit 3.0+ then turns those same documents into shared 2D and 3D viewer inputs.
           </p>
         </div>
 
@@ -753,7 +753,7 @@
               </div>
 
               <div class="editor-shell">
-                <textarea id="playground-source" spellcheck="false">schema 2.5
+                <textarea id="playground-source" spellcheck="false">schema 2.6
 
 system Iyath
   title "Iyath System"
@@ -936,7 +936,7 @@ src="./assets/worldorbit/worldorbit.min.js"&gt;&lt;/script&gt;</div>
 
   <script src="./assets/worldorbit/worldorbit.min.js"></script>
   <script>
-    const heroSource = `schema 2.5
+    const heroSource = `schema 2.6
 
 system Iyath
   title "Iyath System"
@@ -978,7 +978,7 @@ event naar-eclipse
   target Naar
   participants Iyath Naar Seyra`;
 
-    const playgroundDefaultSource = `schema 2.5
+    const playgroundDefaultSource = `schema 2.6
 
 system Iyath
   title "Iyath System"
