@@ -1868,7 +1868,7 @@ function installViewerOverlayStyles() {
       backdrop-filter: blur(12px);
       font: 500 13px/1.5 "Segoe UI Variable", "Segoe UI", sans-serif;
     }
-    .wo-viewer-tooltip-root[data-mode="hover"] { pointer-events: auto; }
+    .wo-viewer-tooltip-root[data-mode="hover"] { pointer-events: none; }
     .wo-viewer-tooltip-root[data-mode="pinned"] { pointer-events: auto; }
     .wo-tooltip-card { display: grid; gap: 10px; }
     .wo-tooltip-head { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 12px; align-items: center; }

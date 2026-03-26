@@ -4519,10 +4519,13 @@ function installEditorStyles(): void {
     .wo-editor[data-wo-show-inspector="false"] [data-editor-pane="inspector"] { display: none; }
     .wo-editor[data-wo-show-text-pane="false"] [data-editor-pane="text"] { display: none; }
     .wo-editor[data-wo-show-preview="false"] [data-editor-pane="preview"] { display: none; }
-    .wo-editor[data-wo-sticky-stage="true"] .wo-editor-stage-shell {
+    .wo-editor[data-wo-sticky-stage="true"] .wo-editor-stage-panel {
       position: sticky;
       top: var(--wo-editor-stage-sticky-top, 12px);
       align-self: start;
+      max-height: var(--wo-editor-stage-sticky-max-height, calc(100vh - 24px));
+    }
+    .wo-editor[data-wo-sticky-stage="true"] .wo-editor-stage-shell {
       max-height: var(--wo-editor-stage-sticky-max-height, calc(100vh - 24px));
     }
     .wo-editor[data-wo-sticky-stage="true"] .wo-editor-stage {
@@ -4852,9 +4855,12 @@ function installEditorStyles(): void {
     }
     @media (max-width: 960px) {
       .wo-editor-main { grid-template-columns: 1fr; }
-      .wo-editor[data-wo-sticky-stage="true"] .wo-editor-stage-shell {
+      .wo-editor[data-wo-sticky-stage="true"] .wo-editor-stage-panel {
         position: relative;
         top: auto;
+        max-height: none;
+      }
+      .wo-editor[data-wo-sticky-stage="true"] .wo-editor-stage-shell {
         max-height: none;
       }
       .wo-editor[data-wo-sticky-stage="true"] .wo-editor-stage {
