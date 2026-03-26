@@ -137,6 +137,9 @@ export async function createWorldOrbitStudio(root, options = {}) {
   let sourceModalDirty = false;
 
   let editor = null;
+  editorRoot.dataset.woStickyStage = "true";
+  editorRoot.style.setProperty("--wo-editor-stage-sticky-top", "12px");
+  editorRoot.style.setProperty("--wo-editor-stage-sticky-max-height", "calc(100vh - 24px)");
   editor = createWorldOrbitEditor(editorRoot, {
     source: baseSource,
     showInspector: sessionState.panels.inspector,

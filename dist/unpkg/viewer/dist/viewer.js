@@ -1732,7 +1732,11 @@ function getClosestObjectId(target) {
     if (!(target instanceof Element)) {
         return null;
     }
-    return target.closest("[data-object-id]")?.dataset.objectId ?? null;
+    const selectionTarget = target.closest("[data-object-id], [data-orbit-object-id]");
+    if (!selectionTarget) {
+        return null;
+    }
+    return selectionTarget.dataset.objectId ?? selectionTarget.dataset.orbitObjectId ?? null;
 }
 function ensureBrowserEnvironment(container) {
     if (typeof window === "undefined" || typeof document === "undefined") {

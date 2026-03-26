@@ -2186,7 +2186,12 @@ function getClosestObjectId(target: EventTarget | null): string | null {
     return null;
   }
 
-  return target.closest<SVGGElement>("[data-object-id]")?.dataset.objectId ?? null;
+  const selectionTarget = target.closest<SVGGElement>("[data-object-id], [data-orbit-object-id]");
+  if (!selectionTarget) {
+    return null;
+  }
+
+  return selectionTarget.dataset.objectId ?? selectionTarget.dataset.orbitObjectId ?? null;
 }
 
 function ensureBrowserEnvironment(container: HTMLElement): void {

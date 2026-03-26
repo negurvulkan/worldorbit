@@ -2488,7 +2488,7 @@ function updateOrbitRadius(document, path, objectId, scene, details, pointer, dr
         value: 1,
         unit: "au",
     };
-    const scaled = distanceMetricToUnitValue(Math.max(nextMetric, 0), dragContext.preferredUnit ?? currentValue.unit);
+    const scaled = distanceMetricToUnitValue(Math.max(nextMetric, 0), resolveOrbitDistanceUnit(document, details, Math.max(nextMetric, 0), dragContext.preferredUnit ?? currentValue.unit));
     applyOrbitDistanceValue(orbitPlacementOwner, scaled);
     const targetDisplayedRadius = nextDisplayedRadius;
     let correctedMetric = nextMetric;
@@ -2513,7 +2513,7 @@ function updateOrbitRadius(document, path, objectId, scene, details, pointer, dr
         }
         const correctionFactor = targetDisplayedRadius / Math.max(renderedRadius, 1);
         correctedMetric *= Math.max(correctionFactor, 1.02);
-        applyOrbitDistanceValue(orbitPlacementOwner, distanceMetricToUnitValue(Math.max(correctedMetric, 0), dragContext.preferredUnit ?? currentValue.unit));
+        applyOrbitDistanceValue(orbitPlacementOwner, distanceMetricToUnitValue(Math.max(correctedMetric, 0), resolveOrbitDistanceUnit(next, details, Math.max(correctedMetric, 0), dragContext.preferredUnit ?? currentValue.unit)));
     }
     return next;
 }
@@ -3197,6 +3197,53 @@ function normalizeFreeDistanceUnit(unit) {
             return null;
     }
 }
+function resolveOrbitDistanceUnit(document, details, metric, currentUnit) {
+    const normalizedMetric = Math.max(metric, 0);
+    const objectType = details.object.type;
+    const parentType = details.parent ? findObject(document, details.parent.objectId)?.type ?? null : null;
+    const nextPreferredUnit = inferOrbitDistanceUnit(objectType, parentType, normalizedMetric);
+    if (isOrbitDistanceUnitPlausible(normalizedMetric, currentUnit, nextPreferredUnit)) {
+        return currentUnit;
+    }
+    return nextPreferredUnit;
+}
+function inferOrbitDistanceUnit(objectType, parentType, metric) {
+    if (objectType === "ring") {
+        return "km";
+    }
+    if (objectType === "moon" ||
+        parentType === "planet" ||
+        parentType === "moon" ||
+        parentType === "asteroid" ||
+        parentType === "comet" ||
+        metric <= 0.02) {
+        return "km";
+    }
+    return "au";
+}
+function isOrbitDistanceUnitPlausible(metric, unit, preferredUnit) {
+    if (unit === preferredUnit) {
+        return true;
+    }
+    switch (unit) {
+        case "au":
+            return metric >= 0.03;
+        case "km":
+            return metric <= 0.03;
+        case "re": {
+            const earthRadii = (metric * AU_IN_KM) / EARTH_RADIUS_IN_KM;
+            return earthRadii >= 0.25 && earthRadii <= 400;
+        }
+        case "sol": {
+            const solarRadii = (metric * AU_IN_KM) / SOLAR_RADIUS_IN_KM;
+            return solarRadii >= 0.05 && solarRadii <= 120;
+        }
+        case null:
+            return false;
+        default:
+            return false;
+    }
+}
 function unitValueToDistanceMetric(value) {
     if (!value) {
         return null;
@@ -3411,6 +3458,15 @@ function installEditorStyles() {
     .wo-editor[data-wo-show-inspector="false"] [data-editor-pane="inspector"] { display: none; }
     .wo-editor[data-wo-show-text-pane="false"] [data-editor-pane="text"] { display: none; }
     .wo-editor[data-wo-show-preview="false"] [data-editor-pane="preview"] { display: none; }
+    .wo-editor[data-wo-sticky-stage="true"] .wo-editor-stage-shell {
+      position: sticky;
+      top: var(--wo-editor-stage-sticky-top, 12px);
+      align-self: start;
+      max-height: var(--wo-editor-stage-sticky-max-height, calc(100vh - 24px));
+    }
+    .wo-editor[data-wo-sticky-stage="true"] .wo-editor-stage {
+      min-height: min(620px, var(--wo-editor-stage-sticky-max-height, calc(100vh - 24px)));
+    }
     .wo-editor-stage-shell {
       position: relative;
       min-width: 0;
@@ -3735,6 +3791,14 @@ function installEditorStyles() {
     }
     @media (max-width: 960px) {
       .wo-editor-main { grid-template-columns: 1fr; }
+      .wo-editor[data-wo-sticky-stage="true"] .wo-editor-stage-shell {
+        position: relative;
+        top: auto;
+        max-height: none;
+      }
+      .wo-editor[data-wo-sticky-stage="true"] .wo-editor-stage {
+        min-height: 440px;
+      }
       .wo-editor-stage { min-height: 440px; }
       .wo-editor-status { flex-direction: column; }
     }
