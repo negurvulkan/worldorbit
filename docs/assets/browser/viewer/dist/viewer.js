@@ -1086,7 +1086,7 @@ export function createInteractiveViewer(container, options) {
         tooltipRoot.hidden = false;
         tooltipRoot.dataset.mode = resolved.mode;
         tooltipRoot.classList.toggle("is-pinned", resolved.mode === "pinned");
-        tooltipRoot.style.pointerEvents = "auto";
+        tooltipRoot.style.pointerEvents = resolved.mode === "pinned" ? "auto" : "none";
         tooltipRoot.style.visibility = "hidden";
         renderTooltipContent(tooltipRoot, tooltipDetails, resolved.mode);
         positionTooltip(tooltipRoot, details.renderObject);
