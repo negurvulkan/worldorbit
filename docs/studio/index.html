@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>WorldOrbit Studio v3.2.0 (Schema 2.6)</title>
+<title>WorldOrbit Studio v3.2.4</title>
   <style>
     :root {
       color-scheme: dark;
@@ -166,10 +166,151 @@
       min-width: 0;
     }
 
+    .studio-modal {
+      width: min(1100px, calc(100vw - 32px));
+      max-width: none;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 28px;
+      padding: 0;
+      background: rgba(6, 14, 22, 0.96);
+      color: #edf6ff;
+      box-shadow: 0 32px 90px rgba(0, 0, 0, 0.42);
+    }
+
+    .studio-modal::backdrop {
+      background: rgba(2, 7, 12, 0.72);
+      backdrop-filter: blur(8px);
+    }
+
+    .studio-modal-card {
+      display: grid;
+      gap: 16px;
+      padding: 22px;
+    }
+
+    .studio-modal-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+    }
+
+    .studio-modal-header strong {
+      display: block;
+      margin-bottom: 6px;
+      font: 700 13px/1.2 "Segoe UI Variable", "Segoe UI", sans-serif;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #ffdda9;
+    }
+
+    .studio-modal-header p {
+      margin: 0;
+      color: rgba(237, 246, 255, 0.72);
+      line-height: 1.5;
+    }
+
+    .studio-modal-textarea,
+    .studio-modal-code {
+      width: 100%;
+      min-height: min(62vh, 680px);
+      margin: 0;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      background: rgba(9, 20, 30, 0.96);
+      color: #edf6ff;
+      padding: 16px;
+      box-sizing: border-box;
+      font: 500 13px/1.6 "Cascadia Code", "Consolas", monospace;
+    }
+
+    .studio-modal-textarea {
+      resize: vertical;
+      white-space: pre;
+      overflow: auto;
+    }
+
+    .studio-modal-code {
+      overflow: auto;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .studio-modal-diagnostics {
+      display: grid;
+      gap: 10px;
+      max-height: 220px;
+      overflow: auto;
+    }
+
+    .studio-modal-diagnostic {
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.04);
+      padding: 12px 14px;
+    }
+
+    .studio-modal-diagnostic[data-state="error"] {
+      border-color: rgba(255, 120, 120, 0.28);
+    }
+
+    .studio-modal-diagnostic[data-state="warning"] {
+      border-color: rgba(240, 180, 100, 0.24);
+    }
+
+    .studio-modal-diagnostic strong {
+      display: block;
+      margin-bottom: 4px;
+      font: 700 11px/1.2 "Segoe UI Variable", "Segoe UI", sans-serif;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .studio-modal-diagnostic p,
+    .studio-modal-note {
+      margin: 0;
+      color: rgba(237, 246, 255, 0.82);
+      line-height: 1.5;
+    }
+
+    .studio-modal-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    .studio-modal button,
+    .studio-modal textarea:focus-visible {
+      outline: 2px solid rgba(255, 214, 138, 0.95);
+      outline-offset: 2px;
+    }
+
+    .studio-modal button {
+      border: 1px solid rgba(240, 180, 100, 0.2);
+      border-radius: 999px;
+      background: rgba(240, 180, 100, 0.08);
+      color: #edf6ff;
+      font: 600 13px/1.4 "Segoe UI Variable", "Segoe UI", sans-serif;
+      padding: 10px 14px;
+    }
+
     @media (max-width: 960px) {
       .studio-toolbar-row-meta {
         flex-direction: column;
         align-items: flex-start;
+      }
+
+      .studio-modal {
+        width: calc(100vw - 16px);
+      }
+
+      .studio-modal-header {
+        flex-direction: column;
+      }
+
+      .studio-modal-actions {
+        justify-content: stretch;
       }
     }
   </style>
@@ -178,11 +319,11 @@
 <body>
   <main>
     <section class="hero">
-          <strong>WorldOrbit Studio v3.2.0</strong>
+          <strong>WorldOrbit Studio v3.2.4</strong>
       <h1>WorldOrbit Visual Editor</h1>
       <p>
-        This reference app loads WorldOrbit runtime packages from the local docs asset bundle so
-        GitHub Pages can serve a self-contained Studio without external package resolution.
+        This reference app loads WorldOrbit runtime packages from the local docs asset bundle and
+        keeps authoring compact with focused source and embed modals.
       </p>
     </section>
 

@@ -6,13 +6,10 @@ const DEFAULT_FILE_NAME = "untitled.worldorbit";
 const DEFAULT_SESSION_STATE = {
   panels: {
     inspector: true,
-    preview: true,
-    text: true,
   },
   panes: {
     sidebarWidth: 280,
     inspectorWidth: 360,
-    sourceHeight: 280,
   },
 };
 const FALLBACK_SOURCE = `schema 2.5
@@ -125,24 +122,32 @@ export async function createWorldOrbitStudio(root, options = {}) {
   const fileInput = query(root, "[data-studio-open-input]");
   const fileLabel = query(root, "[data-studio-file]");
   const message = query(root, "[data-studio-message]");
+  const sourceDialog = query(root, "[data-studio-modal='source']");
+  const sourceInput = query(root, "[data-studio-source-input]");
+  const sourceDiagnostics = query(root, "[data-studio-source-diagnostics]");
+  const embedDialog = query(root, "[data-studio-modal='embed']");
+  const embedOutput = query(root, "[data-studio-embed-output]");
   const saveButton = query(root, '[data-studio-action="save"]');
   const exportSvgButton = query(root, '[data-studio-action="export-svg"]');
-  const exportEmbedButton = query(root, '[data-studio-action="export-embed"]');
   let currentDiagnostics = [];
   let currentDirty = false;
   let currentFileName = options.fileName ?? DEFAULT_FILE_NAME;
   let recoveryTimer = null;
   let currentViewMode = "2d";
+  let sourceModalDirty = false;
 
   let editor = null;
   editor = createWorldOrbitEditor(editorRoot, {
     source: baseSource,
     showInspector: sessionState.panels.inspector,
-    showPreview: sessionState.panels.preview,
-    showTextPane: sessionState.panels.text,
+    showPreview: false,
+    showTextPane: false,
     shortcuts: true,
     onChange(snapshot) {
       currentDiagnostics = snapshot.diagnostics;
+      syncSourceDialogFromEditor();
+      syncEmbedDialogFromEditor();
+      renderSourceDialogDiagnostics();
       syncToolbarState();
       if (currentDirty) {
         scheduleRecoverySave();
@@ -150,6 +155,7 @@ export async function createWorldOrbitStudio(root, options = {}) {
     },
     onDiagnosticsChange(nextDiagnostics) {
       currentDiagnostics = nextDiagnostics;
+      renderSourceDialogDiagnostics();
       syncToolbarState();
     },
     onDirtyChange(nextDirty) {
@@ -190,8 +196,14 @@ export async function createWorldOrbitStudio(root, options = {}) {
   toolbar.addEventListener("input", handleToolbarInput);
   fileInput.addEventListener("change", handleFileSelection);
   editorRoot.addEventListener("input", handleEditorInput);
+  sourceDialog.addEventListener("click", handleDialogClick);
+  embedDialog.addEventListener("click", handleDialogClick);
+  sourceInput.addEventListener("input", handleSourceDialogInput);
   window.addEventListener("beforeunload", handleBeforeUnload);
 
+  syncSourceDialogFromEditor(true);
+  syncEmbedDialogFromEditor();
+  renderSourceDialogDiagnostics();
   syncToolbarState();
 
   return {
@@ -207,6 +219,9 @@ export async function createWorldOrbitStudio(root, options = {}) {
       toolbar.removeEventListener("input", handleToolbarInput);
       fileInput.removeEventListener("change", handleFileSelection);
       editorRoot.removeEventListener("input", handleEditorInput);
+      sourceDialog.removeEventListener("click", handleDialogClick);
+      embedDialog.removeEventListener("click", handleDialogClick);
+      sourceInput.removeEventListener("input", handleSourceDialogInput);
       window.removeEventListener("beforeunload", handleBeforeUnload);
       editor.destroy();
       root.innerHTML = "";
@@ -232,23 +247,20 @@ export async function createWorldOrbitStudio(root, options = {}) {
       case "save":
         saveCurrentSource();
         return;
+      case "open-source":
+        openSourceDialog();
+        return;
+      case "open-embed":
+        openEmbedDialog();
+        return;
       case "export-svg":
         exportCurrentSvg();
-        return;
-      case "export-embed":
-        exportCurrentEmbed();
         return;
       case "load-example":
         loadExampleIntoEditor();
         return;
       case "toggle-inspector":
         togglePanel("inspector");
-        return;
-      case "toggle-preview":
-        togglePanel("preview");
-        return;
-      case "toggle-text":
-        togglePanel("text");
         return;
       case "view-2d":
         editor.setViewMode("2d");
@@ -281,9 +293,6 @@ export async function createWorldOrbitStudio(root, options = {}) {
         break;
       case "inspector":
         sessionState.panes.inspectorWidth = Number(input.value);
-        break;
-      case "source":
-        sessionState.panes.sourceHeight = Number(input.value);
         break;
       default:
         return;
@@ -342,6 +351,9 @@ export async function createWorldOrbitStudio(root, options = {}) {
     editor.setSource(source);
     currentDiagnostics = editor.getDiagnostics();
     currentFileName = fileName || DEFAULT_FILE_NAME;
+    syncSourceDialogFromEditor(true);
+    syncEmbedDialogFromEditor();
+    renderSourceDialogDiagnostics();
     const blockingErrors = hasBlockingErrors(currentDiagnostics);
 
     if (config.markSaved && !blockingErrors) {
@@ -385,20 +397,6 @@ export async function createWorldOrbitStudio(root, options = {}) {
     setMessage("Exported SVG preview.", "info");
   }
 
-  function exportCurrentEmbed() {
-    if (hasBlockingErrors(currentDiagnostics)) {
-      setMessage("Embed export blocked until all errors are resolved.", "error");
-      return;
-    }
-
-    downloadText(
-      editor.exportEmbedMarkup(),
-      replaceExtension(currentFileName, ".html"),
-      "text/html;charset=utf-8",
-    );
-    setMessage("Exported interactive embed markup.", "info");
-  }
-
   function togglePanel(panel) {
     sessionState.panels[panel] = !sessionState.panels[panel];
     applySessionState();
@@ -408,26 +406,19 @@ export async function createWorldOrbitStudio(root, options = {}) {
 
   function applySessionState() {
     editorRoot.dataset.woShowInspector = String(sessionState.panels.inspector);
-    editorRoot.dataset.woShowPreview = String(sessionState.panels.preview);
-    editorRoot.dataset.woShowTextPane = String(sessionState.panels.text);
     editorRoot.style.setProperty("--wo-editor-sidebar-width", `${sessionState.panes.sidebarWidth}px`);
     editorRoot.style.setProperty("--wo-editor-inspector-width", `${sessionState.panes.inspectorWidth}px`);
-    editorRoot.style.setProperty("--wo-editor-source-height", `${sessionState.panes.sourceHeight}px`);
     syncRangeValues();
   }
 
   function syncRangeValues() {
     const sidebar = toolbar.querySelector('[data-studio-range="sidebar"]');
     const inspector = toolbar.querySelector('[data-studio-range="inspector"]');
-    const source = toolbar.querySelector('[data-studio-range="source"]');
     if (sidebar) {
       sidebar.value = String(sessionState.panes.sidebarWidth);
     }
     if (inspector) {
       inspector.value = String(sessionState.panes.inspectorWidth);
-    }
-    if (source) {
-      source.value = String(sessionState.panes.sourceHeight);
     }
   }
 
@@ -437,9 +428,8 @@ export async function createWorldOrbitStudio(root, options = {}) {
     fileLabel.dataset.state = currentDirty ? "dirty" : "clean";
     saveButton.disabled = blockingErrors;
     exportSvgButton.disabled = blockingErrors;
-    exportEmbedButton.disabled = blockingErrors;
 
-    for (const panel of ["inspector", "preview", "text"]) {
+    for (const panel of ["inspector"]) {
       const button = toolbar.querySelector(`[data-studio-action="toggle-${panel}"]`);
       if (button) {
         const visible = sessionState.panels[panel];
@@ -493,6 +483,149 @@ export async function createWorldOrbitStudio(root, options = {}) {
 
     return editor.getSource();
   }
+
+  function openSourceDialog() {
+    syncSourceDialogFromEditor(true);
+    renderSourceDialogDiagnostics();
+    sourceDialog.showModal();
+    sourceInput.focus();
+    sourceInput.setSelectionRange(0, 0);
+  }
+
+  function openEmbedDialog() {
+    syncEmbedDialogFromEditor();
+    embedDialog.showModal();
+  }
+
+  function handleDialogClick(event) {
+    const button = event.target.closest("[data-studio-action]");
+    if (!button) {
+      return;
+    }
+
+    switch (button.dataset.studioAction) {
+      case "close-source-modal":
+        sourceModalDirty = false;
+        sourceDialog.close();
+        return;
+      case "close-embed-modal":
+        embedDialog.close();
+        return;
+      case "apply-source-modal":
+        applySourceFromDialog();
+        return;
+      case "copy-source-modal":
+        void copyText(sourceInput.value, "Copied source code to clipboard.");
+        return;
+      case "copy-embed-modal":
+        if (hasBlockingErrors(currentDiagnostics)) {
+          setMessage("Embed copy blocked until all errors are resolved.", "error");
+          return;
+        }
+        void copyText(embedOutput.textContent || "", "Copied embed markup to clipboard.");
+        return;
+      case "download-embed-modal":
+        downloadEmbedMarkup();
+        return;
+    }
+  }
+
+  function handleSourceDialogInput() {
+    sourceModalDirty = true;
+  }
+
+  function applySourceFromDialog() {
+    editor.setSource(sourceInput.value);
+    currentDiagnostics = editor.getDiagnostics();
+    syncSourceDialogFromEditor(true);
+    syncEmbedDialogFromEditor();
+    renderSourceDialogDiagnostics();
+    const blockingErrors = hasBlockingErrors(currentDiagnostics);
+    setMessage(
+      blockingErrors
+        ? "Source updated, but there are still errors to fix."
+        : "Source code applied from the modal.",
+      blockingErrors ? "warning" : "info",
+    );
+    syncToolbarState();
+  }
+
+  function syncSourceDialogFromEditor(force = false) {
+    if (!force && sourceModalDirty) {
+      return;
+    }
+
+    const nextSource = getEditableSource();
+    if (sourceInput.value !== nextSource) {
+      sourceInput.value = nextSource;
+    }
+    sourceModalDirty = false;
+  }
+
+  function syncEmbedDialogFromEditor() {
+    const nextMarkup = hasBlockingErrors(currentDiagnostics)
+      ? "Resolve the current diagnostics to generate embed markup."
+      : editor.exportEmbedMarkup();
+    if (embedOutput.textContent !== nextMarkup) {
+      embedOutput.textContent = nextMarkup;
+    }
+  }
+
+  function renderSourceDialogDiagnostics() {
+    if (currentDiagnostics.length === 0) {
+      sourceDiagnostics.innerHTML = '<p class="studio-modal-note">No current diagnostics.</p>';
+      return;
+    }
+
+    sourceDiagnostics.innerHTML = currentDiagnostics
+      .map(
+        (entry) => `<div class="studio-modal-diagnostic" data-state="${entry.diagnostic.severity}">
+          <strong>${escapeHtml(entry.diagnostic.severity)}</strong>
+          <p>${escapeHtml(entry.diagnostic.message)}</p>
+        </div>`,
+      )
+      .join("");
+  }
+
+  async function copyText(text, successMessage) {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        copyTextFallback(text);
+      }
+      setMessage(successMessage, "info");
+    } catch {
+      copyTextFallback(text);
+      setMessage(successMessage, "info");
+    }
+  }
+
+  function copyTextFallback(text) {
+    const helper = document.createElement("textarea");
+    helper.value = text;
+    helper.setAttribute("readonly", "true");
+    helper.style.position = "fixed";
+    helper.style.opacity = "0";
+    document.body.append(helper);
+    helper.select();
+    document.execCommand("copy");
+    helper.remove();
+  }
+
+  function downloadEmbedMarkup() {
+    if (hasBlockingErrors(currentDiagnostics)) {
+      setMessage("Embed export blocked until all errors are resolved.", "error");
+      return;
+    }
+
+    downloadText(
+      editor.exportEmbedMarkup(),
+      replaceExtension(currentFileName, ".html"),
+      "text/html;charset=utf-8",
+    );
+    setMessage("Exported interactive embed markup.", "info");
+  }
 }
 
 function buildStudioMarkup() {
@@ -502,14 +635,13 @@ function buildStudioMarkup() {
         <button type="button" data-studio-action="new">New</button>
         <button type="button" data-studio-action="open">Open .worldorbit</button>
         <button type="button" data-studio-action="save">Save/Download</button>
+        <button type="button" data-studio-action="open-source">Source Code</button>
+        <button type="button" data-studio-action="open-embed">Embed Markup</button>
         <button type="button" data-studio-action="export-svg">Export SVG</button>
-        <button type="button" data-studio-action="export-embed">Export Embed</button>
         <button type="button" data-studio-action="load-example">Load Example</button>
       </div>
       <div class="studio-toolbar-row">
         <button type="button" data-studio-action="toggle-inspector" aria-pressed="true">Inspector</button>
-        <button type="button" data-studio-action="toggle-preview" aria-pressed="true">Preview</button>
-        <button type="button" data-studio-action="toggle-text" aria-pressed="true">Source</button>
         <button type="button" data-studio-action="view-2d" aria-pressed="true">View 2D</button>
         <button type="button" data-studio-action="view-3d" aria-pressed="false">View 3D</button>
         <label class="studio-range">
@@ -520,10 +652,6 @@ function buildStudioMarkup() {
           <span>Inspector</span>
           <input type="range" min="280" max="460" step="10" data-studio-range="inspector" />
         </label>
-        <label class="studio-range">
-          <span>Source</span>
-          <input type="range" min="220" max="520" step="10" data-studio-range="source" />
-        </label>
       </div>
       <div class="studio-toolbar-row studio-toolbar-row-meta">
         <strong class="studio-file" data-studio-file></strong>
@@ -532,6 +660,39 @@ function buildStudioMarkup() {
       <input type="file" accept=".worldorbit,.txt" hidden data-studio-open-input />
     </div>
     <div class="studio-editor-root" data-studio-editor></div>
+    <dialog class="studio-modal" data-studio-modal="source">
+      <div class="studio-modal-card">
+        <div class="studio-modal-header">
+          <div>
+            <strong>Source Code</strong>
+            <p>Edit the atlas source in a focused modal instead of a persistent panel.</p>
+          </div>
+          <button type="button" data-studio-action="close-source-modal" aria-label="Close source code modal">Close</button>
+        </div>
+        <textarea class="studio-modal-textarea" data-studio-source-input spellcheck="false"></textarea>
+        <div class="studio-modal-diagnostics" data-studio-source-diagnostics aria-live="polite"></div>
+        <div class="studio-modal-actions">
+          <button type="button" data-studio-action="copy-source-modal">Copy</button>
+          <button type="button" data-studio-action="apply-source-modal">Apply</button>
+        </div>
+      </div>
+    </dialog>
+    <dialog class="studio-modal" data-studio-modal="embed">
+      <div class="studio-modal-card">
+        <div class="studio-modal-header">
+          <div>
+            <strong>Embed Markup</strong>
+            <p>Copy or download the current interactive embed when the atlas is valid.</p>
+          </div>
+          <button type="button" data-studio-action="close-embed-modal" aria-label="Close embed markup modal">Close</button>
+        </div>
+        <pre class="studio-modal-code" data-studio-embed-output></pre>
+        <div class="studio-modal-actions">
+          <button type="button" data-studio-action="copy-embed-modal">Copy</button>
+          <button type="button" data-studio-action="download-embed-modal">Download HTML</button>
+        </div>
+      </div>
+    </dialog>
   </section>`;
 }
 
@@ -581,6 +742,14 @@ function replaceExtension(fileName, extension) {
   return `${ensureWorldOrbitExtension(fileName).replace(/\.worldorbit$/i, "")}${extension}`;
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
 function loadSessionState() {
   try {
     const raw = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
@@ -592,14 +761,11 @@ function loadSessionState() {
     return {
       panels: {
         inspector: parsed?.panels?.inspector !== false,
-        preview: parsed?.panels?.preview !== false,
-        text: parsed?.panels?.text !== false,
       },
       panes: {
         sidebarWidth: Number(parsed?.panes?.sidebarWidth) || DEFAULT_SESSION_STATE.panes.sidebarWidth,
         inspectorWidth:
           Number(parsed?.panes?.inspectorWidth) || DEFAULT_SESSION_STATE.panes.inspectorWidth,
-        sourceHeight: Number(parsed?.panes?.sourceHeight) || DEFAULT_SESSION_STATE.panes.sourceHeight,
       },
     };
   } catch {
