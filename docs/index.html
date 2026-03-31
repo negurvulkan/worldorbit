@@ -1,759 +1,132 @@
 <!DOCTYPE html>
-<html lang="en">
-
+<html lang="en" class="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>WorldOrbit — Orbital worldbuilding for Markdown-native worlds</title>
+  <title>worldorbit | Precision Orbital Modeling</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@500;700;800&display=swap" rel="stylesheet" />
   <style>
-    :root {
-      --bg: #050816;
-      --bg-soft: #0b1024;
-      --panel: rgba(15, 23, 48, 0.72);
-      --panel-strong: rgba(16, 25, 55, 0.92);
-      --line: rgba(145, 168, 255, 0.18);
-      --text: #edf2ff;
-      --muted: #a8b3d1;
-      --accent: #8eb8ff;
-      --accent-2: #8af7d0;
-      --accent-3: #c6a6ff;
-      --shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
-      --radius: 22px;
-      --max: 1180px;
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    html {
-      scroll-behavior: smooth;
-    }
-
-    body {
-      margin: 0;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background:
-        radial-gradient(circle at 20% 20%, rgba(142, 184, 255, 0.12), transparent 0 28%),
-        radial-gradient(circle at 80% 18%, rgba(198, 166, 255, 0.11), transparent 0 24%),
-        radial-gradient(circle at 70% 80%, rgba(138, 247, 208, 0.09), transparent 0 22%),
-        linear-gradient(180deg, #050816 0%, #070b19 36%, #060813 100%);
-      color: var(--text);
-      min-height: 100vh;
-    }
-
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      background-image:
-        radial-gradient(2px 2px at 20px 30px, rgba(255, 255, 255, 0.5), transparent),
-        radial-gradient(2px 2px at 40px 70px, rgba(255, 255, 255, 0.35), transparent),
-        radial-gradient(1px 1px at 90px 40px, rgba(255, 255, 255, 0.4), transparent),
-        radial-gradient(1px 1px at 130px 80px, rgba(255, 255, 255, 0.25), transparent),
-        radial-gradient(2px 2px at 170px 120px, rgba(255, 255, 255, 0.28), transparent);
-      background-size: 220px 160px;
-      opacity: 0.16;
-    }
-
-    a {
-      color: inherit;
-      text-decoration: none;
-    }
-
-    code {
-      font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
-    }
-
-    .container {
-      width: min(var(--max), calc(100% - 40px));
-      margin: 0 auto;
-    }
-
-    .topbar {
-      position: sticky;
-      top: 0;
-      z-index: 20;
-      backdrop-filter: blur(16px);
-      background: rgba(5, 8, 22, 0.58);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    }
-
-    .topbar-inner {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 24px;
-      min-height: 76px;
-    }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      font-weight: 700;
-      letter-spacing: 0.02em;
-    }
-
-    .brand-mark {
-      width: 42px;
-      height: 42px;
-      border-radius: 50%;
-      position: relative;
-      background: radial-gradient(circle at 35% 35%, #dce8ff, #83afff 42%, #425aa4 72%, #192548 100%);
-      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 0 32px rgba(142, 184, 255, 0.28);
-    }
-
-    .brand-mark::before,
-    .brand-mark::after {
-      content: "";
-      position: absolute;
-      inset: -7px;
-      border-radius: 50%;
-      border: 1px solid rgba(142, 184, 255, 0.35);
-    }
-
-    .brand-mark::after {
-      inset: -12px;
-      border-color: rgba(138, 247, 208, 0.18);
-      transform: rotate(18deg) scaleX(1.15);
-    }
-
-    nav {
-      display: flex;
-      align-items: center;
-      gap: 18px;
-      flex-wrap: wrap;
-    }
-
-    nav a {
-      color: var(--muted);
-      font-size: 0.95rem;
-    }
-
-    nav a:hover {
-      color: var(--text);
-    }
-
-    .hero {
-      padding: 72px 0 52px;
-    }
-
-    .hero-grid {
-      display: grid;
-      grid-template-columns: 1.12fr 0.88fr;
-      gap: 34px;
-      align-items: center;
-    }
-
-    .eyebrow {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      padding: 9px 14px;
-      border-radius: 999px;
-      background: rgba(142, 184, 255, 0.08);
-      border: 1px solid rgba(142, 184, 255, 0.16);
-      color: #d7e5ff;
-      font-size: 0.9rem;
-      margin-bottom: 18px;
-    }
-
-    h1 {
-      margin: 0 0 18px;
-      font-size: clamp(2.6rem, 5vw, 5rem);
-      line-height: 0.96;
-      letter-spacing: -0.04em;
-    }
-
-    .hero p {
-      margin: 0;
-      color: var(--muted);
-      font-size: 1.08rem;
-      line-height: 1.7;
-      max-width: 680px;
-    }
-
-    .hero-actions {
-      display: flex;
-      gap: 14px;
-      flex-wrap: wrap;
-      margin-top: 28px;
-    }
-
-    .button {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      min-height: 50px;
-      padding: 0 20px;
-      border-radius: 999px;
-      font-weight: 600;
-      transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
-      cursor: pointer;
-    }
-
-    .button:hover {
-      transform: translateY(-1px);
-    }
-
-    .button-primary {
-      background: linear-gradient(135deg, rgba(142, 184, 255, 0.95), rgba(138, 247, 208, 0.95));
-      color: #07111f;
-      box-shadow: 0 10px 30px rgba(142, 184, 255, 0.22);
-      border: 0;
-    }
-
-    .button-secondary {
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      background: rgba(255, 255, 255, 0.02);
-      color: var(--text);
-    }
-
-    .hero-meta {
-      display: flex;
-      gap: 22px;
-      flex-wrap: wrap;
-      margin-top: 24px;
-      color: var(--muted);
-      font-size: 0.94rem;
-    }
-
-    .hero-card,
-    .feature,
-    .showcase-card,
-    .step,
-    .quote {
-      background: linear-gradient(180deg, rgba(19, 28, 57, 0.88), rgba(11, 16, 36, 0.88));
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-    }
-
-    .hero-card {
-      padding: 22px;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .hero-card::before {
-      content: "";
-      position: absolute;
-      inset: auto -15% -35% 20%;
-      height: 220px;
-      background: radial-gradient(circle, rgba(142, 184, 255, 0.22), transparent 62%);
-      filter: blur(10px);
-    }
-
-    .code-title,
-    .viewer-title {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-      color: var(--muted);
-      font-size: 0.88rem;
-      margin-bottom: 12px;
-    }
-
-    .code-view {
-      border-radius: 18px;
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      background: rgba(5, 8, 22, 0.82);
-      padding: 18px;
-      font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
-      color: #dbe5ff;
-      overflow: auto;
-      white-space: pre;
-      line-height: 1.6;
-      font-size: 0.92rem;
-    }
-
-    .viewer-shell {
-      margin-top: 16px;
-      padding: 18px;
-      border-radius: 18px;
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      background: radial-gradient(circle at 50% 45%, rgba(47, 73, 160, 0.45), rgba(8, 11, 26, 0.98) 62%);
-      min-height: 280px;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .viewer-tag {
-      position: absolute;
-      right: 18px;
-      bottom: 18px;
-      font-size: 0.82rem;
-      color: #d7e5ff;
-      padding: 10px 12px;
-      border-radius: 12px;
-      background: rgba(7, 11, 27, 0.78);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
-    section {
-      padding: 34px 0;
-    }
-
-    .section-heading {
-      max-width: 760px;
-      margin-bottom: 24px;
-    }
-
-    .section-heading h2 {
-      margin: 0 0 12px;
-      font-size: clamp(1.8rem, 3vw, 3rem);
-      line-height: 1.04;
-      letter-spacing: -0.03em;
-    }
-
-    .section-heading p {
-      margin: 0;
-      color: var(--muted);
-      line-height: 1.75;
-    }
-
-    .feature-grid,
-    .showcase-grid,
-    .steps,
-    .screenshot-grid {
-      display: grid;
-      gap: 18px;
-    }
-
-    .feature-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .feature {
-      padding: 22px;
-    }
-
-    .feature .kicker {
-      display: inline-block;
-      margin-bottom: 12px;
-      padding: 6px 10px;
-      border-radius: 999px;
-      font-size: 0.78rem;
-      color: #d7e5ff;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
-    .feature h3,
-    .showcase-card h3,
-    .step h3 {
-      margin: 0 0 10px;
-      font-size: 1.15rem;
-    }
-
-    .feature p,
-    .showcase-card p,
-    .step p,
-    .quote p,
-    .footer-copy {
-      margin: 0;
-      color: var(--muted);
-      line-height: 1.7;
-    }
-
-    .showcase-grid {
-      grid-template-columns: 1fr;
-    }
-
-    .showcase-card {
-      padding: 22px;
-    }
-
-    .showcase-card.large {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-      align-items: stretch;
-    }
-
-    .placeholder {
-      min-height: 260px;
-      border-radius: 18px;
-      border: 1px dashed rgba(161, 184, 255, 0.28);
-      background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01)),
-        radial-gradient(circle at 25% 25%, rgba(142, 184, 255, 0.12), transparent 0 34%),
-        radial-gradient(circle at 75% 60%, rgba(138, 247, 208, 0.08), transparent 0 30%);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      padding: 24px;
-      color: #d7e5ff;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .placeholder::before {
-      content: "";
-      position: absolute;
-      inset: 14px;
-      border-radius: 14px;
-      border: 1px solid rgba(255, 255, 255, 0.05);
-    }
-
-    .placeholder small {
-      display: block;
-      margin-top: 8px;
-      color: var(--muted);
-    }
-
-    .steps {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .step {
-      padding: 22px;
-      position: relative;
-    }
-
-    .step-index {
-      width: 34px;
-      height: 34px;
-      border-radius: 50%;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: 14px;
-      font-size: 0.9rem;
-      font-weight: 700;
-      color: #07111f;
-      background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    }
-
-    .terminal {
-      margin-top: 18px;
-      padding: 18px;
-      border-radius: 18px;
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      background: rgba(4, 7, 19, 0.9);
-      font-family: "JetBrains Mono", Consolas, monospace;
-      font-size: 0.92rem;
-      color: #dbe5ff;
-      line-height: 1.7;
-      overflow: auto;
-    }
-
-    .screenshot-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .quote {
-      padding: 26px;
-    }
-
-    .quote strong {
-      display: block;
-      margin-bottom: 10px;
-      font-size: 1.05rem;
-    }
-
-    .playground-actions {
-      margin-top: 16px;
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    .playground-actions .button {
-      min-height: 42px;
-      padding: 0 16px;
-      font-size: 0.9rem;
-    }
-
-    .mode-switch {
-      display: inline-flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-top: 12px;
-    }
-
-    .mode-switch .button[aria-pressed="true"] {
-      border-color: rgba(142, 184, 255, 0.44);
-      background: rgba(142, 184, 255, 0.16);
-      color: #eef4ff;
-      box-shadow: 0 0 0 1px rgba(142, 184, 255, 0.12) inset;
-    }
-
-    .editor-shell {
-      margin-top: 16px;
-      border-radius: 18px;
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      background: rgba(4, 7, 19, 0.9);
-      overflow: hidden;
-    }
-
-    .editor-shell textarea {
-      width: 100%;
-      min-height: 320px;
-      resize: vertical;
-      border: 0;
-      outline: none;
-      background: transparent;
-      color: #dbe5ff;
-      padding: 18px;
-      font: 14px/1.7 "JetBrains Mono", Consolas, monospace;
-    }
-
-    #playground-status {
-      margin-top: 12px;
-      color: var(--muted);
-      font-size: 0.92rem;
-    }
-
-    footer {
-      padding: 34px 0 60px;
-    }
-
-    .footer-wrap {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 20px;
-      flex-wrap: wrap;
-      padding-top: 12px;
-      border-top: 1px solid rgba(255, 255, 255, 0.06);
-    }
-
-    .footer-links {
-      display: flex;
-      gap: 14px;
-      flex-wrap: wrap;
-    }
-
-    .footer-links a {
-      color: var(--muted);
-    }
-
-    .footer-links a:hover {
-      color: var(--text);
-    }
-
-    @media (max-width: 1080px) {
-
-      .hero-grid,
-      .showcase-card.large {
-        grid-template-columns: 1fr;
-      }
-
-      .feature-grid,
-      .steps,
-      .screenshot-grid {
-        grid-template-columns: 1fr 1fr;
-      }
-    }
-
-    @media (max-width: 760px) {
-      .topbar-inner {
-        min-height: 70px;
-      }
-
-      nav {
-        display: none;
-      }
-
-      .hero {
-        padding-top: 46px;
-      }
-
-      .feature-grid,
-      .steps,
-      .screenshot-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .container {
-        width: min(var(--max), calc(100% - 24px));
-      }
-    }
+    :root{color-scheme:dark;--bg:#070d1f;--panel:#0a1839;--panel2:#0a2257;--panel3:#09122b;--line:rgba(123,208,255,.12);--text:#dfe4ff;--muted:#96a9e6;--primary:#7bd0ff;--primaryDim:#47c4ff;--max:1440px;--shadow:0 24px 72px rgba(0,0,0,.42)}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;min-height:100vh;background:radial-gradient(circle at 16% 18%,rgba(123,208,255,.14),transparent 0 26%),radial-gradient(circle at 82% 14%,rgba(123,208,255,.08),transparent 0 22%),linear-gradient(180deg,#070d1f 0%,#071127 38%,#060c1d 100%);color:var(--text);font-family:"Inter",sans-serif;-webkit-font-smoothing:antialiased}body::before{content:"";position:fixed;inset:0;pointer-events:none;background-image:linear-gradient(rgba(123,208,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(123,208,255,.04) 1px,transparent 1px);background-size:72px 72px;mask-image:radial-gradient(circle at center,black 32%,transparent 84%);opacity:.3}a{text-decoration:none;color:inherit}code,pre,textarea{font-family:"Cascadia Code","JetBrains Mono",Consolas,monospace}
+    *::-webkit-scrollbar{width:10px;height:10px}*::-webkit-scrollbar-track{background:rgba(3,8,21,.72)}*::-webkit-scrollbar-thumb{background:rgba(123,208,255,.28);border:2px solid rgba(3,8,21,.72)}*::-webkit-scrollbar-thumb:hover{background:rgba(123,208,255,.42)}
+    .shell{width:min(var(--max),calc(100% - 32px));margin:0 auto}.topbar{position:sticky;top:0;z-index:40;background:rgba(7,13,31,.86);backdrop-filter:blur(24px);border-bottom:1px solid rgba(255,255,255,.05)}.topbar-inner{min-height:80px;display:flex;align-items:center;justify-content:space-between;gap:20px}.brand,.footer-brand strong{font:800 1.55rem/1 "Manrope",sans-serif;letter-spacing:-.05em;text-transform:lowercase}.topnav,.hero-actions,.hero-links,.playground-actions,.mode-switch,.cta-actions,.footer-links{display:flex;gap:14px;flex-wrap:wrap}.topnav{gap:26px}.topnav a,.footer-links a{color:var(--muted);font-weight:600}.topnav a:hover,.topnav a.is-active,.footer-links a:hover{color:var(--primary)}
+    .button{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 20px;border:1px solid transparent;background:transparent;color:var(--text);font:700 .92rem/1 "Manrope",sans-serif;letter-spacing:-.02em;cursor:pointer;transition:transform .18s ease,background-color .18s ease,border-color .18s ease}.button:hover{transform:translateY(-1px)}.button-primary{background:var(--primary);border-color:var(--primary);color:#004560}.button-primary:hover{background:var(--primaryDim);border-color:var(--primaryDim)}.button-secondary{background:rgba(10,34,87,.88);border-color:rgba(123,208,255,.12)}.button-secondary:hover{background:rgba(8,39,104,.92)}
+    .hero{padding:96px 0 120px}.hero-grid,.feature-grid,.workflow-grid,.terminal-grid{display:grid;gap:28px}.hero-grid{grid-template-columns:minmax(0,1.08fr) minmax(320px,.92fr);align-items:center}.hero h1,.section-header h2,.cta h2{margin:0;font-family:"Manrope",sans-serif;letter-spacing:-.06em}.hero h1{font-size:clamp(3.6rem,8vw,6.8rem);line-height:.9;margin-bottom:28px}.hero p,.section-header p,.feature p,.workflow-card p,.panel-copy,.cta p,.footer-copy,.terminal-copy{color:var(--muted);line-height:1.7}.hero p{max-width:640px;font-size:1.12rem}.hero-links{margin-top:24px;font:700 .74rem/1 "Inter",sans-serif;letter-spacing:.2em;text-transform:uppercase}.hero-links a:first-child{color:var(--primary)}.hero-links a:last-child{color:var(--muted)}.hero-links a:hover{color:var(--text)}
+    .glass,.feature,.panel,.workflow-card,.terminal-card,.guide-banner,.cta{background:rgba(10,24,57,.72);border:1px solid var(--line);box-shadow:var(--shadow);backdrop-filter:blur(20px)}.hero-panel{position:relative;min-height:0;padding:18px;overflow:hidden}.hero-panel::before{content:"";position:absolute;width:360px;height:360px;right:-120px;top:-120px;background:rgba(123,208,255,.18);filter:blur(90px);border-radius:999px}.panel-head{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;color:var(--muted);font-size:.82rem;letter-spacing:.12em;text-transform:uppercase}.code-block,.hero-preview,.playground-shell,.terminal,textarea,.preview-frame{background:rgba(3,8,21,.92);border:1px solid rgba(123,208,255,.1)}.code-block{position:relative;z-index:1;padding:14px 16px;max-height:168px;overflow:auto;color:#c6d6ec;font-size:.82rem;line-height:1.5;white-space:pre}.hero-preview{position:relative;z-index:1;min-height:232px;padding:14px;margin-top:14px;overflow:hidden}#hero-view{width:100%;height:216px;overflow:hidden}.panel-tag{position:absolute;right:18px;bottom:18px;padding:9px 12px;background:rgba(7,13,31,.9);border:1px solid rgba(123,208,255,.14);color:var(--text);font-size:.76rem;letter-spacing:.08em;text-transform:uppercase}.mode-switch .button,.playground-actions .button{min-height:40px;padding:0 14px;font-size:.86rem}.mode-switch .button[aria-pressed=true]{background:rgba(123,208,255,.16);border-color:rgba(123,208,255,.26);color:var(--text)}
+    .section{padding:0 0 120px}.section.alt{background:linear-gradient(180deg,rgba(10,24,57,.68),rgba(9,18,43,.76));border-top:1px solid rgba(123,208,255,.08);border-bottom:1px solid rgba(123,208,255,.08);padding:110px 0}.section-header{max-width:720px;margin-bottom:54px}.section-header h2{font-size:clamp(2.3rem,5vw,4rem);margin-bottom:14px}.marker{width:84px;height:4px;background:var(--primary);margin-top:18px}.feature-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.feature{padding:30px 26px}.feature-mark{display:inline-flex;width:52px;height:52px;align-items:center;justify-content:center;background:rgba(123,208,255,.12);color:var(--primary);font:800 1.1rem/1 "Manrope",sans-serif;margin-bottom:18px}.feature h3,.panel h3,.workflow-card h3,.terminal-card h3,.guide-banner h3{margin:0 0 12px;font:800 1.28rem/1.2 "Manrope",sans-serif;letter-spacing:-.04em}
+    .live-grid{display:grid;grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr);gap:1px;background:rgba(123,208,255,.1)}.panel{min-width:0;padding:40px;background:rgba(5,8,21,.94)}.panel.visual{position:relative;background:radial-gradient(circle at 60% 30%,rgba(123,208,255,.18),transparent 0 30%),radial-gradient(circle at 46% 62%,rgba(123,208,255,.1),transparent 0 18%),linear-gradient(180deg,rgba(10,24,57,.92),rgba(5,8,21,.96));overflow:hidden}.panel-copy{max-width:520px;margin-bottom:18px}.playground-shell{overflow:hidden}textarea{width:100%;min-height:336px;resize:vertical;border:0;outline:none;color:var(--text);padding:18px;font-size:.88rem;line-height:1.7}#playground-status{margin-top:12px;color:var(--muted);font-size:.92rem}.preview-frame{position:relative;min-height:520px;overflow:hidden}.preview-frame::before,.preview-frame::after{content:"";position:absolute;border-radius:999px;pointer-events:none}.preview-frame::before{width:380px;height:380px;top:-140px;left:50%;transform:translateX(-50%);border:1px solid rgba(123,208,255,.12)}.preview-frame::after{width:220px;height:220px;top:20%;left:50%;transform:translateX(-50%) rotate(18deg);border:1px solid rgba(123,208,255,.18)}#playground-preview{position:relative;z-index:1;width:100%;min-height:520px;height:100%}
+    .workflow-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.workflow-card{padding:28px 24px 30px;border-left:1px solid rgba(123,208,255,.12)}.workflow-step{display:block;margin-bottom:22px;color:rgba(123,208,255,.18);font:800 clamp(3rem,7vw,4.5rem)/.9 "Manrope",sans-serif;letter-spacing:-.08em}.terminal-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.terminal-card{padding:28px 26px}.terminal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;color:var(--muted);font-size:.84rem;letter-spacing:.12em;text-transform:uppercase}.terminal{padding:18px;color:var(--text);font-size:.92rem;line-height:1.7;overflow:auto}.terminal-copy{margin-top:14px}.guide-banner{margin-top:36px;padding:30px 28px;display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap}
+    .cta{padding:110px 0 96px;text-align:center;box-shadow:none;border-left:0;border-right:0}.cta h2{font-size:clamp(2.2rem,5vw,4rem);margin-bottom:16px}.cta p{max-width:720px;margin:0 auto;font-size:1.02rem}.footer{border-top:1px solid rgba(123,208,255,.08)}.footer-inner{min-height:144px;display:flex;align-items:center;justify-content:space-between;gap:28px;flex-wrap:wrap}.footer-brand{display:flex;flex-direction:column;gap:8px}
+    @media (max-width:1120px){.hero{padding:80px 0 104px}.hero-grid,.feature-grid,.workflow-grid,.terminal-grid,.live-grid{grid-template-columns:1fr}.hero-panel{max-width:760px}.preview-frame,#playground-preview{min-height:420px}}
+    @media (max-width:900px){.topbar-inner,.footer-inner{justify-content:center;text-align:center}.hero-actions,.hero-links,.cta-actions,.playground-actions{gap:10px}.panel,.feature,.workflow-card,.terminal-card,.guide-banner{padding:26px 22px}.hero-panel{padding:16px}.code-block{max-height:150px}.hero-preview{min-height:214px}#hero-view{height:198px}.panel-tag{position:static;display:inline-flex;margin-top:12px}}
+    @media (max-width:760px){.shell{width:min(var(--max),calc(100% - 24px))}.topnav{display:none}.topbar-inner{min-height:72px}.topbar-inner>.button{width:100%}.hero{padding:64px 0 84px}.hero h1{font-size:clamp(2.8rem,14vw,4.4rem);margin-bottom:18px}.hero p{font-size:1rem}.hero-actions>*,.cta-actions>*{width:100%}.hero-links{gap:16px;letter-spacing:.14em}.section{padding:0 0 88px}.section.alt{padding:88px 0}.section-header{margin-bottom:34px}.section-header h2{font-size:clamp(2rem,10vw,2.8rem)}.panel,.feature,.workflow-card,.terminal-card,.guide-banner{padding-left:20px;padding-right:20px}.playground-actions .button{flex:1 1 100%}.preview-frame,#playground-preview{min-height:320px}}
+    @media (max-width:520px){.topbar-inner,.footer-inner{align-items:stretch}.button{width:100%}.panel-head{flex-direction:column;align-items:flex-start}.code-block{font-size:.76rem;line-height:1.45;max-height:132px}.hero-preview{padding:12px}#hero-view{height:176px}.terminal{font-size:.84rem}.panel,.feature,.workflow-card,.terminal-card,.guide-banner{padding:18px 16px}.preview-frame,#playground-preview{min-height:260px}}
   </style>
 </head>
-
 <body>
   <header class="topbar">
-    <div class="container topbar-inner">
-      <a class="brand" href="#top">
-        <span class="brand-mark" aria-hidden="true"></span>
-        <span>WorldOrbit</span>
-      </a>
-      <nav>
-        <a href="#features">Features</a>
+    <div class="shell topbar-inner">
+      <a class="brand" href="#top">worldorbit</a>
+      <nav class="topnav">
+        <a class="is-active" href="#features">Features</a>
         <a href="#showcase">Showcase</a>
         <a href="#workflow">Workflow</a>
-        <a href="#screenshots">Screenshots</a>
-        <a href="#start">Get Started</a>
+        <a href="https://github.com/negurvulkan/worldorbit" target="_blank" rel="noreferrer">GitHub</a>
       </nav>
+      <a class="button button-primary" href="#start">Get Started</a>
     </div>
   </header>
 
   <main id="top">
     <section class="hero">
-      <div class="container hero-grid">
+      <div class="shell hero-grid">
         <div>
-          <div class="eyebrow">Mermaid-like diagrams for fictional orbital systems</div>
-          <h1>Build stellar systems in text. Render them as maps, viewers, and atlases.</h1>
-          <p>
-            WorldOrbit is a text-first DSL, viewer, and optional editor platform for orbital worldbuilding.
-            Write systems in plain text, embed them in Markdown, render them as static diagrams, explore
-            them interactively in 2D, or switch the same document into a symbolic 3D view with animated orbits. Scale your systems from small moons to entire galaxies (ly, pc, kpc).
-          </p>
+          <h1>Build stellar systems in text.</h1>
+          <p>Render them as maps, viewers, and atlases. WorldOrbit is a text-first DSL, viewer, and optional editor platform for orbital worldbuilding.</p>
           <div class="hero-actions">
             <a class="button button-primary" href="#start">Get Started</a>
-            <a class="button button-secondary" href="https://negurvulkan.github.io/worldorbit/studio/">Try WorldOrbit
-              Studio</a>
-            <a class="button button-secondary" href="https://negurvulkan.github.io/worldorbit/beginner_guide.html">Read
-              the Guide</a>
-            <a class="button button-secondary" href="https://github.com/negurvulkan/worldorbit" target="_blank"
-              rel="noreferrer">GitHub</a>
+            <a class="button button-secondary" href="https://negurvulkan.github.io/worldorbit/studio/">Try WorldOrbit Studio</a>
           </div>
-          <div class="hero-meta">
-            <span>Markdown-native</span>
-            <span>Static, 2D, or 3D</span>
-            <span>Optional visual editor</span>
+          <div class="hero-links">
+            <a href="./beginner_guide.html">Read the Guide</a>
+            <a href="https://github.com/negurvulkan/worldorbit" target="_blank" rel="noreferrer">GitHub</a>
           </div>
         </div>
+        <div class="glass hero-panel">
+          <div class="panel-head"><span>Live Orbital Preview</span><span>schema 2.6</span></div>
+          <div class="code-block">schema 2.6
 
-        <div class="hero-card">
-          <div class="code-title">
-            <span>Example source</span>
-            <span>schema 2.6</span>
-          </div>
-          <div class="code-view">schema 2.6
+system Iyath
+  title "Iyath System"
 
-            system Iyath
-            title "Iyath System"
+defaults
+  view orthographic
+  scale presentation
+  preset atlas-card
+  theme atlas
 
-            defaults
-            view orthographic
-            scale presentation
-            preset atlas-card
-            theme atlas
+viewpoint overview
+  projection perspective
+  camera
+    azimuth 24
+    elevation 18
+    distance 5
 
-            viewpoint overview
-            projection orthographic
-            camera
-            azimuth 24
-            elevation 18
+object star Iyath
 
-            group inner-system
-            label "Inner System"
+object planet Naar
+  orbit Iyath
+  semiMajor 1.18au
+  phase 42deg
 
-            object star Iyath
-
-            object planet Naar
-            orbit Iyath
-            semiMajor 1.18au
-            eccentricity 0.08
-            angle 28deg
-            inclination 24deg
-            phase 42deg
-            atmosphere nitrogen-oxygen
-            groups inner-system
-
-            object moon Seyra
-            orbit Naar
-            distance 384400km
-
-            event naar-eclipse
-            kind solar-eclipse
-            target Naar
-            participants Iyath Naar Seyra</div>
-          <div class="viewer-shell">
-            <div class="viewer-title">
-              <span>Rendered preview</span>
-              <span>live WorldOrbit viewer</span>
-            </div>
+object moon Seyra
+  orbit Naar
+  distance 384400km</div>
+          <div class="hero-preview">
+            <div class="panel-head" style="margin-bottom:10px"><span>Viewer</span><span id="hero-view-tag">Live 3D demo powered by the same document</span></div>
             <div class="mode-switch" aria-label="Hero view mode">
               <button class="button button-secondary" id="hero-view-2d" type="button" aria-pressed="false">View 2D</button>
               <button class="button button-secondary" id="hero-view-3d" type="button" aria-pressed="true">View 3D</button>
             </div>
-            <div id="hero-view" style="width: 100%; height: 240px; border-radius: 14px; overflow: hidden;"></div>
-            <div class="viewer-tag" id="hero-view-tag">Live 3D demo powered by the same WorldOrbit document</div>
+            <div id="hero-view"></div>
+            <div class="panel-tag">Real-time orbital preview</div>
           </div>
         </div>
       </div>
     </section>
 
-    <section id="features">
-      <div class="container">
-        <div class="section-heading">
+    <section id="features" class="section alt">
+      <div class="shell">
+        <div class="section-header">
           <h2>Why WorldOrbit</h2>
-          <p>
-            Generic diagram tools can draw connections. WorldOrbit is built specifically for fictional orbital systems,
-            Markdown-based lore repositories, codices, browser viewers, and content-first worldbuilding workflows.
-            Schema 2.6 now adds support for galactic scales (light-years, parsecs), specialized kinds like black holes and galaxies, alongside viewpoints, camera blocks, comments, and semantic groups. WorldOrbit 3.0+ then turns those same documents into shared 2D and 3D viewer inputs.
-          </p>
+          <p>A cleaner authoring flow for fictional orbital systems. WorldOrbit stays parser-first, text-first, and renderer-ready without collapsing into generic graph tooling.</p>
+          <div class="marker"></div>
         </div>
-
         <div class="feature-grid">
-          <article class="feature">
-            <span class="kicker">Text first</span>
-            <h3>Write diagrams like content, not like canvas state</h3>
-            <p>
-              WorldOrbit is designed for authors and worldbuilders who want to define systems in readable text,
-              version them in Git, and drop them directly into Markdown-based projects.
-            </p>
-          </article>
-
-          <article class="feature">
-            <span class="kicker">Orbit aware</span>
-            <h3>Made for stars, planets, moons, belts, structures, and phenomena</h3>
-            <p>
-              Instead of forcing orbital systems into generic node graphs, WorldOrbit speaks the language of stellar
-              layouts, object metadata, viewpoints, annotations, and orbital presentation.
-            </p>
-          </article>
-
-          <article class="feature">
-            <span class="kicker">One source, many views</span>
-            <h3>Render static diagrams, interactive viewers, or editor-driven scenes</h3>
-            <p>
-              The same source can drive a simple SVG diagram, a richer interactive view with tooltips and navigation,
-              or the optional Studio editor for faster authoring.
-            </p>
-          </article>
+          <article class="feature glass"><span class="feature-mark">TXT</span><h3>Write diagrams like content, not canvas state.</h3><p>The DSL keeps systems readable in Git, Markdown, and long-form lore repositories instead of hiding structure in manual editor coordinates.</p></article>
+          <article class="feature glass"><span class="feature-mark">ORB</span><h3>Made for stars, planets, moons, belts, and structures.</h3><p>WorldOrbit speaks in placements, orbital metadata, semantic groups, and atlas concepts instead of generic nodes and edges.</p></article>
+          <article class="feature glass"><span class="feature-mark">VIEW</span><h3>Render static diagrams, interactive viewers, or scenes.</h3><p>One source can drive static output, interactive 2D exploration, 3D viewer modes, and the optional Studio editor without branching formats.</p></article>
         </div>
       </div>
     </section>
 
-    <section id="showcase">
-      <div class="container">
-        <div class="section-heading">
-          <h2>Made for worldbuilding tools and content systems</h2>
-          <p>
-            WorldOrbit fits especially well into Markdown-native pipelines, worldbuilding CMS setups, lore
-            encyclopedias,
-            interactive setting documentation, and fictional atlas projects.
-          </p>
-        </div>
-
-        <div class="showcase-grid">
-          <article class="showcase-card large">
-            <div>
-              <h3>Try WorldOrbit directly in the page</h3>
-              <p>
-                Edit the source, then render it immediately in the preview. This keeps the landing page useful as a
-                lightweight playground without replacing the full Studio editor.
-              </p>
-
-              <div class="playground-actions">
-                <button class="button button-secondary" id="playground-view-2d" type="button" aria-pressed="false">Preview 2D</button>
-                <button class="button button-secondary" id="playground-view-3d" type="button" aria-pressed="true">Preview 3D</button>
-                <button class="button button-secondary" id="playground-render" type="button">Render Preview</button>
-                <button class="button button-secondary" id="playground-reset" type="button">Reset Example</button>
-              </div>
-
-              <div class="editor-shell">
-                <textarea id="playground-source" spellcheck="false">schema 2.6
+    <section id="showcase" class="section">
+      <div class="shell">
+        <div class="live-grid glass">
+          <article class="panel">
+            <div class="panel-head"><span>system.orbit</span><span>Author live</span></div>
+            <h3>Write source and render it immediately.</h3>
+            <p class="panel-copy">This landing page keeps a compact live playground for quick experiments while the full Studio remains focused on broader editing and inspection workflows.</p>
+            <div class="playground-actions">
+              <button class="button button-secondary" id="playground-view-2d" type="button" aria-pressed="false">Preview 2D</button>
+              <button class="button button-secondary" id="playground-view-3d" type="button" aria-pressed="true">Preview 3D</button>
+              <button class="button button-primary" id="playground-render" type="button">Render Preview</button>
+              <button class="button button-secondary" id="playground-reset" type="button">Reset Example</button>
+            </div>
+            <div class="playground-shell">
+              <textarea id="playground-source" spellcheck="false">schema 2.6
 
 system Iyath
   title "Iyath System"
@@ -811,362 +184,72 @@ event naar-eclipse
       orbit Naar
       distance 384400km
       phase 90deg</textarea>
-              </div>
-
-              <div id="playground-status">Edit the source and click “Render Preview”.</div>
             </div>
-
-            <div class="placeholder" style="padding: 12px; align-items: stretch; justify-content: stretch;">
-              <div
-                style="width: 100%; min-height: 360px; border-radius: 14px; overflow: hidden; background: rgba(5, 8, 22, 0.72); border: 1px solid rgba(255,255,255,0.05);">
-                <div id="playground-preview" style="width: 100%; height: 100%; min-height: 360px;"></div>
-              </div>
-            </div>
+            <div id="playground-status">Edit the source and click "Render Preview".</div>
+          </article>
+          <article class="panel visual">
+            <div class="panel-head"><span>Preview Stage</span><span>WorldOrbit viewer</span></div>
+            <div class="preview-frame"><div id="playground-preview"></div></div>
           </article>
         </div>
       </div>
     </section>
 
-    <section id="workflow">
-      <div class="container">
-        <div class="section-heading">
-          <h2>Simple workflow, scalable depth</h2>
-          <p>
-            Start with a tiny text block. Grow it into a richer, canonical schema document. Render it statically,
-            explore it interactively, or open it in Studio when visual authoring becomes useful.
-          </p>
-        </div>
-
-        <div class="steps">
-          <article class="step">
-            <div class="step-index">1</div>
-            <h3>Write</h3>
-            <p>
-              Describe your stellar system in plain text. Keep it in Git, keep it in Markdown, and keep the source
-              readable.
-            </p>
-          </article>
-
-          <article class="step">
-            <div class="step-index">2</div>
-            <h3>Render</h3>
-            <p>
-              Use the same document for a static diagram, an interactive view, or an atlas-style presentation with
-              viewpoints
-              and annotations.
-            </p>
-          </article>
-
-          <article class="step">
-            <div class="step-index">3</div>
-            <h3>Refine</h3>
-            <p>
-              Open the optional Studio editor when you want faster onboarding, visual placement handling, or
-              side-by-side
-              source and preview.
-            </p>
-          </article>
+    <section id="workflow" class="section alt">
+      <div class="shell">
+        <div class="workflow-grid">
+          <article class="workflow-card glass"><span class="workflow-step">01</span><h3>Write</h3><p>Define systems as readable text and keep them under version control like any other durable authoring asset.</p></article>
+          <article class="workflow-card glass"><span class="workflow-step">02</span><h3>Render</h3><p>Turn the same source into atlas cards, interactive diagrams, embedded viewers, or documentation visuals.</p></article>
+          <article class="workflow-card glass"><span class="workflow-step">03</span><h3>Refine</h3><p>Open WorldOrbit Studio for visual inspection, source-focused edits, and a tighter authoring loop once the system grows.</p></article>
         </div>
       </div>
     </section>
 
-    <section>
-      <div class="container">
-        <div class="quote">
-          <strong>One format for writing, 2D rendering, 3D viewing, and optional visual editing.</strong>
-          <p>
-            WorldOrbit stays text-first at its core. The viewer and editor build on top of the same document model,
-            so your source remains portable, inspectable, and useful across static pages, interactive atlases, and
-            authoring tools.
-          </p>
-        </div>
-      </div>
-    </section>
-
-    <section id="start">
-      <div class="container">
-        <div class="section-heading">
+    <section id="start" class="section">
+      <div class="shell">
+        <div class="section-header">
           <h2>Get started</h2>
-          <p>
-            Use WorldOrbit from npm, try it directly in the browser, or explore the repository examples and demos.
-          </p>
+          <p>Install the package, load it directly in the browser, or jump into the beginner guide and Studio to start authoring immediately.</p>
         </div>
-
-        <div class="showcase-grid">
-          <article class="showcase-card">
-            <h3>Install via npm</h3>
-            <div class="terminal">npm install worldorbit</div>
-            <p style="margin-top: 14px;">
-              Great for projects that want the parser, viewer, Markdown integration, or subpath exports like
-              <code>worldorbit/core</code> and <code>worldorbit/viewer</code>.
-            </p>
-          </article>
-
-          <article class="showcase-card">
-            <h3>Use in the browser</h3>
-            <div class="terminal">&lt;script
-src="./assets/worldorbit/worldorbit.min.js"&gt;&lt;/script&gt;</div>
-            <p style="margin-top: 14px;">
-              Ideal for quick experiments, standalone demos, or embedding WorldOrbit in static and CMS-driven pages.
-            </p>
-          </article>
+        <div class="terminal-grid">
+          <article class="terminal-card glass"><div class="terminal-head"><span>Install via npm</span><span>Terminal</span></div><div class="terminal">npm install worldorbit</div><p class="terminal-copy">Use the parser, renderer, viewer, Markdown integration, or subpath exports like <code>worldorbit/core</code> and <code>worldorbit/viewer</code>.</p></article>
+          <article class="terminal-card glass"><div class="terminal-head"><span>Use in the browser</span><span>Bundle</span></div><div class="terminal">&lt;script src="./assets/worldorbit/worldorbit.min.js"&gt;&lt;/script&gt;</div><p class="terminal-copy">Good for static sites, docs experiments, embeddable previews, and fast demos that do not need a separate build pipeline.</p></article>
         </div>
+        <div class="guide-banner glass">
+          <div><h3>Need a guided first pass?</h3><p class="footer-copy">Open the beginner guide for staged examples, then move into Studio when you want the full editor shell.</p></div>
+          <div class="hero-actions" style="margin-top:0">
+            <a class="button button-primary" href="./beginner_guide.html">Read the Guide</a>
+            <a class="button button-secondary" href="https://negurvulkan.github.io/worldorbit/studio/">Open Studio</a>
+          </div>
+        </div>
+      </div>
+    </section>
 
-        <div class="hero-actions" style="margin-top: 24px;">
-          <a class="button button-primary" href="https://github.com/negurvulkan/worldorbit" target="_blank"
-            rel="noreferrer">Open GitHub</a>
-          <a class="button button-secondary" href="https://www.npmjs.com/package/worldorbit" target="_blank"
-            rel="noreferrer">View on npm</a>
+    <section class="cta glass">
+      <div class="shell">
+        <h2>One source for writing, viewing, and refining orbital worlds.</h2>
+        <p>WorldOrbit keeps the language, normalized model, and downstream renderers aligned so your authored systems remain portable across docs, embeds, and editor tooling.</p>
+        <div class="cta-actions">
+          <a class="button button-primary" href="https://github.com/negurvulkan/worldorbit" target="_blank" rel="noreferrer">Open GitHub</a>
+          <a class="button button-secondary" href="https://www.npmjs.com/package/worldorbit" target="_blank" rel="noreferrer">View on npm</a>
         </div>
       </div>
     </section>
   </main>
 
-  <footer>
-    <div class="container footer-wrap">
-      <p class="footer-copy">WorldOrbit — a Mermaid-like, Markdown-native platform for fictional orbital systems.</p>
-      <div class="footer-links">
+  <footer class="footer">
+    <div class="shell footer-inner">
+      <div class="footer-brand"><strong>worldorbit</strong><span class="footer-copy">Precision orbital modeling for Markdown-native worldbuilding on the modern web.</span></div>
+      <nav class="footer-links">
         <a href="https://github.com/negurvulkan/worldorbit" target="_blank" rel="noreferrer">GitHub</a>
         <a href="https://www.npmjs.com/package/worldorbit" target="_blank" rel="noreferrer">npm</a>
-          <a href="./assets/worldorbit/worldorbit.min.js" target="_blank"
-          rel="noreferrer">Browser Bundle</a>
-      </div>
+        <a href="./beginner_guide.html">Documentation</a>
+        <a href="./assets/worldorbit/worldorbit.min.js" target="_blank" rel="noreferrer">Browser Bundle</a>
+      </nav>
     </div>
   </footer>
 
   <script src="./assets/worldorbit/worldorbit.min.js"></script>
-  <script>
-    const heroSource = `schema 2.6
-
-system Iyath
-  title "Iyath System"
-
-defaults
-  view orthographic
-  scale presentation
-  preset atlas-card
-  theme atlas
-
-viewpoint overview
-  projection perspective
-  camera
-    azimuth 24
-    elevation 18
-    distance 5
-
-group inner-system
-  label "Inner System"
-
-object star Iyath
-
-object planet Naar
-  orbit Iyath
-  semiMajor 1.18au
-  eccentricity 0.08
-  angle 28deg
-  inclination 24deg
-  phase 42deg
-  atmosphere nitrogen-oxygen
-  groups inner-system
-
-object moon Seyra
-  orbit Naar
-  distance 384400km
-
-event naar-eclipse
-  kind solar-eclipse
-  target Naar
-  participants Iyath Naar Seyra`;
-
-    const playgroundDefaultSource = `schema 2.6
-
-system Iyath
-  title "Iyath System"
-
-defaults
-  view orthographic
-  scale presentation
-  preset atlas-card
-  theme atlas
-
-viewpoint overview
-  projection perspective
-  camera
-    azimuth 34
-    elevation 22
-    distance 5
-
-group inner-system
-  label "Inner System"
-
-annotation naar-notes
-  label "Naar Notes"
-  target Naar
-  body "Heimatwelt der Enari."
-
-object star Iyath
-
-object planet Naar
-  orbit Iyath
-  semiMajor 1.18au
-  eccentricity 0.08
-  angle 28deg
-  inclination 24deg
-  phase 42deg
-  atmosphere nitrogen-oxygen
-  groups inner-system
-
-object moon Seyra
-  orbit Naar
-  distance 384400km
-  groups inner-system
-
-event naar-eclipse
-  kind solar-eclipse
-  target Naar
-  participants Iyath Naar Seyra
-
-  positions
-    pose Naar
-      orbit Iyath
-      semiMajor 1.18au
-      phase 90deg
-
-    pose Seyra
-      orbit Naar
-      distance 384400km
-      phase 90deg`;
-
-    const demoViewModes = {
-      hero: "3d",
-      playground: "3d"
-    };
-    const demoViewers = new Map();
-
-    function syncModeButtons(prefix, mode) {
-      const button2d = document.getElementById(`${prefix}-view-2d`);
-      const button3d = document.getElementById(`${prefix}-view-3d`);
-      if (button2d) {
-        button2d.setAttribute("aria-pressed", mode === "2d" ? "true" : "false");
-      }
-      if (button3d) {
-        button3d.setAttribute("aria-pressed", mode === "3d" ? "true" : "false");
-      }
-    }
-
-    function mountWorldOrbitDemo(targetId, source, options = {}) {
-      const target = document.getElementById(targetId);
-      if (!target || !window.WorldOrbit) return;
-
-      const existingViewer = demoViewers.get(targetId);
-      if (existingViewer) {
-        existingViewer.destroy();
-        demoViewers.delete(targetId);
-      }
-
-      try {
-        target.innerHTML = "";
-        const loaded = WorldOrbit.loadWorldOrbitSource(source);
-        const viewer = WorldOrbit.createInteractiveViewer(target, {
-          document: loaded.document,
-          projection: options.projection || "document",
-          initialViewpointId: options.initialViewpointId || "overview",
-          theme: options.theme || "atlas"
-        });
-        demoViewers.set(targetId, viewer);
-
-        if (options.viewMode === "3d") {
-          viewer.setViewMode("3d");
-        }
-
-        return viewer;
-      } catch (error) {
-        target.innerHTML = `<div style="padding:16px;color:#ffb4b4;font:14px/1.5 sans-serif;">WorldOrbit preview failed to render.<br>${String(error)}</div>`;
-        return null;
-      }
-    }
-
-    function renderHero(mode = demoViewModes.hero) {
-      demoViewModes.hero = mode;
-      const tag = document.getElementById("hero-view-tag");
-      const viewer = mountWorldOrbitDemo("hero-view", heroSource, {
-        projection: "document",
-        initialViewpointId: "overview",
-        theme: "atlas",
-        viewMode: mode
-      });
-      if (!viewer) {
-        demoViewModes.hero = "2d";
-        syncModeButtons("hero", "2d");
-        if (tag) {
-          tag.textContent = "3D unavailable here, showing fallback messaging instead.";
-        }
-        return;
-      }
-      syncModeButtons("hero", mode);
-      if (tag) {
-        tag.textContent = mode === "3d"
-          ? "Live 3D demo powered by the same WorldOrbit document"
-          : "Live 2D demo powered by the same WorldOrbit document";
-      }
-    }
-
-    function renderPlayground() {
-      const sourceField = document.getElementById("playground-source");
-      const preview = document.getElementById("playground-preview");
-      const status = document.getElementById("playground-status");
-      if (!sourceField || !preview || !status || !window.WorldOrbit) return;
-
-      const viewer = mountWorldOrbitDemo("playground-preview", sourceField.value, {
-        projection: "document",
-        initialViewpointId: "overview",
-        theme: "atlas",
-        viewMode: demoViewModes.playground
-      });
-      if (viewer) {
-        syncModeButtons("playground", demoViewModes.playground);
-        status.textContent = `Preview rendered successfully in ${demoViewModes.playground.toUpperCase()}.`;
-        status.style.color = "#a8b3d1";
-      } else {
-        preview.innerHTML = "";
-        status.textContent = `Render failed in ${demoViewModes.playground.toUpperCase()}.`;
-        status.style.color = "#ffb4b4";
-      }
-    }
-
-    const renderButton = document.getElementById("playground-render");
-    const resetButton = document.getElementById("playground-reset");
-    const sourceField = document.getElementById("playground-source");
-    const heroView2D = document.getElementById("hero-view-2d");
-    const heroView3D = document.getElementById("hero-view-3d");
-    const playgroundView2D = document.getElementById("playground-view-2d");
-    const playgroundView3D = document.getElementById("playground-view-3d");
-
-    heroView2D?.addEventListener("click", () => renderHero("2d"));
-    heroView3D?.addEventListener("click", () => renderHero("3d"));
-    playgroundView2D?.addEventListener("click", () => {
-      demoViewModes.playground = "2d";
-      renderPlayground();
-    });
-    playgroundView3D?.addEventListener("click", () => {
-      demoViewModes.playground = "3d";
-      renderPlayground();
-    });
-
-    if (renderButton) {
-      renderButton.addEventListener("click", renderPlayground);
-    }
-
-    if (resetButton && sourceField) {
-      resetButton.addEventListener("click", () => {
-        sourceField.value = playgroundDefaultSource;
-        renderPlayground();
-      });
-    }
-
-    renderHero("3d");
-    renderPlayground();
-  </script>
+  <script type="module" src="./index-demo.js"></script>
 </body>
-
 </html>

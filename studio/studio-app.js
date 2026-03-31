@@ -241,7 +241,7 @@ export async function createWorldOrbitStudio(root, options = {}) {
       case "new":
         loadIntoEditor(FALLBACK_SOURCE, DEFAULT_FILE_NAME, {
           markSaved: true,
-          message: "Started a new schema 2.5 atlas.",
+          message: "Started a new schema 2.5 atlas workspace.",
         });
         return;
       case "open":
@@ -635,11 +635,11 @@ function buildStudioMarkup() {
   return `<section class="studio-app">
     <div class="studio-toolbar" data-studio-toolbar>
       <div class="studio-toolbar-row">
-        <button type="button" data-studio-action="new">New</button>
-        <button type="button" data-studio-action="open">Open .worldorbit</button>
-        <button type="button" data-studio-action="save">Save/Download</button>
-        <button type="button" data-studio-action="open-source">Source Code</button>
-        <button type="button" data-studio-action="open-embed">Embed Markup</button>
+        <button type="button" data-studio-action="new">New Atlas</button>
+        <button type="button" data-studio-action="open">Open Source</button>
+        <button type="button" data-studio-action="save">Save Download</button>
+        <button type="button" data-studio-action="open-source">Focused Source</button>
+        <button type="button" data-studio-action="open-embed">Embed Output</button>
         <button type="button" data-studio-action="export-svg">Export SVG</button>
         <button type="button" data-studio-action="load-example">Load Example</button>
       </div>
@@ -668,7 +668,7 @@ function buildStudioMarkup() {
         <div class="studio-modal-header">
           <div>
             <strong>Source Code</strong>
-            <p>Edit the atlas source in a focused modal instead of a persistent panel.</p>
+            <p>Edit the active atlas source in a focused modal instead of a permanent side pane.</p>
           </div>
           <button type="button" data-studio-action="close-source-modal" aria-label="Close source code modal">Close</button>
         </div>
@@ -685,7 +685,7 @@ function buildStudioMarkup() {
         <div class="studio-modal-header">
           <div>
             <strong>Embed Markup</strong>
-            <p>Copy or download the current interactive embed when the atlas is valid.</p>
+            <p>Copy or download the current interactive embed once the atlas validates cleanly.</p>
           </div>
           <button type="button" data-studio-action="close-embed-modal" aria-label="Close embed markup modal">Close</button>
         </div>

@@ -1,301 +1,111 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>WorldOrbit Beginner Guide</title>
+  <title>worldorbit | Beginner Guide</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@500;700;800&display=swap" rel="stylesheet" />
   <style>
-    :root {
-      --bg: #08101f;
-      --bg-2: #0c1630;
-      --panel: rgba(15, 25, 52, 0.9);
-      --panel-2: rgba(11, 18, 38, 0.92);
-      --text: #eef4ff;
-      --muted: #aab7d5;
-      --line: rgba(142,184,255,0.18);
-      --accent: #8eb8ff;
-      --accent-2: #8af7d0;
-      --danger: #ffb4b4;
-      --ok: #b8ffd7;
-      --max: 1200px;
-      --radius: 20px;
-      --shadow: 0 18px 50px rgba(0,0,0,0.35);
-    }
-    * { box-sizing: border-box; }
-    html { scroll-behavior: smooth; }
-    body {
-      margin: 0;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      color: var(--text);
-      background:
-        radial-gradient(circle at 20% 20%, rgba(142,184,255,0.12), transparent 0 30%),
-        radial-gradient(circle at 80% 15%, rgba(138,247,208,0.08), transparent 0 24%),
-        linear-gradient(180deg, #07101f 0%, #08101f 30%, #09111d 100%);
-      min-height: 100vh;
-    }
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      background-image:
-        radial-gradient(2px 2px at 20px 30px, rgba(255,255,255,0.42), transparent),
-        radial-gradient(1px 1px at 80px 60px, rgba(255,255,255,0.26), transparent),
-        radial-gradient(1px 1px at 140px 20px, rgba(255,255,255,0.28), transparent),
-        radial-gradient(2px 2px at 180px 110px, rgba(255,255,255,0.18), transparent);
-      background-size: 220px 160px;
-      opacity: 0.14;
-    }
-    a { color: inherit; }
-    code { font-family: "JetBrains Mono", Consolas, monospace; }
-    .container { width: min(var(--max), calc(100% - 32px)); margin: 0 auto; }
-    .topbar {
-      position: sticky; top: 0; z-index: 10;
-      background: rgba(7, 12, 24, 0.72);
-      backdrop-filter: blur(16px);
-      border-bottom: 1px solid rgba(255,255,255,0.05);
-    }
-    .topbar-inner {
-      min-height: 72px;
-      display: flex; align-items: center; justify-content: space-between; gap: 20px;
-    }
-    .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; text-decoration: none; }
-    .brand-mark {
-      width: 38px; height: 38px; border-radius: 50%; position: relative;
-      background: radial-gradient(circle at 35% 35%, #dce8ff, #83afff 42%, #425aa4 72%, #192548 100%);
-      box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 0 28px rgba(142,184,255,0.28);
-    }
-    .brand-mark::after {
-      content: ""; position: absolute; inset: -8px; border-radius: 50%;
-      border: 1px solid rgba(142,184,255,0.26); transform: rotate(20deg) scaleX(1.16);
-    }
-    nav { display: flex; gap: 16px; flex-wrap: wrap; }
-    nav a { text-decoration: none; color: var(--muted); font-size: 0.95rem; }
-    nav a:hover { color: var(--text); }
-    header.hero { padding: 44px 0 30px; }
-    .hero-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 24px; align-items: center; }
-    .eyebrow {
-      display: inline-flex; align-items: center; gap: 10px;
-      padding: 8px 13px; border-radius: 999px;
-      background: rgba(142,184,255,0.08); border: 1px solid rgba(142,184,255,0.15);
-      color: #d6e4ff; font-size: 0.9rem; margin-bottom: 18px;
-    }
-    h1 { margin: 0 0 16px; line-height: 0.98; font-size: clamp(2.2rem, 5vw, 4.5rem); letter-spacing: -0.04em; }
-    .hero p { color: var(--muted); line-height: 1.75; margin: 0; font-size: 1.04rem; }
-    .hero-actions { margin-top: 24px; display: flex; gap: 12px; flex-wrap: wrap; }
-    .btn {
-      display: inline-flex; align-items: center; justify-content: center; min-height: 46px;
-      padding: 0 18px; border-radius: 999px; text-decoration: none; font-weight: 600;
-      transition: transform .16s ease; cursor: pointer;
-    }
-    .btn:hover { transform: translateY(-1px); }
-    .btn-primary { background: linear-gradient(135deg, rgba(142,184,255,0.95), rgba(138,247,208,0.95)); color: #08101f; border: 0; }
-    .btn-secondary { border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.02); color: var(--text); }
-    .hero-card, .card, .tip, .faq-item {
-      background: linear-gradient(180deg, rgba(16, 24, 52, 0.92), rgba(11, 17, 36, 0.92));
-      border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
-    }
-    .hero-card { padding: 20px; }
-    .viewer-shell {
-      min-height: 300px; padding: 14px; border-radius: 16px;
-      background: radial-gradient(circle at 50% 45%, rgba(47,73,160,0.34), rgba(8,11,26,0.98) 62%);
-      border: 1px solid rgba(255,255,255,0.06);
-    }
-    .viewer-shell > div:last-child { width: 100%; height: 270px; border-radius: 12px; overflow: hidden; }
-    section { padding: 20px 0 28px; }
-    .section-heading { margin-bottom: 18px; max-width: 840px; }
-    .section-heading h2 { margin: 0 0 10px; font-size: clamp(1.6rem, 3vw, 2.7rem); letter-spacing: -0.03em; }
-    .section-heading p { margin: 0; color: var(--muted); line-height: 1.75; }
-    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
-    .card { padding: 20px; }
-    .card h3 { margin: 0 0 10px; font-size: 1.12rem; }
-    .card p, .card li, .tip p, .faq-item p { color: var(--muted); line-height: 1.75; }
-    .pill {
-      display: inline-block; padding: 6px 10px; border-radius: 999px;
-      font-size: 0.76rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.07);
-      margin-bottom: 12px;
-    }
-    .example-block { margin-bottom: 22px; }
-    .example-block:last-child { margin-bottom: 0; }
-    .example-grid { display: grid; grid-template-columns: 0.95fr 1.05fr; gap: 18px; align-items: stretch; }
-    .code-box {
-      background: rgba(4, 8, 19, 0.92);
-      border: 1px solid rgba(255,255,255,0.06);
-      border-radius: 16px;
-      overflow: hidden;
-    }
-    .code-box-header {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.06);
-      color: var(--muted); font-size: 0.88rem;
-    }
-    pre.code, textarea.code {
-      margin: 0; width: 100%; min-height: 280px; resize: vertical; border: 0; outline: none;
-      background: transparent; color: #dbe5ff; padding: 16px;
-      font: 14px/1.7 "JetBrains Mono", Consolas, monospace;
-      white-space: pre; overflow: auto;
-    }
-    .example-small pre.code { min-height: 190px; }
-    .example-medium pre.code { min-height: 260px; }
-    .example-large pre.code { min-height: 620px; }
-    .render-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
-    .render-actions .btn { min-height: 40px; padding: 0 14px; font-size: 0.92rem; }
-    .mode-switch { display: inline-flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
-    .mode-switch .btn[aria-pressed="true"] {
-      border-color: rgba(142,184,255,0.34);
-      background: rgba(142,184,255,0.18);
-      color: #eef4ff;
-      box-shadow: 0 0 0 1px rgba(142,184,255,0.14) inset;
-    }
-    .preview-box {
-      border: 1px solid rgba(255,255,255,0.06); border-radius: 16px; overflow: hidden;
-      background: rgba(5, 8, 22, 0.72);
-      min-height: 360px;
-    }
-    .preview-box > div { width: 100%; min-height: 360px; height: 100%; }
-    .example-small .preview-box, .example-small .preview-box > div { min-height: 220px; }
-    .example-medium .preview-box, .example-medium .preview-box > div { min-height: 300px; }
-    .example-large .preview-box, .example-large .preview-box > div { min-height: 640px; }
-    .status { margin-top: 10px; color: var(--muted); font-size: 0.92rem; }
-    .tip { padding: 18px 20px; }
-    .tip strong { display: block; margin-bottom: 10px; }
-    ul.checks { margin: 0; padding-left: 18px; }
-    ul.checks li { margin: 8px 0; }
-    .faq-list { display: grid; gap: 12px; }
-    .faq-item { padding: 18px 20px; }
-    .faq-item h3 { margin: 0 0 8px; font-size: 1rem; }
-    .playground-grid { display:grid; grid-template-columns: 0.95fr 1.05fr; gap: 18px; }
-    footer { padding: 26px 0 50px; }
-    .footer-wrap { border-top: 1px solid rgba(255,255,255,0.06); padding-top: 16px; color: var(--muted); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-    @media (max-width: 1000px) {
-      .hero-grid, .example-grid, .playground-grid, .grid-3 { grid-template-columns: 1fr; }
-    }
-    @media (max-width: 760px) {
-      nav { display: none; }
-      .container { width: min(var(--max), calc(100% - 24px)); }
-      header.hero { padding-top: 28px; }
-    }
+    :root{color-scheme:dark;--bg:#070d1f;--panel:#0a1839;--panel2:#0a2257;--line:rgba(123,208,255,.12);--text:#dfe4ff;--muted:#96a9e6;--primary:#7bd0ff;--primaryDim:#47c4ff;--max:1440px;--shadow:0 24px 72px rgba(0,0,0,.42)}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;min-height:100vh;background:radial-gradient(circle at 18% 16%,rgba(123,208,255,.12),transparent 0 28%),linear-gradient(180deg,#070d1f 0%,#071127 38%,#060c1d 100%);color:var(--text);font-family:"Inter",sans-serif;-webkit-font-smoothing:antialiased}body::before{content:"";position:fixed;inset:0;pointer-events:none;background-image:linear-gradient(rgba(123,208,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(123,208,255,.03) 1px,transparent 1px);background-size:72px 72px;mask-image:radial-gradient(circle at center,black 28%,transparent 84%);opacity:.34}a{text-decoration:none;color:inherit}code,pre,textarea{font-family:"Cascadia Code","JetBrains Mono",Consolas,monospace}
+    *::-webkit-scrollbar{width:10px;height:10px}*::-webkit-scrollbar-track{background:rgba(3,8,21,.72)}*::-webkit-scrollbar-thumb{background:rgba(123,208,255,.28);border:2px solid rgba(3,8,21,.72)}*::-webkit-scrollbar-thumb:hover{background:rgba(123,208,255,.42)}
+    .shell{width:min(var(--max),calc(100% - 32px));margin:0 auto}.topbar{position:sticky;top:0;z-index:40;background:rgba(7,13,31,.86);backdrop-filter:blur(24px);border-bottom:1px solid rgba(255,255,255,.05)}.topbar-inner,.footer-inner{min-height:80px;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}.brand,.footer-brand strong{font:800 1.45rem/1 "Manrope",sans-serif;letter-spacing:-.05em;text-transform:lowercase}.nav,.hero-actions,.example-actions,.mode-switch,.footer-links{display:flex;gap:14px;flex-wrap:wrap}.nav a,.footer-links a{color:var(--muted);font-weight:600}.nav a:hover,.footer-links a:hover{color:var(--primary)}.button{display:inline-flex;align-items:center;justify-content:center;min-height:46px;padding:0 18px;border:1px solid transparent;background:transparent;color:var(--text);font:700 .92rem/1 "Manrope",sans-serif;cursor:pointer;transition:transform .18s ease,background-color .18s ease,border-color .18s ease}.button:hover{transform:translateY(-1px)}.button-primary{background:var(--primary);border-color:var(--primary);color:#004560}.button-primary:hover{background:var(--primaryDim);border-color:var(--primaryDim)}.button-secondary{background:rgba(10,34,87,.88);border-color:rgba(123,208,255,.12)}
+    .hero{padding:90px 0 76px}.hero-grid,.path-grid,.example-grid,.tips-grid,.faq-grid{display:grid;gap:28px}.hero-grid{grid-template-columns:minmax(0,1.04fr) minmax(360px,.96fr);align-items:center}.hero h1,.section-header h2{margin:0;font-family:"Manrope",sans-serif;letter-spacing:-.06em}.hero h1{font-size:clamp(3.2rem,7vw,5.8rem);line-height:.92;margin-bottom:24px}.hero p,.section-header p,.path-card p,.tip p,.faq p,.status{color:var(--muted);line-height:1.7}.hero p{max-width:680px;font-size:1.08rem}.eyebrow{display:inline-flex;padding:9px 12px;background:rgba(123,208,255,.1);border:1px solid rgba(123,208,255,.16);margin-bottom:18px;color:var(--primary);font:700 .72rem/1 "Inter",sans-serif;letter-spacing:.18em;text-transform:uppercase}
+    .glass,.path-card,.example-card,.tip,.faq,.guide-hero-card{background:rgba(10,24,57,.72);border:1px solid var(--line);box-shadow:var(--shadow);backdrop-filter:blur(20px)}.guide-hero-card{padding:18px}.viewer-wrap,.code-shell,.preview-shell,textarea{background:rgba(3,8,21,.92);border:1px solid rgba(123,208,255,.1)}.viewer-wrap{padding:16px}#hero-preview{width:100%;height:280px}.mode-switch .button{min-height:40px;padding:0 14px;font-size:.86rem}.mode-switch .button[aria-pressed=true]{background:rgba(123,208,255,.16);border-color:rgba(123,208,255,.26)}
+    .section{padding:0 0 110px}.section-header{max-width:760px;margin-bottom:44px}.section-header h2{font-size:clamp(2rem,5vw,3.6rem);margin-bottom:12px}.marker{width:84px;height:4px;background:var(--primary);margin-top:18px}.path-grid,.tips-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.path-card,.tip,.faq{padding:26px 22px}.path-index{display:block;margin-bottom:20px;color:rgba(123,208,255,.18);font:800 clamp(2.8rem,6vw,4rem)/.9 "Manrope",sans-serif;letter-spacing:-.08em}.path-card h3,.example-card h3,.tip h3,.faq h3{margin:0 0 12px;font:800 1.2rem/1.2 "Manrope",sans-serif;letter-spacing:-.04em}
+    .example-card{padding:28px 24px}.example-grid{grid-template-columns:minmax(0,.94fr) minmax(0,1.06fr)}.code-shell{overflow:hidden}.code-head{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px 16px;color:var(--muted);font-size:.82rem;letter-spacing:.12em;text-transform:uppercase;border-bottom:1px solid rgba(123,208,255,.08)}pre.code,textarea.code{margin:0;width:100%;min-height:300px;resize:vertical;border:0;outline:none;background:transparent;color:var(--text);padding:16px;font-size:.86rem;line-height:1.7;white-space:pre;overflow:auto}.preview-shell{min-height:300px;position:relative;overflow:hidden}.preview-shell::before,.preview-shell::after{content:"";position:absolute;left:50%;transform:translateX(-50%);border-radius:999px;border:1px solid rgba(123,208,255,.14);pointer-events:none}.preview-shell::before{width:300px;height:300px;top:-90px}.preview-shell::after{width:180px;height:180px;top:90px;transform:translateX(-50%) rotate(18deg)}.preview-shell>div{position:relative;z-index:1;width:100%;min-height:300px;height:100%}.example-actions{margin:14px 0 0}.status{margin-top:12px;font-size:.92rem}.faq-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.footer{border-top:1px solid rgba(123,208,255,.08)}.footer-brand{display:flex;flex-direction:column;gap:8px}
+    @media (max-width:1120px){.hero-grid,.path-grid,.example-grid,.tips-grid,.faq-grid{grid-template-columns:1fr}.hero{padding:74px 0 64px}}
+    @media (max-width:900px){.topbar-inner,.footer-inner{justify-content:center;text-align:center}.hero-actions,.example-actions,.mode-switch{gap:10px}.guide-hero-card{max-width:760px}.path-card,.example-card,.tip,.faq{padding:24px 20px}}
+    @media (max-width:760px){.shell{width:min(var(--max),calc(100% - 24px))}.nav{display:none}.topbar-inner>.button{width:100%}.hero{padding:60px 0 54px}.hero h1{font-size:clamp(2.5rem,13vw,4rem);margin-bottom:18px}.hero p{font-size:1rem}.hero-actions>*{width:100%}.section{padding:0 0 84px}.section-header{margin-bottom:30px}.section-header h2{font-size:clamp(1.9rem,10vw,2.7rem)}.path-card,.example-card,.tip,.faq{padding-left:20px;padding-right:20px}.example-actions .button{flex:1 1 100%}pre.code,textarea.code{min-height:240px}.preview-shell,.preview-shell>div{min-height:240px}}
+    @media (max-width:520px){.topbar-inner,.footer-inner{align-items:stretch}.button{width:100%}.code-head{flex-direction:column;align-items:flex-start}.viewer-wrap,.path-card,.example-card,.tip,.faq{padding:16px}.guide-hero-card{padding:14px}#hero-preview{height:220px}.preview-shell,.preview-shell>div{min-height:200px}.status{font-size:.88rem}}
   </style>
 </head>
 <body>
-  <div class="topbar">
-    <div class="container topbar-inner">
-      <a class="brand" href="#top">
-        <span class="brand-mark"></span>
-        <span>WorldOrbit Beginner Guide</span>
-      </a>
-      <nav>
-        <a href="#first-steps">First Steps</a>
+  <header class="topbar">
+    <div class="shell topbar-inner">
+      <a class="brand" href="./index.html">worldorbit</a>
+      <nav class="nav">
+        <a href="#path">Learning Path</a>
         <a href="#examples">Examples</a>
         <a href="#playground">Playground</a>
-        <a href="#tips">Tips</a>
-        <a href="#faq">FAQ</a>
+        <a href="./index.html">Docs Home</a>
       </nav>
-    </div>
-  </div>
-
-  <header class="hero" id="top">
-    <div class="container hero-grid">
-      <div>
-        <div class="eyebrow">A beginner-friendly guide to the WorldOrbit DSL</div>
-        <h1>Learn WorldOrbit step by step, from one star to a full solar system.</h1>
-        <p>
-          This guide starts with the smallest possible WorldOrbit document and gradually adds more structure.
-          Every example is shown side by side with a rendered result, so you can immediately see what the source does.
-        </p>
-        <div class="hero-actions">
-          <a class="btn btn-primary" href="#examples">See Examples</a>
-          <a class="btn btn-secondary" href="#playground">Try it Live</a>
-          <a class="btn btn-secondary" href="https://github.com/negurvulkan/worldorbit" target="_blank" rel="noreferrer">GitHub</a>
-        </div>
-      </div>
-      <div class="hero-card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;color:var(--muted);font-size:0.88rem;">
-          <span>Live example</span>
-          <span id="hero-preview-tag">Rendered with WorldOrbit in 3D</span>
-        </div>
-        <div class="viewer-shell">
-          <div class="mode-switch" aria-label="Hero preview mode">
-            <button class="btn btn-secondary" id="hero-preview-2d" type="button" aria-pressed="false">View 2D</button>
-            <button class="btn btn-secondary" id="hero-preview-3d" type="button" aria-pressed="true">View 3D</button>
-          </div>
-          <div id="hero-preview"></div>
-        </div>
-      </div>
+      <a class="button button-primary" href="https://negurvulkan.github.io/worldorbit/studio/">Open Studio</a>
     </div>
   </header>
 
-  <section id="first-steps">
-    <div class="container">
-      <div class="section-heading">
-        <h2>First steps: what a WorldOrbit document looks like</h2>
-        <p>
-          A WorldOrbit document is plain text. You usually start with a schema line, define a system, and then add objects.
-          Objects can be simple at first and become richer later with orbital data, labels, notes, and presentation defaults.
-        </p>
-      </div>
-      <div class="grid-3">
-        <article class="card">
-          <span class="pill">1</span>
-          <h3>Start with the schema</h3>
-          <p>Use <code>schema 2.6</code> for new documents. <code>schema 2.5</code> and earlier still load, but 2.6 adds support for galactic-scale units (ly, pc, kpc), new masses (mj), and specialized phenomenon kinds like galaxies and black holes.</p>
-        </article>
-        <article class="card">
-          <span class="pill">2</span>
-          <h3>Define one system</h3>
-          <p>A file usually contains one <code>system</code>. Think of it as the root container for everything else.</p>
-        </article>
-        <article class="card">
-          <span class="pill">3</span>
-          <h3>Add objects and placement</h3>
-          <p>Then add stars, planets, moons, structures, or belts and describe how they are positioned.</p>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  <section id="examples">
-    <div class="container">
-      <div class="section-heading">
-        <h2>Examples from simple to advanced</h2>
-        <p>
-          These examples are deliberately staged. Start with the smallest possible diagram, then move on to a richer system,
-          and finally look at a more complete representation of our solar system.
-        </p>
-      </div>
-
-      <div class="example-block example-small">
-        <div class="section-heading">
-          <h2>Example 1 — The smallest useful document</h2>
-          <p>One system and one star. This is the simplest valid starting point.</p>
+  <main>
+    <section class="hero">
+      <div class="shell hero-grid">
+        <div>
+          <div class="eyebrow">Beginner guide</div>
+          <h1>Learn WorldOrbit from one star to a full system.</h1>
+          <p>This guide keeps the same deep-blue presentation language as the main docs while focusing on staged learning: start small, add placements, then preview what your text produces.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#examples">See Examples</a>
+            <a class="button button-secondary" href="#playground">Try it Live</a>
+          </div>
         </div>
-        <div class="example-grid">
-          <div>
-            <div class="code-box">
-              <div class="code-box-header"><span>Source</span><span>minimal</span></div>
+        <div class="guide-hero-card glass">
+          <div class="code-head"><span>Live Example</span><span id="hero-preview-tag">Rendered with WorldOrbit in 3D</span></div>
+          <div class="viewer-wrap">
+            <div class="mode-switch" aria-label="Hero preview mode">
+              <button class="button button-secondary" id="hero-preview-2d" type="button" aria-pressed="false">View 2D</button>
+              <button class="button button-secondary" id="hero-preview-3d" type="button" aria-pressed="true">View 3D</button>
+            </div>
+            <div id="hero-preview"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="path" class="section">
+      <div class="shell">
+        <div class="section-header">
+          <h2>Learning path</h2>
+          <p>WorldOrbit gets easier when you treat it as a sequence: declare a system, place a few objects, then layer presentation and events only after the core structure feels solid.</p>
+          <div class="marker"></div>
+        </div>
+        <div class="path-grid">
+          <article class="path-card glass"><span class="path-index">01</span><h3>Start with the schema</h3><p>Use a modern schema header and one <code>system</code> block so the document has a clear root.</p></article>
+          <article class="path-card glass"><span class="path-index">02</span><h3>Add orbiting bodies</h3><p>Introduce stars, planets, moons, and belts with simple placement fields before adding richer metadata.</p></article>
+          <article class="path-card glass"><span class="path-index">03</span><h3>Refine with views and events</h3><p>Layer viewpoints, annotations, and event snapshots once the underlying atlas structure is stable.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="examples" class="section">
+      <div class="shell">
+        <div class="section-header">
+          <h2>Examples</h2>
+          <p>Each example keeps the left side as source and the right side as rendered output so the DSL stays grounded in visible results.</p>
+        </div>
+
+        <article class="example-card glass" style="margin-bottom:28px">
+          <h3>Example 1 - the smallest useful document</h3>
+          <div class="example-grid">
+            <div class="code-shell">
+              <div class="code-head"><span>Source</span><span>minimal</span></div>
               <pre class="code">schema 2.6
 
 system Sol
 
 object star Sun</pre>
             </div>
+            <div>
+              <div class="preview-shell"><div id="example-1-preview"></div></div>
+              <div class="status">Rendered result: one system, one star, and no extra presentation overhead.</div>
+            </div>
           </div>
-          <div>
-            <div class="preview-box"><div id="example-1-preview"></div></div>
-            <div class="status">Rendered result: a single star inside one system.</div>
-          </div>
-        </div>
-      </div>
+        </article>
 
-      <div class="example-block example-medium">
-        <div class="section-heading">
-          <h2>Example 2 — A small star system with planets and a moon</h2>
-          <p>This adds orbit data, a moon, a small station at a Lagrange point, and a named event snapshot.</p>
-        </div>
-        <div class="example-grid">
-          <div>
-            <div class="code-box">
-              <div class="code-box-header"><span>Source</span><span>intermediate</span></div>
+        <article class="example-card glass">
+          <h3>Example 2 - a small star system</h3>
+          <div class="example-grid">
+            <div class="code-shell">
+              <div class="code-head"><span>Source</span><span>intermediate</span></div>
               <pre class="code">schema 2.6
 
 system Iyath
@@ -323,8 +133,6 @@ object planet Naar
   orbit Iyath
   semiMajor 1.18au
   eccentricity 0.08
-  angle 28deg
-  inclination 24deg
   phase 42deg
   atmosphere nitrogen-oxygen
   groups inner-system
@@ -333,324 +141,32 @@ object moon Leth
   orbit Naar
   distance 384000km
   phase 140deg
-  groups inner-system
 
 object structure Relay-One
   at Naar:L4
-  kind relay
-  groups inner-system
-
-event eclipse-window
-  kind solar-eclipse
-  target Naar
-  participants Iyath Naar Leth</pre>
+  kind relay</pre>
+            </div>
+            <div>
+              <div class="preview-shell"><div id="example-2-preview"></div></div>
+              <div class="status">Rendered result: a star, a planet, a moon, and an anchored structure using the same source language.</div>
             </div>
           </div>
-          <div>
-            <div class="preview-box"><div id="example-2-preview"></div></div>
-            <div class="status">Rendered result: a system with a star, one planet, a moon, a relay at a special orbital position, and a named event entry.</div>
-          </div>
-        </div>
+        </article>
       </div>
+    </section>
 
-      <div class="example-block example-large">
-        <div class="section-heading">
-          <h2>Example 3 — A more complete solar system</h2>
-          <p>
-            This example combines most of the current Schema 2.5 atlas surface in one place: comments, groups, filtered
-            viewpoints, orthographic and perspective camera setups, a relation, validation hints, typed lore blocks, render hints, and a curated eclipse event with
-            explicit event poses. It is intentionally rich so you can see how WorldOrbit scales from tiny diagrams to
-            denser orbital atlases.
-          </p>
+    <section id="playground" class="section">
+      <div class="shell">
+        <div class="section-header">
+          <h2>Playground</h2>
+          <p>Edit the source, switch between 2D and 3D preview, and use this page as a lightweight practice surface before you move into Studio.</p>
         </div>
-        <div class="example-grid">
-          <div>
-            <div class="code-box">
-              <div class="code-box-header"><span>Source</span><span>advanced</span></div>
-              <pre class="code">schema 2.6
-
-system Sol
-  title "Solar System"
-  description "Reference atlas showing most Schema 2.5 authoring features in one place."
-  epoch "J2000.0"
-  referencePlane ecliptic
-
-defaults
-  view orthographic
-  scale presentation
-  units metric
-  preset atlas-card
-  theme atlas
-
-group inner-system
-  label "Inner System"
-  summary "Sun through Mars and the Earth-Moon system."
-  color "#d9b37a"
-  tags rocky inhabited
-
-group outer-system
-  label "Outer System"
-  summary "Gas giants, rings, ice giants, and deep-space markers."
-  color "#8fb7d9"
-  tags giant frontier
-
-group orbital-infrastructure
-  label "Orbital Infrastructure"
-  summary "Stations, telescopes, and surface networks."
-  color "#c8d4e8"
-  tags infrastructure science
-
-group event-tracked
-  label "Event Tracked"
-  summary "Objects curated for named event snapshots."
-  color "#7ecb74"
-  tags events diagnostics
-
-viewpoint overview
-  label "Solar System Overview"
-  summary "Major planets, reference moons, rings, belts, and key infrastructure."
-  projection orthographic
-  camera
-    azimuth 22
-    elevation 18
-
-viewpoint earth-system
-  label "Earth and Near Space"
-  focus Earth
-  summary "Earth, the Moon, and nearby infrastructure with a curated eclipse snapshot."
-  projection perspective
-  zoom 5.5
-  camera
-    azimuth 38
-    elevation 24
-    distance 6
-  layers background guides orbits-back events objects labels metadata
-  events total-solar-eclipse-2027
-  filter
-    groups inner-system orbital-infrastructure event-tracked
-
-annotation inner-worlds
-  label "Inner Worlds"
-  target Earth
-  body "Mercury, Venus, Earth, and Mars form the rocky inner system."
-
-# Semantic group metadata and relations stay outside orbital placement.
-relation deep-space-network
-  from DSN
-  to JWST
-  kind communications
-  label "Deep Space Network"
-  summary "Earth-based network linking mission control to outer observatories."
-  tags infrastructure science
-  color "#89b8ff"
-
-object star Sun
-  class G2V
-  groups inner-system outer-system event-tracked
-  color "#f3c56b"
-  radius 1sol
-  mass 1sol
-  temperature 5778K
-
-  info
-    role "Primary star of the system"
-    note "Used here as the central reference mass for validator examples"
-
-object planet Mercury
-  orbit Sun
-  semiMajor 0.39au
-  phase 20deg
-  class rocky
-  groups inner-system
-
-object planet Venus
-  orbit Sun
-  semiMajor 0.72au
-  phase 75deg
-  class rocky
-  atmosphere carbon-dioxide
-  groups inner-system
-
-object planet Earth
-  orbit Sun
-  semiMajor 1au
-  period 365.25d
-  phase 135deg
-  class habitable
-  atmosphere nitrogen-oxygen
-  groups inner-system event-tracked
-  renderPriority 6
-  validate kepler
-  locked period
-  tolerance period 0.02d
-
-  info
-    note "Reference biosphere world"
-
-  climate
-    meanSurfaceTemperature 288K
-    pressure "1 bar"
-
-  habitability
-    biosphere complex
-    inhabited true
-    compatibility native
-
-  settlement
-    population "8.1 billion"
-    status homeworld
-
-object moon Moon
-  orbit Earth
-  distance 384400km
-  phase 220deg
-  epoch "J2000.0"
-  referencePlane earth-equatorial
-  tidalLock true
-  groups inner-system event-tracked
-  renderPriority 7
-
-object structure ISS
-  orbit Earth
-  distance 6771km
-  kind station
-  groups orbital-infrastructure
-  renderLabel false
-  renderOrbit false
-  renderPriority 10
-
-object structure DSN
-  surface Earth
-  kind network
-  groups orbital-infrastructure
-
-object structure JWST
-  at Earth:L2
-  kind telescope
-  groups orbital-infrastructure event-tracked
-  renderPriority 8
-
-object planet Mars
-  orbit Sun
-  semiMajor 1.52au
-  phase 210deg
-  class rocky
-  groups inner-system
-  derive period kepler
-
-object belt Main-Belt
-  orbit Sun
-  inner 2.1au
-  outer 3.3au
-  groups outer-system
-
-object planet Jupiter
-  orbit Sun
-  semiMajor 5.20au
-  phase 300deg
-  class gas-giant
-  groups outer-system
-
-object moon Io
-  orbit Jupiter
-  distance 421700km
-  phase 15deg
-  tidalLock true
-  groups outer-system
-
-object moon Europa
-  orbit Jupiter
-  distance 671100km
-  phase 40deg
-  tidalLock true
-  referencePlane jovian-equatorial
-  resonance Io 2:1
-  groups outer-system
-
-object planet Saturn
-  orbit Sun
-  semiMajor 9.58au
-  phase 20deg
-  class gas-giant
-  groups outer-system
-
-object ring Saturn-Rings
-  orbit Saturn
-  inner 67000km
-  outer 140000km
-  groups outer-system
-
-object planet Uranus
-  orbit Sun
-  semiMajor 19.2au
-  phase 95deg
-  class ice-giant
-  groups outer-system
-
-object planet Neptune
-  orbit Sun
-  semiMajor 30.05au
-  phase 175deg
-  class ice-giant
-  groups outer-system
-
-object structure Voyager-1
-  free 160au
-  kind probe
-  groups outer-system
-  renderPriority 3
-
-object phenomenon Heliosphere
-  free 120au
-  kind boundary
-  source Sun
-  groups outer-system
-
-event total-solar-eclipse-2027
-  kind solar-eclipse
-  label "Total Solar Eclipse"
-  summary "Curated eclipse alignment for Earth-system previews."
-  target Earth
-  participants Sun Earth Moon
-  timing "2027-08-02"
-  visibility "Northern Africa and the Arabian Peninsula"
-  epoch "J2000.0"
-  referencePlane ecliptic
-  tags eclipse earth-system
-  color "#7ecb74"
-
-  positions
-    pose Earth
-      orbit Sun
-      semiMajor 1au
-      phase 132deg
-
-    pose Moon
-      orbit Earth
-      distance 384400km
-      phase 132deg</pre>
-            </div>
-          </div>
-          <div>
-            <div class="preview-box"><div id="example-3-preview"></div></div>
-            <div class="status">Rendered result: a dense Schema 2.6 atlas with galactic units, groups, lore, infrastructure links, and event snapshots.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section id="playground">
-    <div class="container">
-      <div class="section-heading">
-        <h2>Playground</h2>
-        <p>Edit the source on the left and render it on the right. This is a lightweight test area, not the full Studio editor.</p>
-      </div>
-      <div class="playground-grid">
-        <div>
-          <div class="code-box">
-            <div class="code-box-header"><span>Editable source</span><span>live preview</span></div>
-            <textarea id="playground-source" class="code" spellcheck="false">schema 2.6
+        <div class="example-card glass">
+          <div class="example-grid">
+            <div>
+              <div class="code-shell">
+                <div class="code-head"><span>Editable source</span><span>live preview</span></div>
+                <textarea id="playground-source" class="code" spellcheck="false">schema 2.6
 
 system Demo
   title "Demo System"
@@ -683,666 +199,55 @@ object planet Belis
 object moon B1
   orbit Belis
   distance 250000km
-  phase 80deg
-
-event belis-eclipse
-  kind lunar-eclipse
-  target Belis
-  participants Helion Belis B1</textarea>
+  phase 80deg</textarea>
+              </div>
+              <div class="example-actions">
+                <button class="button button-secondary" id="playground-preview-2d" aria-pressed="false">Preview 2D</button>
+                <button class="button button-secondary" id="playground-preview-3d" aria-pressed="true">Preview 3D</button>
+                <button class="button button-primary" id="playground-render">Render Preview</button>
+                <button class="button button-secondary" id="playground-reset">Reset Example</button>
+              </div>
+              <div class="status" id="playground-status">Edit the source and click "Render Preview".</div>
+            </div>
+            <div>
+              <div class="preview-shell"><div id="playground-preview"></div></div>
+            </div>
           </div>
-          <div class="render-actions">
-            <button class="btn btn-secondary" id="playground-preview-2d" aria-pressed="false">Preview 2D</button>
-            <button class="btn btn-secondary" id="playground-preview-3d" aria-pressed="true">Preview 3D</button>
-            <button class="btn btn-primary" id="playground-render">Render Preview</button>
-            <button class="btn btn-secondary" id="playground-reset">Reset Example</button>
-          </div>
-          <div class="status" id="playground-status">Edit the source and click “Render Preview”.</div>
-        </div>
-        <div>
-          <div class="preview-box"><div id="playground-preview"></div></div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <section id="tips">
-    <div class="container">
-      <div class="section-heading">
-        <h2>Beginner tips</h2>
-        <p>These habits make WorldOrbit easier to learn and easier to maintain.</p>
-      </div>
-      <div class="grid-3">
-        <div class="tip">
-          <strong>Start small</strong>
-          <p>Define the system and one star first. Then add one planet at a time. It is easier to debug small steps than one huge document.</p>
+    <section class="section">
+      <div class="shell">
+        <div class="section-header">
+          <h2>Tips and FAQ</h2>
+          <p>These are the most useful reminders for the first few documents you write.</p>
         </div>
-        <div class="tip">
-          <strong>Use defaults later</strong>
-          <p>Presentation settings like <code>defaults</code>, <code>viewpoint</code>, and <code>annotation</code> are useful, but you do not need them for your first diagram.</p>
+        <div class="tips-grid" style="margin-bottom:28px">
+          <article class="tip glass"><h3>Start small</h3><p>It is easier to debug one star and one planet than a full atlas. Add bodies incrementally.</p></article>
+          <article class="tip glass"><h3>Use defaults later</h3><p><code>defaults</code> and <code>viewpoint</code> are helpful, but they are not required for your first valid document.</p></article>
+          <article class="tip glass"><h3>Think in layers</h3><p>Separate the orbital structure from presentation details. That mental split matches how WorldOrbit itself is built.</p></article>
         </div>
-        <div class="tip">
-          <strong>Think in layers</strong>
-          <p>There is the system itself, the objects inside it, and optional presentation details. Keeping these layers in mind makes the syntax easier to understand.</p>
+        <div class="faq-grid">
+          <article class="faq glass"><h3>Do I need every field?</h3><p>No. Many good documents begin with just a schema, a system, and a few objects.</p></article>
+          <article class="faq glass"><h3>When should I use Studio?</h3><p>When you want a stronger inspection loop, side panels, exports, and a dedicated editing shell beyond the simple docs playground.</p></article>
         </div>
       </div>
-      <div class="tip" style="margin-top:18px;">
-        <strong>What beginners usually need first</strong>
-        <ul class="checks">
-          <li><code>schema 2.6</code></li>
-          <li><code>system Name</code></li>
-          <li><code>object star Name</code></li>
-          <li><code>object planet Name</code> with <code>orbit</code> and <code>semiMajor</code></li>
-          <li>Optional: a moon, a belt, a structure, or a named <code>event</code></li>
-        </ul>
-      </div>
-    </div>
-  </section>
+    </section>
+  </main>
 
-  <section id="faq">
-    <div class="container">
-      <div class="section-heading">
-        <h2>FAQ</h2>
-        <p>Short answers to the most common beginner questions.</p>
-      </div>
-      <div class="faq-list">
-        <div class="faq-item">
-          <h3>Do I always need <code>schema 2.6</code>?</h3>
-          <p>For new documents, yes. Older <code>schema 2.5</code> and <code>schema 2.1</code> atlases still work, but 2.6 is the recommended explicit header for galactic-scale features.</p>
-        </div>
-        <div class="faq-item">
-          <h3>Do I have to use every parameter?</h3>
-          <p>No. WorldOrbit is flexible. Many diagrams start with just a system, a star, and one or two planets.</p>
-        </div>
-        <div class="faq-item">
-          <h3>What is the difference between <code>orbit</code> and <code>at</code>?</h3>
-          <p><code>orbit</code> places an object on a normal orbit. <code>at</code> places it at a fixed reference position, such as a Lagrange point.</p>
-        </div>
-        <div class="faq-item">
-          <h3>How do I describe eclipses or other special moments?</h3>
-          <p>Use a Schema 2.5 <code>event</code> section. Add <code>target</code> and <code>participants</code>, then optionally add a <code>positions</code> block with one or more <code>pose &lt;objectId&gt;</code> entries when you want a curated viewer or Studio snapshot.</p>
-        </div>
-        <div class="faq-item">
-          <h3>Can I use WorldOrbit in Markdown?</h3>
-          <p>Yes. That is one of its core strengths. It is designed for Markdown-native worldbuilding and documentation workflows.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <footer>
-    <div class="container footer-wrap">
-      <span>WorldOrbit Beginner Guide</span>
-      <span>Rendered examples powered by local WorldOrbit docs assets</span>
+  <footer class="footer">
+    <div class="shell footer-inner">
+      <div class="footer-brand"><strong>worldorbit</strong><span class="status">Beginner guide and previews powered by the local WorldOrbit docs assets.</span></div>
+      <nav class="footer-links">
+        <a href="./index.html">Docs Home</a>
+        <a href="https://github.com/negurvulkan/worldorbit" target="_blank" rel="noreferrer">GitHub</a>
+        <a href="https://negurvulkan.github.io/worldorbit/studio/">Studio</a>
+      </nav>
     </div>
   </footer>
 
   <script src="./assets/worldorbit/worldorbit.min.js"></script>
-  <script>
-    const heroSource = `schema 2.6
-
-system Iyath
-
-defaults
-  view orthographic
-  scale presentation
-  preset atlas-card
-  theme atlas
-
-viewpoint overview
-  projection perspective
-  camera
-    azimuth 24
-    elevation 18
-    distance 5
-
-object star Iyath
-
-object planet Naar
-  orbit Iyath
-  semiMajor 1.18au
-  eccentricity 0.08
-  angle 28deg
-  inclination 24deg
-  phase 42deg
-
-object moon Seyra
-  orbit Naar
-  distance 384400km
-
-event naar-eclipse
-  kind solar-eclipse
-  target Naar
-  participants Iyath Naar Seyra`;
-
-    const example1Source = `schema 2.6
-
-system Sol
-
-object star Sun`;
-
-    const example2Source = `schema 2.6
-
-system Iyath
-  title "Iyath System"
-
-defaults
-  view orthographic
-  scale presentation
-  preset atlas-card
-  theme atlas
-
-viewpoint inner
-  projection perspective
-  camera
-    azimuth 28
-    elevation 20
-    distance 5
-
-group inner-system
-  label "Inner System"
-
-object star Iyath
-
-object planet Naar
-  orbit Iyath
-  semiMajor 1.18au
-  eccentricity 0.08
-  angle 28deg
-  inclination 24deg
-  phase 42deg
-  atmosphere nitrogen-oxygen
-  groups inner-system
-
-object moon Leth
-  orbit Naar
-  distance 384000km
-  phase 140deg
-  groups inner-system
-
-object structure Relay-One
-  at Naar:L4
-  kind relay
-  groups inner-system
-
-event eclipse-window
-  kind solar-eclipse
-  target Naar
-  participants Iyath Naar Leth`;
-
-    const example3Source = `schema 2.5
-
-system Sol
-  title "Solar System"
-  description "Reference atlas showing most Schema 2.5 authoring features in one place."
-  epoch J2000.0
-  referencePlane ecliptic
-
-defaults
-  view orthographic
-  scale presentation
-  units metric
-  preset atlas-card
-  theme atlas
-
-viewpoint overview
-  label "Solar System Overview"
-  summary "Major planets, reference moons, rings, belts, and key infrastructure."
-  projection orthographic
-  preset atlas-card
-  camera
-    azimuth 22
-    elevation 18
-
-viewpoint earth-system
-  label "Earth and Near Space"
-  focus Earth
-  summary "Earth, the Moon, and nearby infrastructure with a curated eclipse snapshot."
-  projection perspective
-  preset atlas-card
-  zoom 5.5
-  camera
-    azimuth 38
-    elevation 24
-    distance 6
-  layers orbits background guides events objects labels metadata
-  events total-solar-eclipse-2027
-  filter
-    groups inner-system orbital-infrastructure event-tracked
-
-annotation inner-worlds
-  label "Inner Worlds"
-  target Earth
-  body "Mercury, Venus, Earth, and Mars form the rocky inner system."
-
-group event-tracked
-  label "Event Tracked"
-  summary "Objects curated for named event snapshots."
-  color #7ecb74
-  tags events diagnostics
-
-group inner-system
-  label "Inner System"
-  summary "Sun through Mars and the Earth-Moon system."
-  color #d9b37a
-  tags rocky inhabited
-
-group orbital-infrastructure
-  label "Orbital Infrastructure"
-  summary "Stations, telescopes, and surface networks."
-  color #c8d4e8
-  tags infrastructure science
-
-group outer-system
-  label "Outer System"
-  summary "Gas giants, rings, ice giants, and deep-space markers."
-  color #8fb7d9
-  tags giant frontier
-
-relation deep-space-network
-  from DSN
-  to JWST
-  kind communications
-  label "Deep Space Network"
-  summary "Earth-based network linking mission control to outer observatories."
-  tags infrastructure science
-  color #89b8ff
-
-event total-solar-eclipse-2027
-  kind solar-eclipse
-  label "Total Solar Eclipse"
-  summary "Curated eclipse alignment for Earth-system previews."
-  target Earth
-  participants Sun Earth Moon
-  timing 2027-08-02
-  visibility "Northern Africa and the Arabian Peninsula"
-  epoch J2000.0
-  referencePlane ecliptic
-  tags eclipse earth-system
-  color #7ecb74
-
-  positions
-    pose Earth
-      orbit Sun
-      semiMajor 1au
-      phase 132deg
-    pose Moon
-      orbit Earth
-      distance 384400km
-      phase 132deg
-
-object star Sun
-  class G2V
-  color #f3c56b
-  radius 1sol
-  mass 1sol
-  temperature 5778K
-  groups inner-system outer-system event-tracked
-
-  info
-    note "Used here as the central reference mass for validator examples"
-    role "Primary star of the system"
-
-object planet Earth
-  orbit Sun
-  semiMajor 1au
-  period 365.25d
-  phase 135deg
-  class habitable
-  image https://blenderartists.org/uploads/default/original/4X/5/0/2/5029a48052f6f91a399a41dcd1004adf854b17ea.jpeg
-  hidden false
-  radius 6378km
-  atmosphere nitrogen-oxygen
-  groups inner-system event-tracked
-  renderPriority 6
-  validate kepler
-  locked period
-  tolerance period 0.02d
-
-  info
-    note "Reference biosphere world"
-
-  climate
-    meanSurfaceTemperature 288K
-    pressure "1 bar"
-
-  habitability
-    biosphere complex
-    compatibility native
-    inhabited true
-
-  settlement
-    population "8.1 billion"
-    status homeworld
-
-object planet Jupiter
-  orbit Sun
-  semiMajor 5.2au
-  phase 300deg
-  class gas-giant
-  groups outer-system
-
-object planet Mars
-  orbit Sun
-  semiMajor 1.52au
-  phase 210deg
-  class rocky
-  image https://upload.wikimedia.org/wikipedia/commons/7/70/Solarsystemscope_texture_8k_mars.jpg
-  hidden false
-  radius 3390km
-  groups inner-system
-  derive period kepler
-
-object planet Mercury
-  orbit Sun
-  semiMajor 0.39au
-  phase 20deg
-  class rocky
-  groups inner-system
-
-object planet Neptune
-  orbit Sun
-  semiMajor 30.05au
-  phase 175deg
-  class ice-giant
-  groups outer-system
-
-object planet Saturn
-  orbit Sun
-  semiMajor 9.58au
-  phase 20deg
-  class gas-giant
-  groups outer-system
-
-object planet Uranus
-  orbit Sun
-  semiMajor 19.2au
-  phase 95deg
-  class ice-giant
-  groups outer-system
-
-object planet Venus
-  orbit Sun
-  semiMajor 0.72au
-  phase 75deg
-  class rocky
-  image https://www.planetaryvisions.com/images_new/32.jpg
-  hidden false
-  radius 6378km
-  atmosphere carbon-dioxide
-  groups inner-system
-
-object moon Europa
-  orbit Jupiter
-  distance 671100km
-  phase 40deg
-  groups outer-system
-  referencePlane jovian-equatorial
-  tidalLock true
-  resonance Io 2:1
-
-object moon Io
-  orbit Jupiter
-  distance 421700km
-  phase 15deg
-  groups outer-system
-  tidalLock true
-
-object moon Moon
-  orbit Earth
-  distance 384400km
-  phase 220deg
-  image https://t4.ftcdn.net/jpg/03/38/48/83/360_F_338488339_JId8KdzhK8bgVZcTtlT7zwL9RNbzVXxf.jpg
-  hidden false
-  radius 1738km
-  groups inner-system event-tracked
-  epoch J2000.0
-  referencePlane earth-equatorial
-  tidalLock true
-  renderPriority 7
-
-object belt Main-Belt
-  orbit Sun
-  inner 2.1au
-  outer 3.3au
-  groups outer-system
-
-object ring Saturn-Rings
-  orbit Saturn
-  inner 67000km
-  outer 140000km
-  groups outer-system
-
-object structure DSN
-  surface Earth
-  kind network
-  groups orbital-infrastructure
-
-object structure ISS
-  orbit Earth
-  distance 6771km
-  kind station
-  groups orbital-infrastructure
-  renderLabel false
-  renderOrbit false
-  renderPriority 10
-
-object structure JWST
-  at Earth:L2
-  kind telescope
-  groups orbital-infrastructure event-tracked
-  renderPriority 8
-
-object structure Voyager-1
-  free 160au
-  kind probe
-  groups outer-system
-  renderPriority 3
-
-object phenomenon Heliosphere
-  free 120au
-  kind boundary
-  source Sun
-  groups outer-system
-
-event total-solar-eclipse-2027
-  kind solar-eclipse
-  label "Total Solar Eclipse"
-  summary "Curated eclipse alignment for Earth-system previews."
-  target Earth
-  participants Sun Earth Moon
-  timing "2027-08-02"
-  visibility "Northern Africa and the Arabian Peninsula"
-  epoch "J2000.0"
-  referencePlane ecliptic
-  tags eclipse earth-system
-  color "#7ecb74"
-
-  positions
-    pose Earth
-      orbit Sun
-      semiMajor 1au
-      phase 132deg
-
-    pose Moon
-      orbit Earth
-      distance 384400km
-      phase 132deg`;
-
-    const playgroundDefaultSource = `schema 2.6
-
-system Demo
-  title "Demo System"
-
-defaults
-  view orthographic
-  scale presentation
-  preset atlas-card
-  theme atlas
-
-viewpoint demo
-  projection perspective
-  camera
-    azimuth 32
-    elevation 20
-    distance 5
-
-object star Helion
-
-object planet Astera
-  orbit Helion
-  semiMajor 0.8au
-  phase 45deg
-
-object planet Belis
-  orbit Helion
-  semiMajor 1.6au
-  phase 180deg
-
-object moon B1
-  orbit Belis
-  distance 250000km
-  phase 80deg
-
-event belis-eclipse
-  kind lunar-eclipse
-  target Belis
-  participants Helion Belis B1
-
-  positions
-    pose Belis
-      orbit Helion
-      semiMajor 1.6au
-      phase 180deg
-
-    pose B1
-      orbit Belis
-      distance 250000km
-      phase 180deg`;
-
-    const previewModes = {
-      hero: "3d",
-      playground: "3d"
-    };
-    const previewViewers = new Map();
-
-    function syncPreviewButtons(prefix, mode) {
-      const button2d = document.getElementById(`${prefix}-2d`);
-      const button3d = document.getElementById(`${prefix}-3d`);
-      if (button2d) {
-        button2d.setAttribute("aria-pressed", mode === "2d" ? "true" : "false");
-      }
-      if (button3d) {
-        button3d.setAttribute("aria-pressed", mode === "3d" ? "true" : "false");
-      }
-    }
-
-    function mountPreview(targetId, source, options = {}) {
-      const target = document.getElementById(targetId);
-      if (!target || !window.WorldOrbit) return;
-
-      const existingViewer = previewViewers.get(targetId);
-      if (existingViewer) {
-        existingViewer.destroy();
-        previewViewers.delete(targetId);
-      }
-
-      try {
-        target.innerHTML = "";
-        const loaded = WorldOrbit.loadWorldOrbitSource(source);
-        const viewer = WorldOrbit.createInteractiveViewer(target, {
-          document: loaded.document,
-          projection: options.projection || "document",
-          initialViewpointId: options.initialViewpointId || null,
-          theme: "atlas"
-        });
-        previewViewers.set(targetId, viewer);
-        if (options.viewMode === "3d") {
-          viewer.setViewMode("3d");
-        }
-        return viewer;
-      } catch (error) {
-        target.innerHTML = `<div style="padding:16px;color:#ffb4b4;font:14px/1.5 sans-serif;">Preview failed.<br>${String(error)}</div>`;
-        return null;
-      }
-    }
-
-    function renderHeroPreview(mode = previewModes.hero) {
-      previewModes.hero = mode;
-      const viewer = mountPreview("hero-preview", heroSource, {
-        projection: "document",
-        initialViewpointId: "overview",
-        viewMode: mode
-      });
-      const tag = document.getElementById("hero-preview-tag");
-      if (!viewer) {
-        previewModes.hero = "2d";
-        syncPreviewButtons("hero-preview", "2d");
-        if (tag) {
-          tag.textContent = "3D unavailable here, showing fallback messaging";
-        }
-        return;
-      }
-      syncPreviewButtons("hero-preview", mode);
-      if (tag) {
-        tag.textContent = mode === "3d"
-          ? "Rendered with WorldOrbit in 3D"
-          : "Rendered with WorldOrbit in 2D";
-      }
-    }
-
-    mountPreview("example-1-preview", example1Source, {
-      projection: "isometric",
-      viewMode: "2d"
-    });
-    mountPreview("example-2-preview", example2Source, {
-      projection: "document",
-      initialViewpointId: "inner",
-      viewMode: "2d"
-    });
-    mountPreview("example-3-preview", example3Source, {
-      projection: "document",
-      initialViewpointId: "earth-system",
-      viewMode: "3d"
-    });
-
-    function renderPlayground() {
-      const sourceField = document.getElementById("playground-source");
-      const status = document.getElementById("playground-status");
-      if (!sourceField || !status) return;
-      const viewer = mountPreview("playground-preview", sourceField.value, {
-        projection: "document",
-        initialViewpointId: "demo",
-        viewMode: previewModes.playground
-      });
-      if (viewer) {
-        syncPreviewButtons("playground-preview", previewModes.playground);
-        status.textContent = `Preview rendered successfully in ${previewModes.playground.toUpperCase()}.`;
-        status.style.color = "#aab7d5";
-      } else {
-        status.textContent = `Render failed in ${previewModes.playground.toUpperCase()}.`;
-        status.style.color = "#ffb4b4";
-      }
-    }
-
-    document.getElementById("hero-preview-2d")?.addEventListener("click", () => renderHeroPreview("2d"));
-    document.getElementById("hero-preview-3d")?.addEventListener("click", () => renderHeroPreview("3d"));
-    document.getElementById("playground-preview-2d")?.addEventListener("click", () => {
-      previewModes.playground = "2d";
-      renderPlayground();
-    });
-    document.getElementById("playground-preview-3d")?.addEventListener("click", () => {
-      previewModes.playground = "3d";
-      renderPlayground();
-    });
-    document.getElementById("playground-render")?.addEventListener("click", renderPlayground);
-    document.getElementById("playground-reset")?.addEventListener("click", () => {
-      const sourceField = document.getElementById("playground-source");
-      if (sourceField) sourceField.value = playgroundDefaultSource;
-      renderPlayground();
-    });
-
-    renderHeroPreview("3d");
-    renderPlayground();
-  </script>
+  <script type="module" src="./guide-demo.js"></script>
 </body>
 </html>

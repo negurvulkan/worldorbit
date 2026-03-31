@@ -1,338 +1,50 @@
 <!doctype html>
-<html lang="de">
-
+<html lang="en" class="dark">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>WorldOrbit Studio v3.2.8</title>
+  <title>worldorbit Studio v3.2.8</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@500;700;800&display=swap" rel="stylesheet" />
   <style>
-    :root {
-      color-scheme: dark;
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      min-height: 100vh;
-      background:
-        radial-gradient(circle at top left, rgba(240, 180, 100, 0.14), transparent 28%),
-        radial-gradient(circle at top right, rgba(120, 255, 215, 0.1), transparent 22%),
-        linear-gradient(160deg, #02060a 0%, #0a1722 44%, #071019 100%);
-      color: #edf6ff;
-      font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
-    }
-
-    main {
-      width: min(1600px, calc(100vw - 24px));
-      margin: 12px auto 24px;
-      display: grid;
-      gap: 16px;
-      min-width: 0;
-    }
-
-    .hero {
-      padding: 22px 24px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 24px;
-      background: rgba(7, 16, 25, 0.72);
-      backdrop-filter: blur(16px);
-    }
-
-    .hero strong {
-      display: block;
-      margin-bottom: 8px;
-      font-size: 12px;
-      letter-spacing: 0.16em;
-      text-transform: uppercase;
-      color: #f0b464;
-    }
-
-    .hero h1 {
-      margin: 0 0 8px;
-      font-size: clamp(28px, 4vw, 48px);
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-    }
-
-    .hero p {
-      margin: 0;
-      max-width: 82ch;
-      color: rgba(237, 246, 255, 0.74);
-      line-height: 1.6;
-    }
-
-    #studio {
-      min-width: 0;
-    }
-
-    .studio-app {
-      display: grid;
-      gap: 16px;
-    }
-
-    .studio-toolbar {
-      display: grid;
-      gap: 12px;
-      padding: 18px 20px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 24px;
-      background: rgba(7, 16, 25, 0.72);
-      backdrop-filter: blur(16px);
-    }
-
-    .studio-toolbar-row {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 10px;
-      min-width: 0;
-    }
-
-    .studio-toolbar button,
-    .studio-toolbar input[type="range"] {
-      accent-color: #f0b464;
-    }
-
-    .studio-toolbar button {
-      border: 1px solid rgba(240, 180, 100, 0.2);
-      border-radius: 999px;
-      background: rgba(240, 180, 100, 0.08);
-      color: #edf6ff;
-      font: 600 13px/1.4 "Segoe UI Variable", "Segoe UI", sans-serif;
-      padding: 10px 14px;
-    }
-
-    .studio-toolbar button[aria-pressed="true"] {
-      border-color: rgba(255, 214, 138, 0.34);
-      background: rgba(255, 214, 138, 0.12);
-      color: #ffdda9;
-    }
-
-    .studio-toolbar button:focus-visible,
-    .studio-toolbar input:focus-visible {
-      outline: 2px solid rgba(255, 214, 138, 0.95);
-      outline-offset: 2px;
-    }
-
-    .studio-range {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      color: rgba(237, 246, 255, 0.76);
-      font: 600 12px/1.4 "Segoe UI Variable", "Segoe UI", sans-serif;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-    }
-
-    .studio-range input {
-      width: 120px;
-    }
-
-    .studio-toolbar-row-meta {
-      justify-content: space-between;
-    }
-
-    .studio-file {
-      color: #edf6ff;
-      font: 700 13px/1.4 "Segoe UI Variable", "Segoe UI", sans-serif;
-      letter-spacing: 0.04em;
-    }
-
-    .studio-file[data-state="dirty"] {
-      color: #ffd58a;
-    }
-
-    .studio-message {
-      color: rgba(237, 246, 255, 0.74);
-      font: 500 13px/1.5 "Segoe UI Variable", "Segoe UI", sans-serif;
-    }
-
-    .studio-message[data-state="error"] {
-      color: #ffb2b2;
-    }
-
-    .studio-message[data-state="warning"] {
-      color: #ffd58a;
-    }
-
-    .studio-message[data-state="clean"] {
-      color: #c7ffe5;
-    }
-
-    .studio-editor-root {
-      min-width: 0;
-    }
-
-    .studio-modal {
-      width: min(1100px, calc(100vw - 32px));
-      max-width: none;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 28px;
-      padding: 0;
-      background: rgba(6, 14, 22, 0.96);
-      color: #edf6ff;
-      box-shadow: 0 32px 90px rgba(0, 0, 0, 0.42);
-    }
-
-    .studio-modal::backdrop {
-      background: rgba(2, 7, 12, 0.72);
-      backdrop-filter: blur(8px);
-    }
-
-    .studio-modal-card {
-      display: grid;
-      gap: 16px;
-      padding: 22px;
-    }
-
-    .studio-modal-header {
-      display: flex;
-      justify-content: space-between;
-      gap: 16px;
-      align-items: flex-start;
-    }
-
-    .studio-modal-header strong {
-      display: block;
-      margin-bottom: 6px;
-      font: 700 13px/1.2 "Segoe UI Variable", "Segoe UI", sans-serif;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: #ffdda9;
-    }
-
-    .studio-modal-header p {
-      margin: 0;
-      color: rgba(237, 246, 255, 0.72);
-      line-height: 1.5;
-    }
-
-    .studio-modal-textarea,
-    .studio-modal-code {
-      width: 100%;
-      min-height: min(62vh, 680px);
-      margin: 0;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 20px;
-      background: rgba(9, 20, 30, 0.96);
-      color: #edf6ff;
-      padding: 16px;
-      box-sizing: border-box;
-      font: 500 13px/1.6 "Cascadia Code", "Consolas", monospace;
-    }
-
-    .studio-modal-textarea {
-      resize: vertical;
-      white-space: pre;
-      overflow: auto;
-    }
-
-    .studio-modal-code {
-      overflow: auto;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-    }
-
-    .studio-modal-diagnostics {
-      display: grid;
-      gap: 10px;
-      max-height: 220px;
-      overflow: auto;
-    }
-
-    .studio-modal-diagnostic {
-      border-radius: 16px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      background: rgba(255, 255, 255, 0.04);
-      padding: 12px 14px;
-    }
-
-    .studio-modal-diagnostic[data-state="error"] {
-      border-color: rgba(255, 120, 120, 0.28);
-    }
-
-    .studio-modal-diagnostic[data-state="warning"] {
-      border-color: rgba(240, 180, 100, 0.24);
-    }
-
-    .studio-modal-diagnostic strong {
-      display: block;
-      margin-bottom: 4px;
-      font: 700 11px/1.2 "Segoe UI Variable", "Segoe UI", sans-serif;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    .studio-modal-diagnostic p,
-    .studio-modal-note {
-      margin: 0;
-      color: rgba(237, 246, 255, 0.82);
-      line-height: 1.5;
-    }
-
-    .studio-modal-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      justify-content: flex-end;
-    }
-
-    .studio-modal button,
-    .studio-modal textarea:focus-visible {
-      outline: 2px solid rgba(255, 214, 138, 0.95);
-      outline-offset: 2px;
-    }
-
-    .studio-modal button {
-      border: 1px solid rgba(240, 180, 100, 0.2);
-      border-radius: 999px;
-      background: rgba(240, 180, 100, 0.08);
-      color: #edf6ff;
-      font: 600 13px/1.4 "Segoe UI Variable", "Segoe UI", sans-serif;
-      padding: 10px 14px;
-    }
-
-    @media (max-width: 960px) {
-      .studio-toolbar-row-meta {
-        flex-direction: column;
-        align-items: flex-start;
-      }
-
-      .studio-modal {
-        width: calc(100vw - 16px);
-      }
-
-      .studio-modal-header {
-        flex-direction: column;
-      }
-
-      .studio-modal-actions {
-        justify-content: stretch;
-      }
-    }
+    :root{color-scheme:dark;--bg:#070d1f;--panel:#0a1839;--panel2:#0a2257;--panel3:#09122b;--line:rgba(123,208,255,.12);--text:#dfe4ff;--muted:#96a9e6;--primary:#7bd0ff;--primaryDim:#47c4ff;--shadow:0 24px 72px rgba(0,0,0,.42)}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 16% 12%,rgba(123,208,255,.14),transparent 0 26%),radial-gradient(circle at 82% 8%,rgba(123,208,255,.08),transparent 0 22%),linear-gradient(180deg,#070d1f 0%,#071127 38%,#060c1d 100%);color:var(--text);font-family:"Inter",sans-serif;-webkit-font-smoothing:antialiased}body::before{content:"";position:fixed;inset:0;pointer-events:none;background-image:linear-gradient(rgba(123,208,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(123,208,255,.03) 1px,transparent 1px);background-size:72px 72px;mask-image:radial-gradient(circle at center,black 28%,transparent 84%);opacity:.34}
+    *::-webkit-scrollbar{width:10px;height:10px}*::-webkit-scrollbar-track{background:rgba(3,8,21,.72)}*::-webkit-scrollbar-thumb{background:rgba(123,208,255,.28);border:2px solid rgba(3,8,21,.72)}*::-webkit-scrollbar-thumb:hover{background:rgba(123,208,255,.42)}
+    main{width:min(1600px,calc(100vw - 24px));margin:12px auto 24px;display:grid;gap:16px;min-width:0}.hero,.studio-frame{background:rgba(10,24,57,.72);border:1px solid var(--line);box-shadow:var(--shadow);backdrop-filter:blur(20px)}.hero{padding:30px 32px;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(280px,.85fr);gap:28px;align-items:end}.eyebrow{display:inline-flex;padding:9px 12px;background:rgba(123,208,255,.1);border:1px solid rgba(123,208,255,.16);margin-bottom:18px;color:var(--primary);font:700 .72rem/1 "Inter",sans-serif;letter-spacing:.18em;text-transform:uppercase}.hero h1,.hero-card h2{margin:0;font-family:"Manrope",sans-serif;letter-spacing:-.06em}.hero h1{font-size:clamp(2.8rem,6vw,5rem);line-height:.92;margin-bottom:18px}.hero p,.hero-card p{margin:0;color:var(--muted);line-height:1.7}.hero-card{padding:22px;background:rgba(3,8,21,.82);border:1px solid rgba(123,208,255,.1)}.hero-card h2{font-size:1.2rem;line-height:1.15;margin-bottom:10px}.hero-meta{display:flex;gap:18px;flex-wrap:wrap;margin-top:20px;color:var(--muted);font:700 .76rem/1 "Inter",sans-serif;letter-spacing:.18em;text-transform:uppercase}
+    .studio-frame{padding:16px}.studio-app{display:grid;gap:16px}.studio-toolbar,.studio-modal,.wo-editor-panel,.wo-editor-stage-shell,.wo-editor-preview-card,.wo-editor-inspector-section,.wo-editor-fieldset{background:rgba(10,24,57,.72)!important;border:1px solid var(--line)!important;box-shadow:none!important}.studio-toolbar{display:grid;gap:14px;padding:20px}.studio-toolbar-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;min-width:0}.studio-toolbar-row-meta{justify-content:space-between;gap:16px}.studio-toolbar button,.studio-modal button{min-height:42px;padding:0 14px;border:1px solid rgba(123,208,255,.14);background:rgba(10,34,87,.88);color:var(--text);font:700 .86rem/1 "Manrope",sans-serif;cursor:pointer;transition:transform .18s ease,background-color .18s ease,border-color .18s ease}.studio-toolbar button:hover,.studio-modal button:hover{transform:translateY(-1px);background:rgba(8,39,104,.92)}.studio-toolbar button[aria-pressed=true]{background:rgba(123,208,255,.16);border-color:rgba(123,208,255,.26)}.studio-toolbar button[data-studio-action=save],.studio-toolbar button[data-studio-action=open-source]{background:var(--primary);border-color:var(--primary);color:#004560}.studio-toolbar button[data-studio-action=save]:hover,.studio-toolbar button[data-studio-action=open-source]:hover{background:var(--primaryDim);border-color:var(--primaryDim)}.studio-toolbar input[type=range]{accent-color:var(--primary)}
+    .studio-file{color:var(--text);font:800 .95rem/1 "Manrope",sans-serif;letter-spacing:-.03em}.studio-file[data-state=dirty]{color:#9bddff}.studio-message{color:var(--muted);font:500 .9rem/1.5 "Inter",sans-serif}.studio-message[data-state=error]{color:#ffb2b2}.studio-message[data-state=warning]{color:#ffd58a}.studio-message[data-state=clean]{color:#9bddff}.studio-range{display:flex;align-items:center;gap:10px;color:var(--muted);font:700 .72rem/1 "Inter",sans-serif;letter-spacing:.16em;text-transform:uppercase}.studio-range input{width:120px}
+    .studio-modal{width:min(1120px,calc(100vw - 24px));max-width:none;padding:0;color:var(--text)}.studio-modal::backdrop{background:rgba(2,7,12,.72);backdrop-filter:blur(8px)}.studio-modal-card{display:grid;gap:16px;padding:22px}.studio-modal-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.studio-modal-header strong{display:block;margin-bottom:6px;color:var(--primary);font:700 .76rem/1 "Inter",sans-serif;letter-spacing:.18em;text-transform:uppercase}.studio-modal-header p,.studio-modal-note{margin:0;color:var(--muted);line-height:1.6}.studio-modal-textarea,.studio-modal-code{width:100%;min-height:min(62vh,680px);margin:0;border:1px solid rgba(123,208,255,.12);background:rgba(3,8,21,.92);color:var(--text);padding:16px;box-sizing:border-box;font:500 .84rem/1.6 "Cascadia Code","Consolas",monospace}.studio-modal-textarea{resize:vertical;white-space:pre;overflow:auto}.studio-modal-code{overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}.studio-modal-diagnostics{display:grid;gap:10px;max-height:220px;overflow:auto}.studio-modal-diagnostic{padding:12px 14px;border:1px solid rgba(123,208,255,.12);background:rgba(3,8,21,.92)}.studio-modal-diagnostic[data-state=error]{border-color:rgba(255,120,120,.28)}.studio-modal-diagnostic[data-state=warning]{border-color:rgba(255,213,138,.28)}.studio-modal-diagnostic strong{display:block;margin-bottom:4px;font:700 .72rem/1 "Inter",sans-serif;letter-spacing:.18em;text-transform:uppercase}.studio-modal-diagnostic p{margin:0;line-height:1.5}.studio-modal-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end}
+    .wo-editor{--wo-editor-sidebar-width:280px;--wo-editor-inspector-width:360px;--wo-editor-stage-sticky-top:12px;--wo-editor-stage-sticky-max-height:calc(100vh - 24px)}.wo-editor-toolbar button,.wo-editor-toolbar select,.wo-editor-inline-actions button,.wo-editor-outline-item{border-radius:0!important}.wo-editor-panel,.wo-editor-stage-shell,.wo-editor-preview-card,.wo-editor-inspector-section,.wo-editor-fieldset,.wo-editor-field input,.wo-editor-field select,.wo-editor-field textarea,.wo-editor-source,.wo-editor-status-pill,.wo-editor-outline-item,.wo-editor-diagnostic,.wo-editor-overlay-diagnostic,.wo-editor-handle,.wo-editor-hint,.wo-editor-field-help>summary,.wo-editor-field-help-card,.wo-editor-outline-badge{border-radius:0!important}.wo-editor-panel{padding:18px!important}.wo-editor-panel h2,.wo-editor-panel h3,.wo-editor-field-label,.wo-editor-fieldset legend,.wo-editor-status-pill,.wo-editor-overlay-diagnostic strong,.wo-editor-diagnostic strong{font-family:"Inter",sans-serif!important;letter-spacing:.16em!important}.wo-editor-panel h2,.wo-editor-panel h3,.wo-editor-field-label,.wo-editor-fieldset legend{color:var(--muted)!important}.wo-editor-toolbar button,.wo-editor-toolbar select,.wo-editor-inline-actions button,.wo-editor-field-help>summary{background:rgba(10,34,87,.88)!important;border-color:rgba(123,208,255,.14)!important;color:var(--text)!important}.wo-editor-status-pill{background:rgba(3,8,21,.92)!important;border-color:rgba(123,208,255,.12)!important;color:var(--text)!important}.wo-editor-status-pill.is-clean{color:#9bddff!important}.wo-editor-status-pill.is-dirty,.wo-editor-status-pill.is-warning{color:#ffd58a!important}.wo-editor-status-pill.is-error{color:#ffb2b2!important}.wo-editor-field input,.wo-editor-field select,.wo-editor-field textarea,.wo-editor-source,.wo-editor-preview-markup{background:rgba(3,8,21,.92)!important;border-color:rgba(123,208,255,.12)!important;color:var(--text)!important}.wo-editor-outline-item.is-active{background:rgba(123,208,255,.16)!important;border-color:rgba(123,208,255,.26)!important;color:var(--text)!important}.wo-editor-stage-shell{background:radial-gradient(circle at 50% 24%,rgba(123,208,255,.18),transparent 0 30%),rgba(3,8,21,.94)!important}.wo-editor-handle{background:var(--primary)!important;color:#004560!important}.wo-editor-hint,.wo-editor-field-help-card,.wo-editor-overlay-diagnostic{background:rgba(3,8,21,.94)!important}
+    @media (max-width:1120px){main{width:min(1600px,calc(100vw - 18px))}.hero{grid-template-columns:1fr;padding:26px 24px}}
+    @media (max-width:960px){.hero{gap:20px}.hero h1{font-size:clamp(2.4rem,10vw,3.8rem)}.studio-toolbar-row-meta,.studio-modal-header{flex-direction:column;align-items:flex-start}.studio-modal{width:calc(100vw - 16px)}}
+    @media (max-width:760px){main{width:min(1600px,calc(100vw - 12px));margin:8px auto 16px}.hero,.studio-frame{padding:12px}.hero-card{padding:18px}.hero-meta{gap:10px}.studio-toolbar{padding:14px}.studio-toolbar-row{gap:8px}.studio-toolbar button{flex:1 1 calc(50% - 8px)}.studio-toolbar-row-meta>*{width:100%}.studio-range{width:100%;justify-content:space-between}.studio-range input{width:min(180px,48vw)}}
+    @media (max-width:520px){.hero{padding:10px}.hero h1{font-size:clamp(2rem,12vw,3rem)}.hero-card{padding:14px}.studio-toolbar button,.studio-modal button{width:100%;flex:1 1 100%}.studio-modal-card{padding:14px}.studio-modal-actions{justify-content:stretch}.studio-modal-textarea,.studio-modal-code{min-height:52vh;padding:12px}}
   </style>
 </head>
-
 <body>
   <main>
     <section class="hero">
-          <strong>WorldOrbit Studio v3.2.8</strong>
-      <h1>WorldOrbit Visual Editor</h1>
-      <p>
-        This reference app loads local workspace runtime packages directly from the repository and
-        keeps the authoring surface compact with focused source and embed modals.
-      </p>
+      <div>
+        <div class="eyebrow">Studio shell</div>
+        <h1>Refine orbital atlases in a tighter editor loop.</h1>
+        <p>WorldOrbit Studio now visually aligns with the docs landing pages: deeper blues, sharper chrome, and a clearer hierarchy around source, preview, diagnostics, and export actions.</p>
+        <div class="hero-meta"><span>Source first</span><span>Live preview</span><span>Inspector workflow</span></div>
+      </div>
+      <div class="hero-card">
+        <h2>Same editor behavior, stronger presentation</h2>
+        <p>The local repository packages still power the same editing runtime. This pass updates the shell, toolbar, and modal framing so the Studio feels like part of the same product as the docs site.</p>
+      </div>
     </section>
 
-    <div id="studio" data-example-url="../examples/studio.schema25.worldorbit"></div>
+    <section class="studio-frame">
+      <div id="studio" data-example-url="../examples/studio.schema25.worldorbit"></div>
+    </section>
   </main>
 
   <script type="importmap">
-      {
-        "imports": {
+    {
+      "imports": {
         "@worldorbit/core": "../packages/core/dist/index.js",
         "@worldorbit/core/load": "../packages/core/dist/load.js",
         "@worldorbit/core/scene": "../packages/core/dist/scene.js",
@@ -341,10 +53,9 @@
         "@worldorbit/viewer/viewer-state": "../packages/viewer/dist/viewer-state.js",
         "@worldorbit/markdown": "../packages/markdown/dist/index.js",
         "@worldorbit/editor": "../packages/editor/dist/index.js"
-        }
       }
-      </script>
+    }
+  </script>
   <script type="module" src="studio.js"></script>
 </body>
-
 </html>

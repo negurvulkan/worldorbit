@@ -1,0 +1,1289 @@
+schema 2.5
+
+system Solar-System
+  title "Solar System"
+  description "Extensive atlas-style model of the Sun, planets, major moon systems, key minor bodies, large belts, heliophysical regions, and important artificial objects."
+  epoch "AD-2026.0"
+  referencePlane ecliptic
+
+defaults
+  view orthographic
+  scale presentation
+  preset atlas-card
+  theme atlas
+
+group inner-system
+  label "Inner System"
+  summary "Sun, terrestrial planets, and near-Sun structures"
+  color #d7a25b
+
+group asteroid-belt
+  label "Asteroid Belt"
+  summary "Main belt populations and dwarf-planet Ceres"
+  color #b89168
+
+group giant-systems
+  label "Giant Planet Systems"
+  summary "Jovian, Saturnian, Uranian, and Neptunian systems"
+  color #7aa6c2
+
+group kuiper-region
+  label "Kuiper Region"
+  summary "Kuiper belt, scattered disk bodies, and distant dwarf planets"
+  color #7d88c8
+
+group artificial
+  label "Artificial Objects"
+  summary "Stations, observatories, probes, and surface missions"
+  color #c85b5b
+
+group deep-space
+  label "Deep Space"
+  summary "Heliophysical boundaries and outbound probes"
+  color #6a90b8
+
+viewpoint overview
+  label "System Overview"
+  projection orthographic
+  focus Sun
+  select Sun
+  camera
+    azimuth 26
+    elevation 20
+
+viewpoint inner
+  label "Inner System"
+  projection perspective
+  focus Earth
+  select Earth
+  camera
+    azimuth 42
+    elevation 24
+    distance 8
+  filter
+    groups inner-system artificial
+
+viewpoint outer
+  label "Outer System"
+  projection perspective
+  focus Jupiter
+  select Saturn
+  camera
+    azimuth 30
+    elevation 22
+    distance 11
+  filter
+    groups giant-systems kuiper-region
+
+object star Sun
+  mass 1sol
+  radius 1sol
+  temperature 5778K
+  color #ffcc66
+  groups inner-system
+  info
+    summary "Central star of the Solar System."
+    spectralType "G2V main-sequence star"
+
+object planet Mercury
+  orbit Sun
+  semiMajor 0.387au
+  eccentricity 0.206
+  inclination 7deg
+  phase 10deg
+  radius 2439km
+  mass 0.0553me
+  temperature 440K
+  color #b7a38a
+  groups inner-system
+
+object planet Venus
+  orbit Sun
+  semiMajor 0.723au
+  eccentricity 0.007
+  inclination 3.39deg
+  phase 42deg
+  radius 6052km
+  mass 0.815me
+  temperature 737K
+  atmosphere carbon-dioxide
+  color #d7b06d
+  groups inner-system
+
+object planet Earth
+  orbit Sun
+  semiMajor 1au
+  eccentricity 0.017
+  inclination 0deg
+  phase 90deg
+  radius 1re
+  mass 1me
+  temperature 288K
+  atmosphere nitrogen-oxygen
+  color #4d87c7
+  groups inner-system
+  climate
+    meanSurfaceTemperature 288K
+    hydrosphere global-ocean
+  habitability
+    biosphere complex
+    inhabited true
+  settlement
+    population "8+ billion"
+    status cradle-world
+
+object moon Moon
+  orbit Earth
+  distance 384400km
+  inclination 5.15deg
+  phase 180deg
+  radius 1737km
+  mass 0.0123me
+  color #cfcfcf
+  groups inner-system
+
+object planet Mars
+  orbit Sun
+  semiMajor 1.524au
+  eccentricity 0.093
+  inclination 1.85deg
+  phase 130deg
+  radius 3389km
+  mass 0.107me
+  temperature 210K
+  atmosphere carbon-dioxide
+  color #c96c4a
+  groups inner-system
+
+object moon Phobos
+  orbit Mars
+  distance 9377km
+  phase 40deg
+  radius 11.3km
+  color #9b826d
+  groups inner-system
+
+object moon Deimos
+  orbit Mars
+  distance 23463km
+  phase 210deg
+  radius 6.2km
+  color #a69482
+  groups inner-system
+
+object belt Main-Belt
+  orbit Sun
+  semiMajor 2.77au
+  eccentricity 0.11
+  inclination 10deg
+  phase 160deg
+  inner 2.1au
+  outer 3.3au
+  color #ad8d68
+  groups asteroid-belt
+  info
+    summary "Primary asteroid concentration between Mars and Jupiter."
+
+object asteroid Ceres
+  orbit Sun
+  semiMajor 2.77au
+  eccentricity 0.076
+  inclination 10.6deg
+  phase 210deg
+  radius 473km
+  mass 0.000157me
+  class dwarf-planet
+  color #b9b7b1
+  groups asteroid-belt
+
+object asteroid Vesta
+  orbit Sun
+  semiMajor 2.36au
+  eccentricity 0.089
+  inclination 7.1deg
+  phase 240deg
+  radius 262km
+  color #a79a8d
+  groups asteroid-belt
+
+object asteroid Pallas
+  orbit Sun
+  semiMajor 2.77au
+  eccentricity 0.231
+  inclination 34.8deg
+  phase 275deg
+  radius 256km
+  color #9e9a8f
+  groups asteroid-belt
+
+object asteroid Hygiea
+  orbit Sun
+  semiMajor 3.14au
+  eccentricity 0.112
+  inclination 3.8deg
+  phase 300deg
+  radius 217km
+  color #8e8f8b
+  groups asteroid-belt
+
+object asteroid Juno
+  orbit Sun
+  semiMajor 2.67au
+  eccentricity 0.257
+  inclination 12.9deg
+  phase 20deg
+  radius 123km
+  color #a18c79
+  groups asteroid-belt
+
+object asteroid Psyche
+  orbit Sun
+  semiMajor 2.92au
+  eccentricity 0.14
+  inclination 3.1deg
+  phase 55deg
+  radius 113km
+  color #8b7a72
+  groups asteroid-belt
+
+object asteroid Eros
+  orbit Sun
+  semiMajor 1.46au
+  eccentricity 0.223
+  inclination 10.8deg
+  phase 75deg
+  radius 8.4km
+  color #8b6f61
+  groups asteroid-belt inner-system
+
+object asteroid Bennu
+  orbit Sun
+  semiMajor 1.13au
+  eccentricity 0.204
+  inclination 6deg
+  phase 120deg
+  radius 0.246km
+  color #746c69
+  groups inner-system asteroid-belt
+
+object asteroid Ryugu
+  orbit Sun
+  semiMajor 1.19au
+  eccentricity 0.191
+  inclination 5.9deg
+  phase 150deg
+  radius 0.45km
+  color #66615f
+  groups inner-system asteroid-belt
+
+object asteroid Itokawa
+  orbit Sun
+  semiMajor 1.32au
+  eccentricity 0.28
+  inclination 1.6deg
+  phase 200deg
+  radius 0.165km
+  color #7f756f
+  groups inner-system asteroid-belt
+
+object asteroid Apophis
+  orbit Sun
+  semiMajor 0.922au
+  eccentricity 0.191
+  inclination 3.3deg
+  phase 250deg
+  radius 0.185km
+  color #705d52
+  groups inner-system asteroid-belt
+
+object asteroid Ida
+  orbit Sun
+  semiMajor 2.86au
+  eccentricity 0.045
+  inclination 1.1deg
+  phase 315deg
+  radius 15.7km
+  color #85786c
+  groups asteroid-belt
+
+object asteroid Gaspra
+  orbit Sun
+  semiMajor 2.21au
+  eccentricity 0.173
+  inclination 4.1deg
+  phase 335deg
+  radius 6.1km
+  color #8c7c6f
+  groups asteroid-belt
+
+object planet Jupiter
+  orbit Sun
+  semiMajor 5.2au
+  eccentricity 0.049
+  inclination 1.3deg
+  phase 20deg
+  radius 11.21re
+  mass 317.8me
+  temperature 165K
+  atmosphere hydrogen-helium
+  color #c9a978
+  groups giant-systems
+
+object ring Jupiter-Ring
+  orbit Jupiter
+  distance 130000km
+  inner 92000km
+  outer 225000km
+  color #bda686
+  groups giant-systems
+
+object moon Io
+  orbit Jupiter
+  distance 421700km
+  inclination 0.04deg
+  phase 15deg
+  radius 1821km
+  color #d7c06c
+  groups giant-systems
+
+object moon Europa
+  orbit Jupiter
+  distance 671100km
+  inclination 0.47deg
+  phase 90deg
+  radius 1561km
+  color #d8d2c2
+  groups giant-systems
+
+object moon Ganymede
+  orbit Jupiter
+  distance 1070400km
+  inclination 0.2deg
+  phase 145deg
+  radius 2634km
+  color #9d8d76
+  groups giant-systems
+
+object moon Callisto
+  orbit Jupiter
+  distance 1882700km
+  inclination 0.28deg
+  phase 205deg
+  radius 2410km
+  color #7f736c
+  groups giant-systems
+
+object moon Amalthea
+  orbit Jupiter
+  distance 181400km
+  phase 250deg
+  radius 83.5km
+  color #b67863
+  groups giant-systems
+
+object moon Himalia
+  orbit Jupiter
+  distance 11461000km
+  inclination 27.5deg
+  phase 285deg
+  radius 69.8km
+  color #847d7a
+  groups giant-systems
+
+object moon Elara
+  orbit Jupiter
+  distance 11741000km
+  inclination 26.6deg
+  phase 305deg
+  radius 43km
+  color #7d7975
+  groups giant-systems
+
+object moon Pasiphae
+  orbit Jupiter
+  distance 23624000km
+  inclination 151.4deg
+  phase 325deg
+  radius 28.9km
+  color #6e6765
+  groups giant-systems
+
+object moon Sinope
+  orbit Jupiter
+  distance 23939000km
+  inclination 158.1deg
+  phase 340deg
+  radius 19km
+  color #6d625f
+  groups giant-systems
+
+object moon Lysithea
+  orbit Jupiter
+  distance 11717000km
+  inclination 28.3deg
+  phase 5deg
+  radius 18km
+  color #7a7571
+  groups giant-systems
+
+object moon Carme
+  orbit Jupiter
+  distance 23404000km
+  inclination 164.9deg
+  phase 30deg
+  radius 23km
+  color #8b6c66
+  groups giant-systems
+
+object moon Ananke
+  orbit Jupiter
+  distance 21276000km
+  inclination 148.9deg
+  phase 55deg
+  radius 14km
+  color #796c68
+  groups giant-systems
+
+object planet Saturn
+  orbit Sun
+  semiMajor 9.58au
+  eccentricity 0.057
+  inclination 2.49deg
+  phase 65deg
+  radius 9.45re
+  mass 95.2me
+  temperature 134K
+  atmosphere hydrogen-helium
+  color #d7bf84
+  groups giant-systems
+
+object ring Saturn-Rings
+  orbit Saturn
+  distance 110000km
+  inner 67000km
+  outer 140220km
+  color #d8c59b
+  groups giant-systems
+
+object moon Mimas
+  orbit Saturn
+  distance 185540km
+  phase 10deg
+  radius 198km
+  color #bfbcb7
+  groups giant-systems
+
+object moon Enceladus
+  orbit Saturn
+  distance 238020km
+  phase 42deg
+  radius 252km
+  color #f0efea
+  groups giant-systems
+
+object moon Tethys
+  orbit Saturn
+  distance 294620km
+  phase 75deg
+  radius 531km
+  color #d8d6cf
+  groups giant-systems
+
+object moon Dione
+  orbit Saturn
+  distance 377400km
+  phase 105deg
+  radius 561km
+  color #cfc8bf
+  groups giant-systems
+
+object moon Rhea
+  orbit Saturn
+  distance 527040km
+  phase 140deg
+  radius 764km
+  color #b8b1aa
+  groups giant-systems
+
+object moon Titan
+  orbit Saturn
+  distance 1221870km
+  inclination 0.35deg
+  phase 175deg
+  radius 2575km
+  atmosphere nitrogen
+  color #d7b56f
+  groups giant-systems
+  climate
+    meanSurfaceTemperature 94K
+    weather methane-cycle
+  habitability
+    biosphere speculative
+    inhabited false
+
+object moon Hyperion
+  orbit Saturn
+  distance 1481000km
+  phase 210deg
+  radius 135km
+  color #947a63
+  groups giant-systems
+
+object moon Iapetus
+  orbit Saturn
+  distance 3561300km
+  inclination 15.5deg
+  phase 245deg
+  radius 735km
+  color #a79d92
+  groups giant-systems
+
+object moon Phoebe
+  orbit Saturn
+  distance 12952000km
+  inclination 175.3deg
+  phase 280deg
+  radius 106km
+  color #595657
+  groups giant-systems
+
+object moon Janus
+  orbit Saturn
+  distance 151460km
+  phase 305deg
+  radius 89km
+  groups giant-systems
+
+object moon Epimetheus
+  orbit Saturn
+  distance 151410km
+  phase 325deg
+  radius 58km
+  groups giant-systems
+
+object moon Atlas
+  orbit Saturn
+  distance 137670km
+  phase 345deg
+  radius 15km
+  groups giant-systems
+
+object moon Pan
+  orbit Saturn
+  distance 133580km
+  phase 20deg
+  radius 14km
+  groups giant-systems
+
+object moon Prometheus
+  orbit Saturn
+  distance 139380km
+  phase 50deg
+  radius 43km
+  groups giant-systems
+
+object moon Pandora
+  orbit Saturn
+  distance 141720km
+  phase 85deg
+  radius 40km
+  groups giant-systems
+
+object planet Uranus
+  orbit Sun
+  semiMajor 19.2au
+  eccentricity 0.047
+  inclination 0.77deg
+  phase 95deg
+  radius 4.01re
+  mass 14.5me
+  temperature 76K
+  atmosphere hydrogen-helium-methane
+  color #9dd3df
+  groups giant-systems
+
+object ring Uranus-Rings
+  orbit Uranus
+  distance 50000km
+  inner 38000km
+  outer 51000km
+  color #aabdc3
+  groups giant-systems
+
+object moon Miranda
+  orbit Uranus
+  distance 129390km
+  phase 12deg
+  radius 236km
+  groups giant-systems
+
+object moon Ariel
+  orbit Uranus
+  distance 191020km
+  phase 36deg
+  radius 579km
+  groups giant-systems
+
+object moon Umbriel
+  orbit Uranus
+  distance 266300km
+  phase 60deg
+  radius 585km
+  groups giant-systems
+
+object moon Titania
+  orbit Uranus
+  distance 436300km
+  phase 84deg
+  radius 789km
+  groups giant-systems
+
+object moon Oberon
+  orbit Uranus
+  distance 583500km
+  phase 110deg
+  radius 761km
+  groups giant-systems
+
+object moon Puck
+  orbit Uranus
+  distance 86010km
+  phase 135deg
+  radius 81km
+  groups giant-systems
+
+object moon Portia
+  orbit Uranus
+  distance 66097km
+  phase 160deg
+  radius 68km
+  groups giant-systems
+
+object moon Juliet
+  orbit Uranus
+  distance 64358km
+  phase 182deg
+  radius 53km
+  groups giant-systems
+
+object moon Cressida
+  orbit Uranus
+  distance 61767km
+  phase 205deg
+  radius 40km
+  groups giant-systems
+
+object moon Belinda
+  orbit Uranus
+  distance 75255km
+  phase 228deg
+  radius 45km
+  groups giant-systems
+
+object moon Desdemona
+  orbit Uranus
+  distance 62658km
+  phase 250deg
+  radius 32km
+  groups giant-systems
+
+object moon Rosalind
+  orbit Uranus
+  distance 69927km
+  phase 275deg
+  radius 36km
+  groups giant-systems
+
+object moon Bianca
+  orbit Uranus
+  distance 59166km
+  phase 298deg
+  radius 27km
+  groups giant-systems
+
+object moon Ophelia
+  orbit Uranus
+  distance 53764km
+  phase 320deg
+  radius 21km
+  groups giant-systems
+
+object moon Cordelia
+  orbit Uranus
+  distance 49752km
+  phase 340deg
+  radius 20km
+  groups giant-systems
+
+object moon Mab
+  orbit Uranus
+  distance 97736km
+  phase 8deg
+  radius 12km
+  groups giant-systems
+
+object moon Cupid
+  orbit Uranus
+  distance 74392km
+  phase 28deg
+  radius 9km
+  groups giant-systems
+
+object moon Perdita
+  orbit Uranus
+  distance 76417km
+  phase 48deg
+  radius 15km
+  groups giant-systems
+
+object planet Neptune
+  orbit Sun
+  semiMajor 30.05au
+  eccentricity 0.009
+  inclination 1.77deg
+  phase 120deg
+  radius 3.88re
+  mass 17.1me
+  temperature 72K
+  atmosphere hydrogen-helium-methane
+  color #567fd1
+  groups giant-systems
+
+object ring Neptune-Rings
+  orbit Neptune
+  distance 57000km
+  inner 42000km
+  outer 63000km
+  color #95a0b8
+  groups giant-systems
+
+object moon Triton
+  orbit Neptune
+  distance 354760km
+  inclination 156.9deg
+  phase 18deg
+  radius 1353km
+  atmosphere nitrogen
+  color #d5cdbf
+  groups giant-systems
+
+object moon Nereid
+  orbit Neptune
+  distance 5513400km
+  eccentricity 0.751
+  inclination 7.2deg
+  phase 50deg
+  radius 170km
+  groups giant-systems
+
+object moon Proteus
+  orbit Neptune
+  distance 117647km
+  phase 82deg
+  radius 210km
+  groups giant-systems
+
+object moon Larissa
+  orbit Neptune
+  distance 73548km
+  phase 110deg
+  radius 97km
+  groups giant-systems
+
+object moon Galatea
+  orbit Neptune
+  distance 61953km
+  phase 138deg
+  radius 88km
+  groups giant-systems
+
+object moon Despina
+  orbit Neptune
+  distance 52526km
+  phase 164deg
+  radius 74km
+  groups giant-systems
+
+object moon Thalassa
+  orbit Neptune
+  distance 50075km
+  phase 188deg
+  radius 41km
+  groups giant-systems
+
+object moon Naiad
+  orbit Neptune
+  distance 48227km
+  phase 214deg
+  radius 33km
+  groups giant-systems
+
+object moon Hippocamp
+  orbit Neptune
+  distance 105283km
+  phase 240deg
+  radius 17km
+  groups giant-systems
+
+object moon Halimede
+  orbit Neptune
+  distance 16611000km
+  inclination 134.1deg
+  phase 266deg
+  radius 31km
+  groups giant-systems
+
+object moon Sao
+  orbit Neptune
+  distance 22422000km
+  inclination 53.5deg
+  phase 290deg
+  radius 22km
+  groups giant-systems
+
+object moon Laomedeia
+  orbit Neptune
+  distance 23571000km
+  inclination 34.9deg
+  phase 312deg
+  radius 21km
+  groups giant-systems
+
+object moon Psamathe
+  orbit Neptune
+  distance 46705000km
+  inclination 137deg
+  phase 334deg
+  radius 20km
+  groups giant-systems
+
+object moon Neso
+  orbit Neptune
+  distance 48116000km
+  inclination 136deg
+  phase 356deg
+  radius 30km
+  groups giant-systems
+
+object belt Kuiper-Belt
+  orbit Sun
+  semiMajor 44au
+  eccentricity 0.1
+  inclination 8deg
+  phase 145deg
+  inner 30au
+  outer 55au
+  color #7f89bc
+  groups kuiper-region
+
+object belt Scattered-Disk
+  orbit Sun
+  semiMajor 75au
+  eccentricity 0.35
+  inclination 18deg
+  phase 200deg
+  inner 30au
+  outer 150au
+  color #6d75a7
+  groups kuiper-region deep-space
+
+object planet Pluto
+  orbit Sun
+  semiMajor 39.48au
+  eccentricity 0.249
+  inclination 17.2deg
+  phase 182deg
+  radius 1188km
+  mass 0.00218me
+  class dwarf-planet
+  atmosphere nitrogen
+  color #c5b39f
+  groups kuiper-region
+
+object moon Charon
+  orbit Pluto
+  distance 19573km
+  phase 45deg
+  radius 606km
+  groups kuiper-region
+
+object moon Styx
+  orbit Pluto
+  distance 42656km
+  phase 85deg
+  radius 8km
+  groups kuiper-region
+
+object moon Nix
+  orbit Pluto
+  distance 48694km
+  phase 125deg
+  radius 24km
+  groups kuiper-region
+
+object moon Kerberos
+  orbit Pluto
+  distance 57783km
+  phase 165deg
+  radius 9.5km
+  groups kuiper-region
+
+object moon Hydra
+  orbit Pluto
+  distance 64738km
+  phase 205deg
+  radius 31km
+  groups kuiper-region
+
+object planet Haumea
+  orbit Sun
+  semiMajor 43.13au
+  eccentricity 0.192
+  inclination 28.2deg
+  phase 220deg
+  radius 620km
+  mass 0.00067me
+  class dwarf-planet
+  color #d9d9d5
+  groups kuiper-region
+
+object moon Hiiaka
+  orbit Haumea
+  distance 49880km
+  phase 70deg
+  radius 155km
+  groups kuiper-region
+
+object moon Namaka
+  orbit Haumea
+  distance 25657km
+  phase 140deg
+  radius 85km
+  groups kuiper-region
+
+object planet Makemake
+  orbit Sun
+  semiMajor 45.79au
+  eccentricity 0.159
+  inclination 29deg
+  phase 250deg
+  radius 715km
+  class dwarf-planet
+  color #c9b89e
+  groups kuiper-region
+
+object moon MK2
+  orbit Makemake
+  distance 21000km
+  phase 110deg
+  radius 40km
+  groups kuiper-region
+  info
+    summary "Small satellite of Makemake discovered in 2015."
+
+object planet Eris
+  orbit Sun
+  semiMajor 67.67au
+  eccentricity 0.436
+  inclination 44deg
+  phase 285deg
+  radius 1163km
+  mass 0.00277me
+  class dwarf-planet
+  color #d4d8df
+  groups kuiper-region deep-space
+
+object moon Dysnomia
+  orbit Eris
+  distance 37350km
+  phase 160deg
+  radius 350km
+  groups kuiper-region deep-space
+
+object comet Halley
+  orbit Sun
+  semiMajor 17.8au
+  eccentricity 0.967
+  inclination 162.3deg
+  phase 20deg
+  radius 5.5km
+  color #7f8a91
+  groups deep-space
+
+object comet Hale-Bopp
+  orbit Sun
+  semiMajor 186au
+  eccentricity 0.995
+  inclination 89.4deg
+  phase 55deg
+  radius 30km
+  color #95a6b2
+  groups deep-space
+
+object comet Encke
+  orbit Sun
+  semiMajor 2.22au
+  eccentricity 0.85
+  inclination 11.8deg
+  phase 95deg
+  radius 2.4km
+  color #7c8790
+  groups inner-system deep-space
+
+object comet Tempel-1
+  orbit Sun
+  semiMajor 3.14au
+  eccentricity 0.517
+  inclination 10.5deg
+  phase 130deg
+  radius 3km
+  color #737b84
+  groups asteroid-belt deep-space
+
+object comet Wild-2
+  orbit Sun
+  semiMajor 3.45au
+  eccentricity 0.54
+  inclination 3.2deg
+  phase 165deg
+  radius 2.5km
+  color #78838d
+  groups asteroid-belt deep-space
+
+object comet Churyumov-Gerasimenko
+  orbit Sun
+  semiMajor 3.46au
+  eccentricity 0.641
+  inclination 7deg
+  phase 205deg
+  radius 2km
+  color #6e757d
+  groups asteroid-belt deep-space
+
+object comet Borrelly
+  orbit Sun
+  semiMajor 3.61au
+  eccentricity 0.624
+  inclination 30.3deg
+  phase 245deg
+  radius 2.4km
+  color #6d7780
+  groups deep-space
+
+object comet Hyakutake
+  orbit Sun
+  semiMajor 1700au
+  eccentricity 0.9999
+  inclination 124.9deg
+  phase 290deg
+  radius 2km
+  color #8fa3b0
+  groups deep-space
+
+object phenomenon Heliosphere
+  free 120au
+  inner 0.1au
+  outer 120au
+  kind stellar-wind-bubble
+  color #88a7c8
+  groups deep-space
+  info
+    summary "Region dominated by the solar wind and heliospheric magnetic field."
+
+object phenomenon Termination-Shock
+  free 90au
+  inner 84au
+  outer 94au
+  kind shock-front
+  color #6c95bd
+  groups deep-space
+
+object phenomenon Heliopause
+  free 122au
+  inner 120au
+  outer 125au
+  kind boundary
+  color #5f84b1
+  groups deep-space
+
+object phenomenon Oort-Cloud
+  free "far outer cloud"
+  inner 2000au
+  outer 100000au
+  kind comet-reservoir
+  color #4f6489
+  groups deep-space
+
+object structure ISS
+  orbit Earth
+  distance 6771km
+  phase 20deg
+  kind station
+  color #d9d9d9
+  groups artificial inner-system
+
+object structure Hubble
+  orbit Earth
+  distance 6928km
+  phase 75deg
+  kind telescope
+  color #b9c5d6
+  groups artificial inner-system
+
+object structure Tiangong
+  orbit Earth
+  distance 6790km
+  phase 125deg
+  kind station
+  color #c9d2de
+  groups artificial inner-system
+
+object structure GPS-Constellation
+  orbit Earth
+  distance 26560km
+  phase 180deg
+  kind navigation-network
+  color #d0d7e5
+  groups artificial inner-system
+
+object structure SOHO
+  at Earth:L1
+  kind observatory
+  color #f0d28d
+  groups artificial inner-system
+
+object structure DSCOVR
+  at Earth:L1
+  kind monitoring-probe
+  color #dcb87e
+  groups artificial inner-system
+
+object structure JWST
+  at Earth:L2
+  kind telescope
+  color #d9b86c
+  groups artificial inner-system
+
+object structure LRO
+  orbit Moon
+  distance 1837km
+  phase 240deg
+  kind orbiter
+  groups artificial inner-system
+
+object structure ChangE4
+  surface Moon
+  kind lander
+  groups artificial inner-system
+
+object structure Apollo-11-LM
+  surface Moon
+  kind historic-lander
+  groups artificial inner-system
+
+object structure MRO
+  orbit Mars
+  distance 3726km
+  phase 280deg
+  kind orbiter
+  groups artificial inner-system
+
+object structure Curiosity
+  surface Mars
+  kind rover
+  groups artificial inner-system
+
+object structure Perseverance
+  surface Mars
+  kind rover
+  groups artificial inner-system
+
+object structure Ingenuity
+  surface Mars
+  kind rotorcraft
+  groups artificial inner-system
+
+object structure Dawn
+  orbit Ceres
+  distance 1385km
+  phase 30deg
+  kind probe
+  groups artificial asteroid-belt
+
+object structure Psyche-Mission
+  orbit Psyche
+  distance 500km
+  phase 70deg
+  kind probe
+  groups artificial asteroid-belt
+
+object structure Juno-Probe
+  orbit Jupiter
+  distance 4200000km
+  eccentricity 0.95
+  phase 120deg
+  kind probe
+  groups artificial giant-systems
+
+object structure Galileo-Orbiter
+  orbit Jupiter
+  distance 2000000km
+  eccentricity 0.6
+  phase 170deg
+  kind historic-orbiter
+  groups artificial giant-systems
+
+object structure Cassini
+  orbit Saturn
+  distance 800000km
+  eccentricity 0.3
+  phase 215deg
+  kind historic-orbiter
+  groups artificial giant-systems
+
+object structure Huygens
+  surface Titan
+  kind probe
+  groups artificial giant-systems
+
+object structure Voyager-1
+  free 165au
+  kind outbound-probe
+  color #b8c5d4
+  groups artificial deep-space
+
+object structure Voyager-2
+  free 138au
+  kind outbound-probe
+  color #aebed2
+  groups artificial deep-space
+
+object structure Pioneer-10
+  free 135au
+  kind outbound-probe
+  color #a7b6ca
+  groups artificial deep-space
+
+object structure Pioneer-11
+  free 111au
+  kind outbound-probe
+  color #a4b2c4
+  groups artificial deep-space
+
+object structure New-Horizons
+  free 61au
+  kind outbound-probe
+  color #c8d0da
+  groups artificial kuiper-region deep-space
+
+object structure Rosetta
+  orbit Churyumov-Gerasimenko
+  distance 20km
+  phase 310deg
+  kind historic-orbiter
+  groups artificial deep-space
+
+object structure Philae
+  surface Churyumov-Gerasimenko
+  kind lander
+  groups artificial deep-space
