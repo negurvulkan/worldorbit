@@ -95,7 +95,7 @@ object planet Mercury
   mass 0.0553me
   temperature 440K
   color #b7a38a
-  image "/examples/assets/solar-system-textures/mercury.jpg"
+  image "../examples/assets/solar-system-textures/mercury.jpg"
   groups inner-system
 
 object planet Venus
@@ -109,7 +109,7 @@ object planet Venus
   temperature 737K
   atmosphere carbon-dioxide
   color #d7b06d
-  image "/examples/assets/solar-system-textures/venus.jpg"
+  image "../examples/assets/solar-system-textures/venus.jpg"
   groups inner-system
 
 object planet Earth
@@ -123,7 +123,7 @@ object planet Earth
   temperature 288K
   atmosphere nitrogen-oxygen
   color #4d87c7
-  image "/examples/assets/solar-system-textures/earth.jpg"
+  image "../examples/assets/solar-system-textures/earth.jpg"
   groups inner-system
   climate
     meanSurfaceTemperature 288K
@@ -156,7 +156,7 @@ object planet Mars
   temperature 210K
   atmosphere carbon-dioxide
   color #c96c4a
-  image "/examples/assets/solar-system-textures/mars.jpg"
+  image "../examples/assets/solar-system-textures/mars.jpg"
   groups inner-system
 
 object moon Phobos
@@ -331,7 +331,7 @@ object planet Jupiter
   temperature 165K
   atmosphere hydrogen-helium
   color #c9a978
-  image "/examples/assets/solar-system-textures/jupiter.jpg"
+  image "../examples/assets/solar-system-textures/jupiter.jpg"
   groups giant-systems
 
 object ring Jupiter-Ring
@@ -460,7 +460,7 @@ object planet Saturn
   temperature 134K
   atmosphere hydrogen-helium
   color #d7bf84
-  image "/examples/assets/solar-system-textures/saturn.jpg"
+  image "../examples/assets/solar-system-textures/saturn.jpg"
   groups giant-systems
 
 object ring Saturn-Rings
@@ -606,7 +606,7 @@ object planet Uranus
   temperature 76K
   atmosphere hydrogen-helium-methane
   color #9dd3df
-  image "/examples/assets/solar-system-textures/uranus.jpg"
+  image "../examples/assets/solar-system-textures/uranus.jpg"
   groups giant-systems
 
 object ring Uranus-Rings
@@ -754,7 +754,7 @@ object planet Neptune
   temperature 72K
   atmosphere hydrogen-helium-methane
   color #567fd1
-  image "/examples/assets/solar-system-textures/neptune.jpg"
+  image "../examples/assets/solar-system-textures/neptune.jpg"
   groups giant-systems
 
 object ring Neptune-Rings
