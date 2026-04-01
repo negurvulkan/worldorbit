@@ -1,0 +1,57 @@
+schema 2.5
+
+system Iyath
+  title "Iyath Snapshot"
+  epoch "JY-0001.0"
+  referencePlane ecliptic
+
+defaults
+  view perspective
+  scale presentation
+  preset atlas-card
+
+viewpoint eclipse
+  label "Perspective Eclipse"
+  projection perspective
+  focus Naar
+  events naar-eclipse
+  camera
+    azimuth 36
+    elevation 22
+    distance 5
+  layers background guides orbits-back events objects labels metadata
+
+object star Iyath
+  mass 1sol
+
+object planet Naar
+  orbit Iyath
+  semiMajor 0.92au
+  phase 84deg
+  epoch "JY-0001.0"
+  referencePlane ecliptic
+
+object moon Seyra
+  orbit Naar
+  distance 310000km
+  phase 130deg
+
+event naar-eclipse
+  kind solar-eclipse
+  label "Naar Eclipse"
+  target Naar
+  participants Iyath Naar Seyra
+  epoch "JY-0001.0"
+  referencePlane ecliptic
+
+  positions
+    pose Naar
+      orbit Iyath
+      semiMajor 0.92au
+      phase 90deg
+
+    pose Seyra
+      orbit Naar
+      distance 310000km
+      phase 90deg
+      epoch "JY-0001.0"

@@ -1,0 +1,35 @@
+schema 2.5
+
+system Minerva
+  title "Minerva"
+  epoch "JY-0100.0"
+  referencePlane ecliptic
+
+defaults
+  view perspective
+  scale presentation
+  preset atlas-card
+
+viewpoint overview
+  label "Overview"
+  projection perspective
+  camera
+    azimuth 28
+    elevation 20
+    distance 5
+
+object star Primary
+  mass 1sol
+
+object planet Home
+  orbit Primary
+  semiMajor 1au
+  phase 24deg
+  period 1y
+  atmosphere nitrogen-oxygen
+
+object moon Lantern
+  orbit Home
+  distance 410000km
+  phase 90deg
+  period 24d

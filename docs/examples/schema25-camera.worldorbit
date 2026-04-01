@@ -1,0 +1,41 @@
+schema 2.5
+
+system Helion
+  title "Helion"
+  description "Small reference system showing Schema 2.5 viewpoint projections."
+  epoch "JY-0214.0"
+  referencePlane ecliptic
+
+defaults
+  view orthographic
+  scale presentation
+  preset atlas-card
+
+viewpoint ortho-overview
+  label "Orthographic Overview"
+  projection orthographic
+  camera
+    azimuth 30
+    elevation 20
+
+viewpoint perspective-close
+  label "Perspective Close"
+  projection perspective
+  focus Aster
+  camera
+    azimuth 42
+    elevation 24
+    distance 6
+
+object star Helion
+  mass 1sol
+
+object planet Aster
+  orbit Helion
+  semiMajor 0.86au
+  phase 40deg
+
+object planet Berys
+  orbit Helion
+  semiMajor 1.62au
+  phase 170deg
