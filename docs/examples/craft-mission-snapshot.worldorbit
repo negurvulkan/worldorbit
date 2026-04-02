@@ -28,33 +28,46 @@ object craft Courier
 
 trajectory courier-transfer
   craft Courier
-  from DeepSpace
-  to Naar
+  summary "Snapshot-ready courier approach with one assist and final orbital capture."
 
-  maneuver departure
-    deltaV 1.8km/s
+  segment departure
+    kind departure
+    from Iyath
+    to Naar
+    duration 220d
+    deltaV 1.8km
 
-  maneuver flyby
+  segment stellar-flyby
+    kind flyby
+    from Iyath
+    to Naar
     assist Iyath
     around Iyath
     periapsis 420000km
     turnAngle 13deg
+    duration 140d
 
-  maneuver capture
+  segment capture
+    kind capture
     to Naar
-    deltaV 0.6km/s
+    around Naar
+    duration 28d
+    deltaV 0.6km
+    maneuver capture-burn
+      kind braking-burn
+      deltaV 0.11km
+      duration 14min
 
 event courier-arrival
   kind transfer-window
   label "Courier Arrival"
   target Courier
-  participants Iyath Naar Seyra
+  participants Naar Seyra Courier
   trajectory courier-transfer
 
   positions
     pose Courier
       free 9au
-      phase 0deg
 
     pose Naar
       orbit Iyath

@@ -24,25 +24,54 @@ object craft Scout
 
 trajectory scout-assist
   craft Scout
-  from OuterSystem
-  to Naar
+  summary "Demonstrates a stellar swing-by before local planetary insertion."
 
-  maneuver approach
-    deltaV 1.2km/s
+  segment approach
+    kind departure
+    from Iyath
+    to Naar
+    duration 190d
+    deltaV 1.2km
+    notes inbound-transfer
 
-  maneuver flyby
+  segment stellar-flyby
+    kind flyby
+    from Iyath
+    to Naar
     assist Iyath
     around Iyath
     periapsis 360000km
     turnAngle 14deg
-    notes "capture window"
+    duration 75d
+    notes capture-window
 
-  maneuver insertion
+  segment insertion
+    kind capture
     to Naar
-    deltaV 0.7km/s
+    around Naar
+    duration 24d
+    deltaV 0.7km
+    maneuver braking-burn
+      kind orbital-insertion
+      deltaV 0.14km
+      duration 16min
 
 event assist-window
   kind gravity-assist
   target Scout
-  participants Iyath Naar
+  participants Naar Scout
   trajectory scout-assist
+  epoch "JY-0004.3"
+
+  positions
+    pose Naar
+      orbit Iyath
+      semiMajor 1.18au
+      phase 74deg
+
+    pose Scout
+      orbit Naar
+      distance 26000km
+      phase 48deg
+      segment insertion
+      maneuver braking-burn

@@ -73,6 +73,9 @@ event homeworld-eclipse
   referencePlane ecliptic
 
   positions
+    pose Primary
+      free 0au
+
     pose Homeworld
       orbit Primary
       semiMajor 1au

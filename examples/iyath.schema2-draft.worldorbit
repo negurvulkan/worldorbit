@@ -1,4 +1,4 @@
-schema 2.0-draft
+schema 2.0
 
 system Iyath
   title "Iyath System"
@@ -33,12 +33,11 @@ object planet Naar
   eccentricity 0.08
   period 412d
   angle 28deg
-  inclination 24deg
-  phase 42deg
   class terrestrial
   tags habitable homeworld
   image /demo/assets/naar-map.png
   radius 1.06re
+  mass 1.04me
   temperature 289
   albedo 0.34
   atmosphere nitrogen-oxygen
@@ -50,10 +49,7 @@ object planet Naar
 object moon Leth
   orbit Naar
   distance 220000km
-  period 18d
   angle 34deg
-  inclination 18deg
-  phase 210deg
   radius 0.27re
   albedo 0.21
 
@@ -62,8 +58,6 @@ object belt Ember-Belt
   semiMajor 2.7au
   eccentricity 0.16
   angle 14deg
-  inclination 11deg
-  phase 166deg
   tags mining debris
   inner 2.45au
   outer 2.95au
@@ -72,7 +66,6 @@ object ring Dawn-Ring
   orbit Naar
   distance 185000km
   angle 22deg
-  inclination 18deg
   inner 120000km
   outer 190000km
 
@@ -93,7 +86,5 @@ object phenomenon Helioscar
   semiMajor 4.9au
   eccentricity 0.2
   angle 36deg
-  inclination 9deg
-  phase 228deg
   kind anomaly
   temperature 620

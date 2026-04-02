@@ -46,6 +46,7 @@ object planet Naar
   phase 42deg
   period 412d
   radius 1.06re
+  mass 1.04me
   atmosphere nitrogen-oxygen
   groups inner-system
 
@@ -97,6 +98,9 @@ event naar-eclipse
   referencePlane ecliptic
 
   positions
+    pose Iyath
+      free 0au
+
     pose Naar
       orbit Iyath
       semiMajor 1.18au

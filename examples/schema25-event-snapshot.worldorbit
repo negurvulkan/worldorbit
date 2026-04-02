@@ -45,6 +45,9 @@ event naar-eclipse
   referencePlane ecliptic
 
   positions
+    pose Iyath
+      free 0au
+
     pose Naar
       orbit Iyath
       semiMajor 0.92au

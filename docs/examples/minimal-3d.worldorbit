@@ -26,6 +26,7 @@ object planet Home
   semiMajor 1au
   phase 24deg
   period 1y
+  mass 1me
   atmosphere nitrogen-oxygen
 
 object moon Lantern

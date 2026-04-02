@@ -24,24 +24,54 @@ object craft Courier
 
 trajectory courier-transfer
   craft Courier
-  from DeepSpace
-  to Astera
+  summary "Inbound courier run from the outer system into the Helion inner worlds."
 
-  maneuver departure
-    deltaV 1.7km/s
+  segment departure
+    kind departure
+    from Helion
+    to Astera
+    duration 140d
+    deltaV 1.7km
+    notes transfer-window
 
-  maneuver flyby
+  segment heliocentric-flyby
+    kind flyby
+    from Helion
+    to Astera
     assist Helion
     around Helion
     periapsis 500000km
     turnAngle 10deg
+    duration 210d
+    notes gravity-assist
 
-  maneuver capture
+  segment capture
+    kind capture
     to Astera
-    deltaV 0.5km/s
+    around Astera
+    duration 30d
+    deltaV 0.5km
+    maneuver insertion-burn
+      kind braking-burn
+      deltaV 0.12km
+      duration 18min
 
 event courier-window
   kind transfer-window
   target Courier
-  participants Helion Astera
+  participants Astera Courier
   trajectory courier-transfer
+  epoch "JY-0002.4"
+
+  positions
+    pose Astera
+      orbit Helion
+      semiMajor 0.8au
+      phase 132deg
+
+    pose Courier
+      orbit Astera
+      distance 18000km
+      phase 28deg
+      segment capture
+      maneuver insertion-burn

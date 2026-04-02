@@ -2,7 +2,7 @@ schema 3.0
 
 system Galactic-Atlas
   title "Galactic Atlas Studio"
-description "Showcasing Schema 3.0 with new units, mission trajectories, and galactic phenomena."
+  description "Showcasing Schema 3.0 with mission trajectories and galactic phenomena."
 
 defaults
   view orthographic
@@ -12,6 +12,7 @@ defaults
 
 viewpoint galactic-overview
   label "Milky Way Galaxy"
+  focus Milky-Way
   projection orthographic
   camera
     azimuth 28
@@ -19,7 +20,7 @@ viewpoint galactic-overview
 
 viewpoint solar-neighbor
   label "Solar Neighborhood"
-  focus Sol
+  focus Sun
   projection perspective
   zoom 4.0
   camera
@@ -29,18 +30,13 @@ viewpoint solar-neighbor
 
 object phenomenon Milky-Way
   kind galaxy
-  radius 52850ly
   color #d0d8ff
   info
     type "Spiral Galaxy"
-    stars "100–400 billion"
-
-object system Sol
-  at Milky-Way:orion-arm
-  title "Solar System"
+    stars "100-400 billion"
+    radius "52850ly"
 
 object star Sun
-  on Sol
   radius 1sol
   mass 1sol
   temperature 5778K
@@ -51,7 +47,7 @@ object planet Earth
   semiMajor 1au
   radius 1re
   mass 1me
-  atmosphere "nitrogen-oxygen"
+  atmosphere nitrogen-oxygen
 
 object phenomenon Sgr-A-Star
   at Milky-Way:center
@@ -62,8 +58,9 @@ object phenomenon Sgr-A-Star
 object phenomenon Orion-Nebula
   free 1344ly
   kind nebula
-  radius 12ly
   color #ffb0b0
+  info
+    radius "12ly"
 
 object craft Courier
   free 9au
@@ -71,24 +68,52 @@ object craft Courier
 
 trajectory courier-transfer
   craft Courier
-  from DeepSpace
-  to Naar
+  summary "Studio starter trajectory showing declarative mission segments."
 
-  maneuver departure
-    deltaV 1.8km/s
+  segment departure
+    kind departure
+    from Sun
+    to Earth
+    duration 120d
+    deltaV 1.8km
 
-  maneuver flyby
-    assist Iyath
-    around Iyath
+  segment stellar-flyby
+    kind flyby
+    from Sun
+    to Earth
+    assist Sun
+    around Sun
     periapsis 420000km
     turnAngle 13deg
+    duration 80d
 
-  maneuver capture
-    to Naar
-    deltaV 0.6km/s
+  segment capture
+    kind capture
+    to Earth
+    around Earth
+    duration 20d
+    deltaV 0.6km
+    maneuver insertion-burn
+      kind braking-burn
+      deltaV 0.09km
+      duration 12min
 
 event courier-arrival
   kind transfer-window
   target Courier
-  participants Iyath Naar
+  participants Earth Courier
   trajectory courier-transfer
+  epoch "JY-2403.07"
+
+  positions
+    pose Earth
+      orbit Sun
+      semiMajor 1au
+      phase 196deg
+
+    pose Courier
+      orbit Earth
+      distance 24000km
+      phase 34deg
+      segment capture
+      maneuver insertion-burn
