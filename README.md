@@ -29,7 +29,7 @@ WorldOrbit is not intended to be a real-world astronomy simulator or a high-prec
 ## Quick Example
 
 ```worldorbit
-schema 3.0
+schema 3.1
 
 system Iyath
   title "Iyath System"
@@ -138,10 +138,10 @@ For direct browser usage, use the browser bundle:
       import {
         createInteractiveViewer,
         loadWorldOrbitSource
-      } from "https://unpkg.com/worldorbit@4.0.0/dist/unpkg/worldorbit.esm.js";
+      } from "https://unpkg.com/worldorbit@5.0.0/dist/unpkg/worldorbit.esm.js";
 
       const source = `
-schema 3.0
+schema 3.1
 
 system Iyath
   epoch "JY-0001.0"
@@ -199,7 +199,7 @@ The editor is optional. The core format remains text-first.
 New atlas authoring should start with:
 
 ```worldorbit
-schema 3.0
+schema 3.1
 ```
 
 Example:
@@ -279,20 +279,19 @@ event naar-eclipse
       phase 90deg
 ```
 
-## What's New In Schema 3.0
+## What's New In Schema 3.1
 
-Schema `3.0` keeps Schema `2.6` fully readable and expands WorldOrbit from orbit-only worldbuilding into declarative mission and trajectory authoring.
+Schema `3.1` keeps Schema `3.0` and Schema `2.6` fully readable and expands WorldOrbit from declarative mission authoring into visible mission-curve rendering.
 
 It adds:
 
-* a canonical `craft` object type for ships, probes, and stations
-* a declarative `trajectory` top-level block for reusable mission paths
-* trajectory segments for transfers, departures, flybys, captures, escapes, and stationkeeping
-* swing-by and gravity-assist metadata such as `assist`, `turnAngle`, `periapsis`, `deltaV`, and `energy`
-* explicit links between `craft`, `trajectory`, `event`, and `pose` snapshots for curated mission states
-* a solver-friendly data model without forcing the core parser to perform numerical simulation
+* visible `trajectory` rendering in 2D and 3D scenes
+* official `illustrative`, `solver`, and `auto` trajectory render modes
+* trajectory waypoint labels, dates, marker controls, and per-segment render hints
+* official trajectory sampling APIs through `worldorbit/core/solver`
+* continued support for declarative `craft`, `trajectory`, `event`, and `pose` mission authoring
 
-Schema `3.0` still does **not** add a built-in orbital solver, continuous XYZ path authoring, meshes, materials, quaternions, or lighting.
+Schema `3.1` still does **not** add a built-in N-body simulator, NASA-grade ephemerides, continuous freeform XYZ authoring, or hard astrophysics requirements.
 
 Schema `2.6` remains the direct compatibility base, and older documents continue to load through the same parser and normalization pipeline.
 
@@ -419,7 +418,7 @@ const atlasDocument = upgradeDocumentToV2(stable.document, {
   preset: "atlas-card",
 });
 
-const atlasSource = formatDocument(atlasDocument, { schema: "3.0" });
+const atlasSource = formatDocument(atlasDocument, { schema: "3.1" });
 const loaded = loadWorldOrbitSource(atlasSource);
 const parsedAtlas = parseWorldOrbitAtlas(atlasSource);
 const scene = renderDocumentToScene(loaded.document, {
@@ -433,7 +432,7 @@ const scene = renderDocumentToScene(loaded.document, {
 
 ## Viewer Capabilities
 
-Viewer features in `v4.0.0` include:
+Viewer features in `v5.0.0` include:
 
 * scene-based SVG rendering
 * renderer-neutral spatial scenes through `renderDocumentToSpatialScene(...)`
@@ -447,7 +446,7 @@ Viewer features in `v4.0.0` include:
 * viewpoints, filters, search, and bookmark capture
 * deep-linkable atlas state
 * embeddable viewer custom elements
-* semantic group filters, relation and event overlays, active event scenes, Schema 3.0 camera metadata, mission trajectory overlays, and event/object reference-context detail metadata
+* semantic group filters, relation and event overlays, active event scenes, Schema 3.1 camera and trajectory metadata, visible mission curves, waypoint labels, and event/object reference-context detail metadata
 
 ## Markdown Integration
 

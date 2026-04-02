@@ -32001,7 +32001,8 @@ void main() {
     const labels = createSceneLabels(objects, width, height, scaleModel.labelMultiplier);
     const relations = createSceneRelations(document2, objects);
     const events = createSceneEvents(document2.events ?? [], objects, activeEventId);
-    const layers = createSceneLayers(orbitVisuals, relations, events, leaders, objects, labels);
+    const trajectories = createSceneTrajectories(document2, objects, events, options);
+    const layers = createSceneLayers(orbitVisuals, trajectories, relations, events, leaders, objects, labels);
     const groups = createSceneGroups(objects, orbitVisuals, leaders, labels, relationships, scaleModel.labelMultiplier);
     const semanticGroups = createSceneSemanticGroups(document2, objects);
     const viewpoints = createSceneViewpoints(document2, schemaProjection, frame.preset, relationships, objectMap);
@@ -32041,6 +32042,7 @@ void main() {
       viewpoints,
       events,
       activeEventId,
+      trajectories,
       objects,
       orbitVisuals,
       relations,
@@ -32497,7 +32499,7 @@ void main() {
       }
     }
   }
-  function createSceneLayers(orbitVisuals, relations, events, leaders, objects, labels) {
+  function createSceneLayers(orbitVisuals, trajectories, relations, events, leaders, objects, labels) {
     const backOrbitIds = orbitVisuals.filter((visual) => !visual.hidden && Boolean(visual.backArcPath)).map((visual) => visual.renderId);
     const frontOrbitIds = orbitVisuals.filter((visual) => !visual.hidden).map((visual) => visual.renderId);
     return [
@@ -32508,6 +32510,13 @@ void main() {
       },
       { id: "orbits-back", renderIds: backOrbitIds },
       { id: "orbits-front", renderIds: frontOrbitIds },
+      {
+        id: "trajectories",
+        renderIds: trajectories.filter((trajectory) => !trajectory.hidden).flatMap((trajectory) => [
+          trajectory.renderId,
+          ...trajectory.waypoints.filter((waypoint) => !waypoint.hidden).map((waypoint) => waypoint.renderId)
+        ])
+      },
       {
         id: "relations",
         renderIds: relations.filter((relation) => !relation.hidden).map((relation) => relation.renderId)
@@ -32632,6 +32641,192 @@ void main() {
         hidden: event.hidden || positions.length === 0 || positions.every((object) => object.hidden) || activeEventId !== null && event.id !== activeEventId
       };
     }).sort((left, right) => left.event.id.localeCompare(right.event.id));
+  }
+  function createSceneTrajectories(document2, objects, events, options) {
+    const objectMap = new Map(objects.map((object) => [object.objectId, object]));
+    return document2.trajectories.map((trajectory) => createSceneTrajectory(trajectory, objectMap, events, options)).sort((left, right) => left.trajectoryId.localeCompare(right.trajectoryId));
+  }
+  function createSceneTrajectory(trajectory, objectMap, events, options) {
+    const craftObject = trajectory.craftObjectId ? objectMap.get(trajectory.craftObjectId) ?? null : null;
+    const mode = resolveTrajectoryMode(trajectory, options);
+    const stroke = trajectory.stroke ?? trajectory.color ?? craftObject?.fillColor ?? null;
+    const strokeWidth = trajectory.strokeWidth ?? 2.4;
+    const showWaypoints = options.showTrajectoryWaypoints ?? trajectory.showWaypoints ?? true;
+    const labelMode = trajectory.labelMode ?? (options.showTrajectoryLabels === false ? "hidden" : "waypoint");
+    const pathParts = [];
+    const waypoints = [];
+    const objectIds = /* @__PURE__ */ new Set();
+    let lastAnchor = craftObject;
+    if (craftObject) {
+      objectIds.add(craftObject.objectId);
+    }
+    trajectory.segments.forEach((segment, index) => {
+      const geometry = buildTrajectorySegmentGeometry(trajectory, segment, index, mode, objectMap, lastAnchor, showWaypoints);
+      if (geometry.path) {
+        pathParts.push(geometry.path);
+      }
+      geometry.objectIds.forEach((objectId) => objectIds.add(objectId));
+      waypoints.push(...geometry.waypoints);
+      lastAnchor = geometry.lastAnchor ?? lastAnchor;
+    });
+    for (const event of events.filter((entry) => entry.event.trajectoryId === trajectory.id)) {
+      const eventObject = event.targetObjectId ? objectMap.get(event.targetObjectId) ?? null : event.objectIds.map((objectId) => objectMap.get(objectId) ?? null).find(Boolean) ?? null;
+      if (!eventObject) {
+        continue;
+      }
+      waypoints.push({
+        renderId: `${createRenderId(`${trajectory.id}-${event.eventId}`)}-waypoint`,
+        trajectoryId: trajectory.id,
+        segmentId: null,
+        maneuverId: null,
+        objectId: eventObject.objectId,
+        x: eventObject.x,
+        y: eventObject.y,
+        label: event.event.label ?? event.event.id,
+        dateLabel: event.event.epoch ?? null,
+        hidden: trajectory.hidden || event.hidden || !showWaypoints
+      });
+      objectIds.add(eventObject.objectId);
+    }
+    return {
+      renderId: `${createRenderId(trajectory.id)}-trajectory`,
+      trajectoryId: trajectory.id,
+      trajectory,
+      craftObjectId: trajectory.craftObjectId,
+      mode,
+      path: pathParts.join(" "),
+      stroke,
+      strokeWidth,
+      marker: trajectory.marker ?? "arrow",
+      labelMode,
+      showWaypoints,
+      objectIds: [...objectIds],
+      waypoints,
+      hidden: trajectory.hidden || pathParts.length === 0
+    };
+  }
+  function buildTrajectorySegmentGeometry(trajectory, segment, segmentIndex, mode, objectMap, fallbackStart, showWaypoints) {
+    const start = resolveTrajectoryObject(segment.fromObjectId, objectMap) ?? fallbackStart;
+    const assist = resolveTrajectoryObject(segment.assist?.objectId ?? segment.aroundObjectId ?? null, objectMap);
+    const end = resolveTrajectoryObject(segment.toObjectId, objectMap) ?? resolveTrajectoryObject(segment.aroundObjectId, objectMap) ?? assist ?? start;
+    if (!start || !end) {
+      return {
+        path: "",
+        objectIds: [],
+        waypoints: [],
+        lastAnchor: fallbackStart
+      };
+    }
+    const objectIds = [start.objectId, end.objectId];
+    if (assist) {
+      objectIds.push(assist.objectId);
+    }
+    const hidden = trajectory.hidden || segment.renderHidden === true || start.hidden || end.hidden;
+    const waypoints = [];
+    const label = segment.waypointLabel ?? segment.label ?? humanizeIdentifier(segment.id);
+    const dateLabel = segment.waypointDate ?? segment.epoch ?? null;
+    if (showWaypoints) {
+      if (segmentIndex === 0) {
+        waypoints.push(createTrajectoryWaypoint(trajectory.id, segment.id, null, start, start.label, null, hidden));
+      }
+      if (assist && assist.objectId !== start.objectId && assist.objectId !== end.objectId) {
+        waypoints.push(createTrajectoryWaypoint(trajectory.id, segment.id, null, assist, label, dateLabel, hidden));
+      }
+      waypoints.push(createTrajectoryWaypoint(trajectory.id, segment.id, null, end, label, dateLabel, hidden));
+    }
+    const samples = mode === "solver" ? sampleQuadraticPoints(start, resolveTrajectoryControlPoint(start, end, assist, segmentIndex), end, Math.max(10, Math.round((segment.sampleDensity ?? 1) * 14))) : null;
+    const control = resolveTrajectoryControlPoint(start, end, assist, segmentIndex);
+    const path = mode === "solver" ? pointsToPath(samples ?? [start, end]) : `M ${formatPathNumber(start.x)} ${formatPathNumber(start.y)} Q ${formatPathNumber(control.x)} ${formatPathNumber(control.y)} ${formatPathNumber(end.x)} ${formatPathNumber(end.y)}`;
+    segment.maneuvers.forEach((maneuver, maneuverIndex) => {
+      if (!showWaypoints) {
+        return;
+      }
+      const point = samplePointOnQuadratic(start, control, end, (maneuverIndex + 1) / (segment.maneuvers.length + 1));
+      waypoints.push({
+        renderId: `${createRenderId(`${trajectory.id}-${segment.id}-${maneuver.id}`)}-waypoint`,
+        trajectoryId: trajectory.id,
+        segmentId: segment.id,
+        maneuverId: maneuver.id,
+        objectId: null,
+        x: point.x,
+        y: point.y,
+        label: maneuver.label ?? maneuver.kind,
+        dateLabel: maneuver.epoch ?? null,
+        hidden
+      });
+    });
+    return {
+      path,
+      objectIds: [...new Set(objectIds)],
+      waypoints,
+      lastAnchor: end
+    };
+  }
+  function createTrajectoryWaypoint(trajectoryId, segmentId, maneuverId, object, label, dateLabel, hidden) {
+    return {
+      renderId: `${createRenderId(`${trajectoryId}-${segmentId ?? object.objectId}-${maneuverId ?? object.objectId}`)}-waypoint`,
+      trajectoryId,
+      segmentId,
+      maneuverId,
+      objectId: object.objectId,
+      x: object.x,
+      y: object.y,
+      label,
+      dateLabel,
+      hidden
+    };
+  }
+  function resolveTrajectoryMode(trajectory, options) {
+    const requested = options.trajectoryMode ?? trajectory.renderMode ?? "auto";
+    if (requested !== "auto") {
+      return requested;
+    }
+    const segmentCount = trajectory.segments.filter((segment) => segment.fromObjectId || segment.toObjectId || segment.assist?.objectId || segment.aroundObjectId).length;
+    return segmentCount > 0 ? "solver" : "illustrative";
+  }
+  function resolveTrajectoryObject(objectId, objectMap) {
+    return objectId ? objectMap.get(objectId) ?? null : null;
+  }
+  function resolveTrajectoryControlPoint(start, end, assist, segmentIndex) {
+    if (assist) {
+      return {
+        x: assist.x,
+        y: assist.y
+      };
+    }
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = Math.max(Math.hypot(dx, dy), 1);
+    const offset = Math.min(Math.max(length * 0.18, 26), 120) * (segmentIndex % 2 === 0 ? 1 : -1);
+    const normalX = -dy / length;
+    const normalY = dx / length;
+    return {
+      x: (start.x + end.x) / 2 + normalX * offset,
+      y: (start.y + end.y) / 2 + normalY * offset
+    };
+  }
+  function sampleQuadraticPoints(start, control, end, count) {
+    const samples = [];
+    for (let index = 0; index <= count; index += 1) {
+      samples.push(samplePointOnQuadratic(start, control, end, index / count));
+    }
+    return samples;
+  }
+  function samplePointOnQuadratic(start, control, end, t) {
+    const inverse = 1 - t;
+    return {
+      x: inverse * inverse * start.x + 2 * inverse * t * control.x + t * t * end.x,
+      y: inverse * inverse * start.y + 2 * inverse * t * control.y + t * t * end.y
+    };
+  }
+  function pointsToPath(points) {
+    if (points.length === 0) {
+      return "";
+    }
+    return points.map((point, index) => `${index === 0 ? "M" : "L"} ${formatPathNumber(point.x)} ${formatPathNumber(point.y)}`).join(" ");
+  }
+  function formatPathNumber(value) {
+    return Number.isFinite(value) ? value.toFixed(2) : "0";
   }
   function createSceneViewpoints(document2, projection, preset, relationships, objectMap) {
     const generatedOverview = createGeneratedOverviewViewpoint(document2, projection, preset);
@@ -32892,7 +33087,7 @@ void main() {
         next["orbits-front"] = enabled;
         continue;
       }
-      if (rawLayer === "background" || rawLayer === "guides" || rawLayer === "orbits-back" || rawLayer === "orbits-front" || rawLayer === "relations" || rawLayer === "events" || rawLayer === "objects" || rawLayer === "labels" || rawLayer === "metadata") {
+      if (rawLayer === "background" || rawLayer === "guides" || rawLayer === "orbits-back" || rawLayer === "orbits-front" || rawLayer === "relations" || rawLayer === "events" || rawLayer === "objects" || rawLayer === "labels" || rawLayer === "metadata" || rawLayer === "trajectories") {
         next[rawLayer] = enabled;
       }
     }
@@ -33742,6 +33937,7 @@ void main() {
     const spatialObjects = scene.objects.map((entry) => createSpatialObject(entry, scene, sceneCenter, objectMap, orbitMap, scaleModel, positionCache, minimumMotionMetric));
     const spatialObjectMap = new Map(spatialObjects.map((object) => [object.objectId, object]));
     const spatialOrbits = scene.orbitVisuals.map((orbit) => createSpatialOrbit(orbit, spatialObjectMap, minimumMotionMetric, scene.activeEventId !== null));
+    const spatialTrajectories = scene.trajectories.map((trajectory) => createSpatialTrajectory(trajectory, spatialObjectMap));
     const focusTargets = spatialObjects.map((object) => ({
       objectId: object.objectId,
       center: { ...object.position },
@@ -33771,6 +33967,7 @@ void main() {
       timeFrozen: scene.activeEventId !== null,
       objects: spatialObjects,
       orbits: spatialOrbits,
+      trajectories: spatialTrajectories,
       focusTargets
     };
   }
@@ -33816,6 +34013,39 @@ void main() {
       bandThickness: orbit.bandThickness,
       hidden: orbit.hidden,
       motion: owner?.motion ?? createMotionModel(orbit.object, orbit, minimumMotionMetric, frozen)
+    };
+  }
+  function createSpatialTrajectory(trajectory, objectMap) {
+    const samples = samplePathPoints(trajectory.path).map((point) => ({
+      x: point.x,
+      y: 0,
+      z: point.y
+    }));
+    return {
+      trajectoryId: trajectory.trajectoryId,
+      trajectory: trajectory.trajectory,
+      craftObjectId: trajectory.craftObjectId,
+      mode: trajectory.mode,
+      stroke: trajectory.stroke,
+      strokeWidth: trajectory.strokeWidth,
+      marker: trajectory.marker,
+      labelMode: trajectory.labelMode,
+      showWaypoints: trajectory.showWaypoints,
+      samples,
+      waypoints: trajectory.waypoints.map((waypoint) => {
+        const object = waypoint.objectId ? objectMap.get(waypoint.objectId) ?? null : null;
+        return {
+          trajectoryId: waypoint.trajectoryId,
+          segmentId: waypoint.segmentId,
+          maneuverId: waypoint.maneuverId,
+          objectId: waypoint.objectId,
+          position: object ? { ...object.position } : { x: waypoint.x, y: 0, z: waypoint.y },
+          label: waypoint.label,
+          dateLabel: waypoint.dateLabel,
+          hidden: waypoint.hidden
+        };
+      }),
+      hidden: trajectory.hidden
     };
   }
   function resolveSpatialObjectPosition(entry, scene, sceneCenter, objectMap, orbitMap, cache) {
@@ -34101,6 +34331,25 @@ void main() {
   function degreesToRadians2(value) {
     return value * Math.PI / 180;
   }
+  function samplePathPoints(path) {
+    const matches = [...path.matchAll(/[MLQ]\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)(?:\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?))?(?:\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?))?/g)];
+    if (matches.length === 0) {
+      return [];
+    }
+    const points = [];
+    for (const match of matches) {
+      const command = match[0][0];
+      if (command === "M" || command === "L") {
+        points.push({ x: Number(match[1]), y: Number(match[2]) });
+        continue;
+      }
+      if (command === "Q") {
+        points.push({ x: Number(match[1]), y: Number(match[2]) });
+        points.push({ x: Number(match[5]), y: Number(match[6]) });
+      }
+    }
+    return points;
+  }
 
   // packages/core/dist/solver.js
   function createTrajectorySolverSnapshot(trajectory) {
@@ -34149,15 +34398,15 @@ void main() {
     }
     return {
       format: "worldorbit",
-      version: "3.0",
-      schemaVersion: "3.0",
+      version: "3.1",
+      schemaVersion: "3.1",
       sourceVersion: document2.version,
       theme: document2.theme ?? null,
       system,
       groups: structuredClone(document2.groups ?? []),
       relations: structuredClone(document2.relations ?? []),
       events: structuredClone(document2.events ?? []),
-      trajectories: [],
+      trajectories: structuredClone(document2.trajectories ?? []),
       objects: document2.objects.map(cloneWorldOrbitObject).map(normalizeLegacyCraftObject),
       diagnostics
     };
@@ -34576,7 +34825,7 @@ void main() {
     if (orbitFront !== void 0 || orbitBack !== void 0) {
       tokens.push(orbitFront !== false || orbitBack !== false ? "orbits" : "-orbits");
     }
-    for (const key of ["background", "guides", "relations", "events", "objects", "labels", "metadata"]) {
+    for (const key of ["background", "guides", "relations", "events", "objects", "trajectories", "labels", "metadata"]) {
       if (layers[key] !== void 0) {
         tokens.push(layers[key] ? key : `-${key}`);
       }
@@ -34629,7 +34878,7 @@ void main() {
   ];
   function formatDocument(document2, options = {}) {
     const schema = options.schema ?? "auto";
-    const useDraft = schema === "2.0" || schema === "2.1" || schema === "2.5" || schema === "2.6" || schema === "3.0" || schema === "2.0-draft" || document2.version === "2.0" || document2.version === "2.1" || document2.version === "2.5" || document2.version === "3.0" || document2.version === "2.6" || document2.version === "2.0-draft";
+    const useDraft = schema === "2.0" || schema === "2.1" || schema === "2.5" || schema === "2.6" || schema === "3.0" || schema === "3.1" || schema === "2.0-draft" || document2.version === "2.0" || document2.version === "2.1" || document2.version === "2.5" || document2.version === "3.0" || document2.version === "3.1" || document2.version === "2.6" || document2.version === "2.0-draft";
     if (useDraft) {
       if (schema === "2.0-draft") {
         const legacyDraftDocument = document2.version === "2.0-draft" ? document2 : document2.version === "2.0" || document2.version === "2.1" || document2.version === "2.5" || document2.version === "2.6" ? {
@@ -34639,12 +34888,12 @@ void main() {
         } : upgradeDocumentToDraftV2(document2);
         return formatDraftDocument(legacyDraftDocument);
       }
-      const atlasDocument = document2.version === "2.0" || document2.version === "2.1" || document2.version === "2.5" || document2.version === "2.6" || document2.version === "3.0" ? document2 : document2.version === "2.0-draft" ? {
+      const atlasDocument = document2.version === "2.0" || document2.version === "2.1" || document2.version === "2.5" || document2.version === "2.6" || document2.version === "3.0" || document2.version === "3.1" ? document2 : document2.version === "2.0-draft" ? {
         ...document2,
         version: "2.0",
         schemaVersion: "2.0"
       } : upgradeDocumentToV2(document2);
-      if ((schema === "2.0" || schema === "2.1" || schema === "2.5" || schema === "2.6" || schema === "3.0") && atlasDocument.version !== schema) {
+      if ((schema === "2.0" || schema === "2.1" || schema === "2.5" || schema === "2.6" || schema === "3.0" || schema === "3.1") && atlasDocument.version !== schema) {
         return formatAtlasDocument({
           ...atlasDocument,
           version: schema,
@@ -35104,6 +35353,24 @@ void main() {
     if (trajectory.color) {
       lines.push(`  color ${quoteIfNeeded(trajectory.color)}`);
     }
+    if (trajectory.renderMode) {
+      lines.push(`  renderMode ${trajectory.renderMode}`);
+    }
+    if (trajectory.stroke) {
+      lines.push(`  stroke ${quoteIfNeeded(trajectory.stroke)}`);
+    }
+    if (trajectory.strokeWidth !== null && trajectory.strokeWidth !== void 0) {
+      lines.push(`  strokeWidth ${trajectory.strokeWidth}`);
+    }
+    if (trajectory.marker) {
+      lines.push(`  marker ${quoteIfNeeded(trajectory.marker)}`);
+    }
+    if (trajectory.labelMode) {
+      lines.push(`  labelMode ${quoteIfNeeded(trajectory.labelMode)}`);
+    }
+    if (trajectory.showWaypoints !== null && trajectory.showWaypoints !== void 0) {
+      lines.push(`  showWaypoints ${trajectory.showWaypoints ? "true" : "false"}`);
+    }
     if (trajectory.hidden) {
       lines.push("  hidden true");
     }
@@ -35140,6 +35407,10 @@ void main() {
       ...formatOptionalUnit("phaseAngle", segment.phaseAngle),
       ...formatOptionalUnit("turnAngle", segment.turnAngle),
       ...formatOptionalUnit("energy", segment.energy),
+      ...segment.waypointLabel ? [`waypointLabel ${quoteIfNeeded(segment.waypointLabel)}`] : [],
+      ...segment.waypointDate ? [`waypointDate ${quoteIfNeeded(segment.waypointDate)}`] : [],
+      ...segment.renderHidden !== null && segment.renderHidden !== void 0 ? [`renderHidden ${segment.renderHidden ? "true" : "false"}`] : [],
+      ...segment.sampleDensity !== null && segment.sampleDensity !== void 0 ? [`sampleDensity ${segment.sampleDensity}`] : [],
       ...segment.notes.length > 0 ? [`notes ${segment.notes.map(quoteIfNeeded).join(" ")}`] : []
     ];
   }
@@ -35197,7 +35468,7 @@ void main() {
     if (orbitFront !== void 0 || orbitBack !== void 0) {
       tokens.push(orbitFront !== false || orbitBack !== false ? "orbits" : "-orbits");
     }
-    for (const key of ["background", "guides", "relations", "events", "objects", "labels", "metadata"]) {
+    for (const key of ["background", "guides", "relations", "events", "objects", "trajectories", "labels", "metadata"]) {
       if (layers[key] !== void 0) {
         tokens.push(layers[key] ? key : `-${key}`);
       }
@@ -36141,7 +36412,7 @@ void main() {
       handleSectionLine(section, indent, tokens, lineNumber);
     }
     if (!sawSchemaHeader) {
-      throw new WorldOrbitError('Missing required atlas schema header "schema 2.0" or "schema 3.0"');
+      throw new WorldOrbitError('Missing required atlas schema header "schema 2.0", "schema 3.0", or "schema 3.1"');
     }
     const objects = objectNodes.map((node) => normalizeDraftObject(node, sourceSchemaVersion, diagnostics));
     const normalizedEvents = events.map((event) => normalizeDraftEvent(event, eventPoseNodes.get(event.id) ?? []));
@@ -36184,11 +36455,11 @@ void main() {
     return document2;
   }
   function assertDraftSchemaHeader(tokens, line) {
-    if (tokens.length !== 2 || tokens[0].value.toLowerCase() !== "schema" || !["2.0-draft", "2.0", "2.1", "2.5", "2.6", "3.0"].includes(tokens[1].value.toLowerCase())) {
-      throw new WorldOrbitError('Expected atlas header "schema 2.0", "schema 2.1", "schema 2.5", "schema 2.6", "schema 3.0", or legacy "schema 2.0-draft"', line, tokens[0]?.column ?? 1);
+    if (tokens.length !== 2 || tokens[0].value.toLowerCase() !== "schema" || !["2.0-draft", "2.0", "2.1", "2.5", "2.6", "3.0", "3.1"].includes(tokens[1].value.toLowerCase())) {
+      throw new WorldOrbitError('Expected atlas header "schema 2.0", "schema 2.1", "schema 2.5", "schema 2.6", "schema 3.0", "schema 3.1", or legacy "schema 2.0-draft"', line, tokens[0]?.column ?? 1);
     }
     const version = tokens[1].value.toLowerCase();
-    return version === "2.6" ? "2.6" : version === "3.0" ? "3.0" : version === "2.5" ? "2.5" : version === "2.1" ? "2.1" : version === "2.0-draft" ? "2.0-draft" : "2.0";
+    return version === "2.6" ? "2.6" : version === "3.0" ? "3.0" : version === "3.1" ? "3.1" : version === "2.5" ? "2.5" : version === "2.1" ? "2.1" : version === "2.0-draft" ? "2.0-draft" : "2.0";
   }
   function startTopLevelSection(tokens, line, sourceSchemaVersion, diagnostics, system, objectNodes, groups, relations, events, trajectories, eventPoseNodes, viewpointIds, annotationIds, groupIds, relationIds, eventIds, trajectoryIds, flags) {
     const keyword = tokens[0]?.value.toLowerCase();
@@ -36472,6 +36743,12 @@ void main() {
       craftObjectId: null,
       tags: [],
       color: null,
+      renderMode: null,
+      stroke: null,
+      strokeWidth: null,
+      marker: null,
+      labelMode: null,
+      showWaypoints: null,
       hidden: false,
       segments: []
     };
@@ -37037,6 +37314,10 @@ void main() {
         aroundObjectId: null,
         assist: null,
         epoch: null,
+        waypointLabel: null,
+        waypointDate: null,
+        renderHidden: null,
+        sampleDensity: null,
         notes: [],
         maneuvers: []
       };
@@ -37070,6 +37351,54 @@ void main() {
         return;
       case "color":
         section.trajectory.color = value;
+        return;
+      case "rendermode":
+        warnIfSchema31Feature(section.sourceSchemaVersion, section.diagnostics, "trajectory.renderMode", {
+          line,
+          column: tokens[0].column
+        });
+        if (value !== "illustrative" && value !== "solver" && value !== "auto") {
+          throw new WorldOrbitError(`Unknown trajectory render mode "${value}"`, line, tokens[0].column);
+        }
+        section.trajectory.renderMode = value;
+        return;
+      case "stroke":
+        warnIfSchema31Feature(section.sourceSchemaVersion, section.diagnostics, "trajectory.stroke", {
+          line,
+          column: tokens[0].column
+        });
+        section.trajectory.stroke = value;
+        return;
+      case "strokewidth":
+        warnIfSchema31Feature(section.sourceSchemaVersion, section.diagnostics, "trajectory.strokeWidth", {
+          line,
+          column: tokens[0].column
+        });
+        section.trajectory.strokeWidth = parsePositiveNumber2(value, line, tokens[0].column, "strokeWidth");
+        return;
+      case "marker":
+        warnIfSchema31Feature(section.sourceSchemaVersion, section.diagnostics, "trajectory.marker", {
+          line,
+          column: tokens[0].column
+        });
+        section.trajectory.marker = value;
+        return;
+      case "labelmode":
+        warnIfSchema31Feature(section.sourceSchemaVersion, section.diagnostics, "trajectory.labelMode", {
+          line,
+          column: tokens[0].column
+        });
+        section.trajectory.labelMode = value;
+        return;
+      case "showwaypoints":
+        warnIfSchema31Feature(section.sourceSchemaVersion, section.diagnostics, "trajectory.showWaypoints", {
+          line,
+          column: tokens[0].column
+        });
+        section.trajectory.showWaypoints = parseAtlasBoolean(value, "showWaypoints", {
+          line,
+          column: tokens[0].column
+        });
         return;
       case "hidden":
         section.trajectory.hidden = parseAtlasBoolean(value, "hidden", {
@@ -37145,6 +37474,37 @@ void main() {
         return;
       case "energy":
         target.energy = parseAtlasUnitValue(value, { line, column: tokens[0].column });
+        return;
+      case "waypointlabel":
+        warnIfSchema31Feature(section.sourceSchemaVersion, section.diagnostics, "segment.waypointLabel", {
+          line,
+          column: tokens[0].column
+        });
+        target.waypointLabel = value;
+        return;
+      case "waypointdate":
+        warnIfSchema31Feature(section.sourceSchemaVersion, section.diagnostics, "segment.waypointDate", {
+          line,
+          column: tokens[0].column
+        });
+        target.waypointDate = value;
+        return;
+      case "renderhidden":
+        warnIfSchema31Feature(section.sourceSchemaVersion, section.diagnostics, "segment.renderHidden", {
+          line,
+          column: tokens[0].column
+        });
+        target.renderHidden = parseAtlasBoolean(value, "renderHidden", {
+          line,
+          column: tokens[0].column
+        });
+        return;
+      case "sampledensity":
+        warnIfSchema31Feature(section.sourceSchemaVersion, section.diagnostics, "segment.sampleDensity", {
+          line,
+          column: tokens[0].column
+        });
+        target.sampleDensity = parsePositiveNumber2(value, line, tokens[0].column, "sampleDensity");
         return;
       case "notes":
         target.notes = parseTokenList(tokens.slice(1), line, "notes");
@@ -37270,7 +37630,7 @@ void main() {
         layers["orbits-front"] = enabled;
         continue;
       }
-      if (raw === "background" || raw === "guides" || raw === "orbits-back" || raw === "orbits-front" || raw === "relations" || raw === "events" || raw === "objects" || raw === "labels" || raw === "metadata") {
+      if (raw === "background" || raw === "guides" || raw === "orbits-back" || raw === "orbits-front" || raw === "relations" || raw === "events" || raw === "objects" || raw === "labels" || raw === "metadata" || raw === "trajectories") {
         if (raw === "events" && sourceSchemaVersion && diagnostics) {
           warnIfSchema21Feature(sourceSchemaVersion, diagnostics, "layers.events", {
             line,
@@ -37393,6 +37753,11 @@ void main() {
           line,
           column: keyToken.column
         });
+      } else if (spec.version === "3.1") {
+        warnIfSchema31Feature(sourceSchemaVersion, diagnostics, keyToken.value, {
+          line,
+          column: keyToken.column
+        });
       }
       index++;
       const valueTokens = [];
@@ -37445,6 +37810,11 @@ void main() {
       });
     } else if (spec.version === "3.0") {
       warnIfSchema30Feature(sourceSchemaVersion, diagnostics, tokens[0].value, {
+        line,
+        column: tokens[0].column
+      });
+    } else if (spec.version === "3.1") {
+      warnIfSchema31Feature(sourceSchemaVersion, diagnostics, tokens[0].value, {
         line,
         column: tokens[0].column
       });
@@ -37773,6 +38143,19 @@ void main() {
       column: location.column
     });
   }
+  function warnIfSchema31Feature(sourceSchemaVersion, diagnostics, featureName, location) {
+    if (!isSchemaOlderThan(sourceSchemaVersion, "3.1")) {
+      return;
+    }
+    diagnostics.push({
+      code: "parse.schema31.featureCompatibility",
+      severity: "warning",
+      source: "parse",
+      message: `Feature "${featureName}" requires schema 3.1; parsed in compatibility mode because the document header is "schema ${sourceSchemaVersion}".`,
+      line: location.line,
+      column: location.column
+    });
+  }
   function isSchemaOlderThan(sourceSchemaVersion, requiredVersion) {
     return schemaVersionRank(sourceSchemaVersion) < schemaVersionRank(requiredVersion);
   }
@@ -37790,8 +38173,10 @@ void main() {
         return 4;
       case "3.0":
         return 5;
-      default:
+      case "3.1":
         return 6;
+      default:
+        return 7;
     }
   }
   function preprocessAtlasSource(source) {
@@ -38374,11 +38759,12 @@ void main() {
   }
 
   // packages/core/dist/load.js
-  var ATLAS_SCHEMA_PATTERN = /^schema\s+(?:2(?:\.0|\.1|\.5|\.6)?|3(?:\.0)?)$/i;
+  var ATLAS_SCHEMA_PATTERN = /^schema\s+(?:2(?:\.0|\.1|\.5|\.6)?|3(?:\.0|\.1)?)$/i;
   var ATLAS_SCHEMA_21_PATTERN = /^schema\s+2\.1$/i;
   var ATLAS_SCHEMA_25_PATTERN = /^schema\s+2\.5$/i;
   var ATLAS_SCHEMA_26_PATTERN = /^schema\s+2\.6$/i;
   var ATLAS_SCHEMA_30_PATTERN = /^schema\s+3(?:\.0)?$/i;
+  var ATLAS_SCHEMA_31_PATTERN = /^schema\s+3\.1$/i;
   var LEGACY_DRAFT_SCHEMA_PATTERN = /^schema\s+2\.0-draft$/i;
   function detectWorldOrbitSchemaVersion(source) {
     for (const line of stripCommentsForSchemaDetection(source).split(/\r?\n/)) {
@@ -38400,6 +38786,9 @@ void main() {
       }
       if (ATLAS_SCHEMA_30_PATTERN.test(trimmed)) {
         return "3.0";
+      }
+      if (ATLAS_SCHEMA_31_PATTERN.test(trimmed)) {
+        return "3.1";
       }
       if (ATLAS_SCHEMA_PATTERN.test(trimmed)) {
         return "2.0";
@@ -38461,7 +38850,7 @@ void main() {
   }
   function loadWorldOrbitSourceWithDiagnostics(source) {
     const schemaVersion = detectWorldOrbitSchemaVersion(source);
-    if (schemaVersion === "2.0" || schemaVersion === "2.0-draft" || schemaVersion === "2.1" || schemaVersion === "2.5" || schemaVersion === "2.6" || schemaVersion === "3.0") {
+    if (schemaVersion === "2.0" || schemaVersion === "2.0-draft" || schemaVersion === "2.1" || schemaVersion === "2.5" || schemaVersion === "2.6" || schemaVersion === "3.0" || schemaVersion === "3.1") {
       return loadAtlasSourceWithDiagnostics(source, schemaVersion);
     }
     let ast;
@@ -38634,6 +39023,7 @@ void main() {
     relations: true,
     events: true,
     orbits: true,
+    trajectories: true,
     objects: true,
     labels: true,
     structures: true,
@@ -39175,6 +39565,11 @@ void main() {
     const orbitMarkup = layers.orbits ? renderOrbitLayer(scene, visibleObjectIds, layers.structures) : { back: "", front: "" };
     const leaderMarkup = layers.guides ? scene.leaders.filter((leader) => !leader.hidden).filter((leader) => visibleObjectIds.has(leader.objectId)).filter((leader) => layers.structures || !isStructureLike(leader.object)).map((leader) => `<line class="wo-leader wo-leader-${leader.mode}" x1="${leader.x1}" y1="${leader.y1}" x2="${leader.x2}" y2="${leader.y2}" data-render-id="${escapeXml(leader.renderId)}" data-group-id="${escapeAttribute(leader.groupId ?? "")}" />`).join("") : "";
     const relationMarkup = layers.relations ? scene.relations.filter((relation) => !relation.hidden).filter((relation) => visibleObjectIds.has(relation.fromObjectId) && visibleObjectIds.has(relation.toObjectId)).map((relation) => `<line class="wo-relation" x1="${relation.x1}" y1="${relation.y1}" x2="${relation.x2}" y2="${relation.y2}" data-render-id="${escapeXml(relation.renderId)}" data-relation-id="${escapeAttribute(relation.relationId)}" />`).join("") : "";
+    const trajectoryMarkup = layers.trajectories ? renderTrajectoryLayer(scene, visibleObjectIds, {
+      showLabels: options.showTrajectoryLabels ?? true,
+      showWaypoints: options.showTrajectoryWaypoints ?? true,
+      includeStructures: layers.structures
+    }) : "";
     const eventMarkup = layers.events ? scene.events.filter((event) => !event.hidden).map((event) => renderSceneEventOverlay(scene, event, visibleObjectIds, theme)).join("") : "";
     const objectMarkup = layers.objects ? visibleObjects.map((object) => renderSceneObject(object, options.selectedObjectId ?? null, theme)).join("") : "";
     const labelMarkup = layers.labels ? visibleLabels.map((label) => renderSceneLabel(scene, label, options.selectedObjectId ?? null)).join("") : "";
@@ -39200,6 +39595,9 @@ void main() {
       <stop offset="0%" stop-color="${theme.backgroundGlow}" />
       <stop offset="100%" stop-color="transparent" />
     </radialGradient>
+    <marker id="wo-trajectory-arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="${theme.accent}" />
+    </marker>
     ${imageDefinitions}
   </defs>
   <style>
@@ -39211,6 +39609,10 @@ void main() {
     .wo-orbit-front { opacity: 0.9; }
     .wo-orbit-band { stroke: ${theme.orbitBand}; stroke-linecap: round; }
     .wo-relation { stroke: ${theme.relation}; stroke-width: 2; stroke-dasharray: 10 6; }
+    .wo-trajectory { fill: none; stroke: ${theme.accent}; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; opacity: 0.92; }
+    .wo-trajectory-waypoint { fill: ${theme.spaceFog}; stroke: ${theme.selected}; stroke-width: 1.4; }
+    .wo-trajectory-label { fill: ${theme.accent}; font-family: ${theme.fontFamily}; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+    .wo-trajectory-date { fill: ${theme.muted}; font-family: ${theme.fontFamily}; font-weight: 500; }
     .wo-event-line { stroke: ${theme.accent}; stroke-width: 1.6; stroke-dasharray: 5 5; opacity: 0.72; }
     .wo-event-node { fill: ${theme.accent}; stroke: ${theme.selected}; stroke-width: 1.4; opacity: 0.92; }
     .wo-event-label { fill: ${theme.accent}; font-family: ${theme.fontFamily}; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -39251,6 +39653,7 @@ void main() {
         ${layers.events ? `<g data-layer-id="events">${eventMarkup}</g>` : ""}
         ${layers.objects ? `<g data-layer-id="objects">${objectMarkup}</g>` : ""}
         ${layers.orbits ? `<g data-layer-id="orbits-front">${orbitMarkup.front}</g>` : ""}
+        ${layers.trajectories ? `<g data-layer-id="trajectories">${trajectoryMarkup}</g>` : ""}
         ${layers.labels ? `<g data-layer-id="labels">${labelMarkup}</g>` : ""}
       </g>
     </g>
@@ -39269,6 +39672,30 @@ void main() {
     ${lineMarkup}
     <circle class="wo-event-node" cx="${event.x}" cy="${event.y}" r="5" fill="${escapeAttribute(stroke)}" />
     <text class="wo-event-label" x="${event.x}" y="${event.y - 10}" text-anchor="middle" font-size="10">${escapeXml(label)}</text>
+  </g>`;
+  }
+  function renderTrajectoryLayer(scene, visibleObjectIds, options) {
+    return scene.trajectories.filter((trajectory) => !trajectory.hidden).filter((trajectory) => trajectory.objectIds.length === 0 || trajectory.objectIds.some((objectId) => visibleObjectIds.has(objectId))).filter((trajectory) => options.includeStructures || !trajectory.objectIds.some((objectId) => {
+      const object = scene.objects.find((entry) => entry.objectId === objectId)?.object;
+      return object ? isStructureLike(object) : false;
+    })).map((trajectory) => {
+      const stroke = trajectory.stroke ?? "#f0b464";
+      const markerEnd = trajectory.marker === "none" ? "" : ` marker-end="url(#wo-trajectory-arrow)"`;
+      const waypointMarkup = trajectory.showWaypoints && options.showWaypoints ? trajectory.waypoints.filter((waypoint) => !waypoint.hidden).map((waypoint) => renderTrajectoryWaypoint(trajectory, waypoint, options.showLabels)).join("") : "";
+      return `<g class="wo-trajectory-group" data-render-id="${escapeXml(trajectory.renderId)}" data-trajectory-id="${escapeAttribute(trajectory.trajectoryId)}">
+    <path class="wo-trajectory wo-trajectory-${trajectory.mode}" d="${trajectory.path}" stroke="${escapeAttribute(stroke)}" stroke-width="${trajectory.strokeWidth}"${markerEnd} />
+    ${waypointMarkup}
+  </g>`;
+    }).join("");
+  }
+  function renderTrajectoryWaypoint(trajectory, waypoint, showLabels) {
+    const labelMarkup = showLabels && trajectory.labelMode !== "hidden" ? [
+      waypoint.label ? `<text class="wo-trajectory-label" x="${waypoint.x + 10}" y="${waypoint.y - 10}" font-size="10">${escapeXml(waypoint.label)}</text>` : "",
+      waypoint.dateLabel ? `<text class="wo-trajectory-date" x="${waypoint.x + 10}" y="${waypoint.y + 4}" font-size="9">${escapeXml(waypoint.dateLabel)}</text>` : ""
+    ].join("") : "";
+    return `<g class="wo-trajectory-waypoint-group" data-render-id="${escapeXml(waypoint.renderId)}" data-trajectory-id="${escapeAttribute(waypoint.trajectoryId)}">
+    <circle class="wo-trajectory-waypoint" cx="${waypoint.x}" cy="${waypoint.y}" r="4.5" />
+    ${labelMarkup}
   </g>`;
   }
   function renderDocumentToSvg(document2, options = {}) {
@@ -42230,6 +42657,33 @@ void main() {
         bandThickness: orbit.bandThickness,
         hidden: orbit.hidden,
         motion: null
+      })),
+      trajectories: scene.trajectories.map((trajectory) => ({
+        trajectoryId: trajectory.trajectoryId,
+        trajectory: trajectory.trajectory,
+        craftObjectId: trajectory.craftObjectId,
+        mode: trajectory.mode,
+        stroke: trajectory.stroke,
+        strokeWidth: trajectory.strokeWidth,
+        marker: trajectory.marker,
+        labelMode: trajectory.labelMode,
+        showWaypoints: trajectory.showWaypoints,
+        samples: [],
+        waypoints: trajectory.waypoints.map((waypoint) => ({
+          trajectoryId: waypoint.trajectoryId,
+          segmentId: waypoint.segmentId,
+          maneuverId: waypoint.maneuverId,
+          objectId: waypoint.objectId,
+          position: {
+            x: waypoint.x - scene.contentBounds.centerX,
+            y: 0,
+            z: waypoint.y - scene.contentBounds.centerY
+          },
+          label: waypoint.label,
+          dateLabel: waypoint.dateLabel,
+          hidden: waypoint.hidden
+        })),
+        hidden: trajectory.hidden
       })),
       focusTargets: scene.objects.map((object) => ({
         objectId: object.objectId,

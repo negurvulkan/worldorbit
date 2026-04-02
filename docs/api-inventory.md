@@ -1,10 +1,10 @@
 # API Inventory
 
-This inventory highlights the public WorldOrbit APIs that matter most for authoring, loading, validating, rendering, and editing Schema 3.0 documents in the `4.0.0` viewer/runtime family. Schema 2.6, Schema 2.1, canonical Schema 2.0, Schema 1.0, and legacy `schema 2.0-draft` remain supported compatibility paths.
+This inventory highlights the public WorldOrbit APIs that matter most for authoring, loading, validating, rendering, and editing Schema 3.1 documents in the `5.0.0` viewer/runtime family. Schema 3.0, Schema 2.6, Schema 2.1, canonical Schema 2.0, Schema 1.0, and legacy `schema 2.0-draft` remain supported compatibility paths.
 
 ## `@worldorbit/core`
 
-Stable v4.0 APIs:
+Stable v5.0 APIs:
 
 - `parse(source)`
 - `parseSafe(source)`
@@ -42,7 +42,7 @@ Stable v4.0 APIs:
 - `loadWorldOrbitSourceWithDiagnostics(source)`
 - `load(source)`
 - `extractWorldOrbitBlocks(markdown)`
-- experimental `worldorbit/core/solver` subpath for trajectory sampling and consistency checks
+- official `worldorbit/core/solver` subpath for trajectory sampling and consistency checks
 
 Core public types include:
 
@@ -76,6 +76,8 @@ Core public types include:
 - `SpatialScene`
 - `SpatialSceneObject`
 - `SpatialOrbit`
+- `SpatialTrajectory`
+- `SpatialTrajectorySample`
 - `SpatialFocusTarget`
 - `OrbitalMotionModel`
 - `SpatialScaleModel`
@@ -84,6 +86,8 @@ Core public types include:
 - `RenderSceneSemanticGroup`
 - `RenderSceneRelation`
 - `RenderSceneEvent`
+- `RenderSceneTrajectory`
+- `RenderSceneTrajectoryWaypoint`
 - `RenderSceneLabel`
 - `RenderSceneViewpoint`
 - `RenderPresetName`
@@ -96,7 +100,7 @@ Core public types include:
 
 ## `@worldorbit/viewer`
 
-Stable v4.0 APIs:
+Stable v5.0 APIs:
 
 - `renderSceneToSvg(scene, options?)`
 - `renderDocumentToSvg(document, options?)`
@@ -131,11 +135,11 @@ Viewer public types include:
 - `WorldOrbitViewMode`
 - `ViewerAnimationState`
 
-Viewer behavior now includes Schema 3.0 semantic projections, camera metadata, semantic groups, relation overlays, event overlays, active event scene snapshots, trajectory overlays, render hints, detail payloads for `epoch`, `referencePlane`, `tidalLock`, `resonance`, events, and typed lore blocks, plus shared 2D/3D documents, explicit `viewMode`, deterministic orbit animation controls, and embed modes `static`, `interactive-2d`, and `interactive-3d`.
+Viewer behavior now includes Schema 3.1 semantic projections, camera metadata, visible trajectory curves, waypoints, relation overlays, event overlays, active event scene snapshots, render hints, detail payloads for `epoch`, `referencePlane`, `tidalLock`, `resonance`, events, and typed lore blocks, plus shared 2D/3D documents, explicit `viewMode`, deterministic orbit animation controls, and embed modes `static`, `interactive-2d`, and `interactive-3d`.
 
 ## `@worldorbit/editor`
 
-Stable v4.0 APIs:
+Stable v5.0 APIs:
 
 - `createWorldOrbitEditor(container, options)`
 
@@ -158,15 +162,15 @@ Editor public types include:
 - `shortcuts?`
 - `viewMode?`
 
-The editor and Studio now load, preserve, and roundtrip Schema 3.0 documents instead of assuming Schema 2.0 as the only canonical atlas form, including event sections, event poses, trajectory blocks, viewpoint camera blocks, stage edits that write back into `event.positions` rather than base object placement, and a 3D preview mode that reuses the same document model.
+The editor and Studio now load, preserve, and roundtrip Schema 3.1 documents instead of assuming Schema 2.0 as the only canonical atlas form, including event sections, event poses, trajectory blocks, trajectory render metadata, viewpoint camera blocks, stage edits that write back into `event.positions` rather than base object placement, and a 3D preview mode that reuses the same document model.
 
 ## `@worldorbit/markdown`
 
-Stable v4.0 APIs:
+Stable v5.0 APIs:
 
 - `renderWorldOrbitBlock(source, options?)`
 - `renderWorldOrbitError(message)`
 - `remarkWorldOrbit(options?)`
 - `rehypeWorldOrbit(options?)`
 
-Markdown rendering accepts Schema 3.0 source directly through the same high-level loading path as the viewer and editor, including explicit `interactive-2d` and `interactive-3d` embed modes.
+Markdown rendering accepts Schema 3.1 source directly through the same high-level loading path as the viewer and editor, including explicit `interactive-2d` and `interactive-3d` embed modes.

@@ -43,6 +43,7 @@ export interface ViewerLayerOptions {
     relations?: boolean;
     events?: boolean;
     orbits?: boolean;
+    trajectories?: boolean;
     objects?: boolean;
     labels?: boolean;
     structures?: boolean;
@@ -77,6 +78,9 @@ export interface ViewerRenderOptions extends Omit<SvgRenderOptions, "selectedObj
     viewMode?: WorldOrbitViewMode;
     quality?: WorldOrbit3DQuality;
     style3d?: WorldOrbit3DStyle;
+    trajectoryMode?: "illustrative" | "solver" | "auto";
+    showTrajectoryWaypoints?: boolean;
+    showTrajectoryLabels?: boolean;
 }
 export interface ViewerState {
     scale: number;
@@ -130,6 +134,9 @@ export interface ViewerAtlasState {
         layers?: ViewerLayerOptions;
         scaleModel?: Partial<RenderScaleModel>;
         bodyScaleMode?: SceneRenderOptions["bodyScaleMode"];
+        trajectoryMode?: SceneRenderOptions["trajectoryMode"];
+        showTrajectoryWaypoints?: boolean;
+        showTrajectoryLabels?: boolean;
         activeEventId?: string | null;
         viewMode?: WorldOrbitViewMode;
         quality?: WorldOrbit3DQuality;

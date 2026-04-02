@@ -183,7 +183,7 @@ type DraftSectionState =
 
 interface DraftObjectFieldSpec {
   key: string;
-  version: "2.0" | "2.1" | "2.5" | "2.6" | "3.0";
+  version: "2.0" | "2.1" | "2.5" | "2.6" | "3.0" | "3.1";
   inlineMode: "single" | "multiple" | "pair";
   allowRepeat: boolean;
   legacySchema?: WorldOrbitFieldSchema;
@@ -408,7 +408,7 @@ function parseAtlasSource(
   }
 
   if (!sawSchemaHeader) {
-    throw new WorldOrbitError('Missing required atlas schema header "schema 2.0" or "schema 3.0"');
+    throw new WorldOrbitError('Missing required atlas schema header "schema 2.0", "schema 3.0", or "schema 3.1"');
   }
 
   const objects = objectNodes.map((node) =>
@@ -472,10 +472,10 @@ function assertDraftSchemaHeader(
   if (
     tokens.length !== 2 ||
     tokens[0].value.toLowerCase() !== "schema" ||
-      !["2.0-draft", "2.0", "2.1", "2.5", "2.6", "3.0"].includes(tokens[1].value.toLowerCase())
+      !["2.0-draft", "2.0", "2.1", "2.5", "2.6", "3.0", "3.1"].includes(tokens[1].value.toLowerCase())
     ) {
       throw new WorldOrbitError(
-        'Expected atlas header "schema 2.0", "schema 2.1", "schema 2.5", "schema 2.6", "schema 3.0", or legacy "schema 2.0-draft"',
+        'Expected atlas header "schema 2.0", "schema 2.1", "schema 2.5", "schema 2.6", "schema 3.0", "schema 3.1", or legacy "schema 2.0-draft"',
         line,
         tokens[0]?.column ?? 1,
       );
@@ -486,6 +486,8 @@ function assertDraftSchemaHeader(
       ? "2.6"
       : version === "3.0"
       ? "3.0"
+      : version === "3.1"
+      ? "3.1"
       : version === "2.5"
       ? "2.5"
     : version === "2.1"
@@ -953,6 +955,12 @@ function startTrajectorySection(
     craftObjectId: null,
     tags: [],
     color: null,
+    renderMode: null,
+    stroke: null,
+    strokeWidth: null,
+    marker: null,
+    labelMode: null,
+    showWaypoints: null,
     hidden: false,
     segments: [],
   };
@@ -1716,6 +1724,10 @@ function applyTrajectoryField(
       aroundObjectId: null,
       assist: null,
       epoch: null,
+      waypointLabel: null,
+      waypointDate: null,
+      renderHidden: null,
+      sampleDensity: null,
       notes: [],
       maneuvers: [],
     };
@@ -1752,6 +1764,54 @@ function applyTrajectoryField(
       return;
     case "color":
       section.trajectory.color = value;
+      return;
+    case "rendermode":
+      warnIfSchema31Feature(section.sourceSchemaVersion, section.diagnostics, "trajectory.renderMode", {
+        line,
+        column: tokens[0].column,
+      });
+      if (value !== "illustrative" && value !== "solver" && value !== "auto") {
+        throw new WorldOrbitError(`Unknown trajectory render mode "${value}"`, line, tokens[0].column);
+      }
+      section.trajectory.renderMode = value;
+      return;
+    case "stroke":
+      warnIfSchema31Feature(section.sourceSchemaVersion, section.diagnostics, "trajectory.stroke", {
+        line,
+        column: tokens[0].column,
+      });
+      section.trajectory.stroke = value;
+      return;
+    case "strokewidth":
+      warnIfSchema31Feature(section.sourceSchemaVersion, section.diagnostics, "trajectory.strokeWidth", {
+        line,
+        column: tokens[0].column,
+      });
+      section.trajectory.strokeWidth = parsePositiveNumber(value, line, tokens[0].column, "strokeWidth");
+      return;
+    case "marker":
+      warnIfSchema31Feature(section.sourceSchemaVersion, section.diagnostics, "trajectory.marker", {
+        line,
+        column: tokens[0].column,
+      });
+      section.trajectory.marker = value;
+      return;
+    case "labelmode":
+      warnIfSchema31Feature(section.sourceSchemaVersion, section.diagnostics, "trajectory.labelMode", {
+        line,
+        column: tokens[0].column,
+      });
+      section.trajectory.labelMode = value;
+      return;
+    case "showwaypoints":
+      warnIfSchema31Feature(section.sourceSchemaVersion, section.diagnostics, "trajectory.showWaypoints", {
+        line,
+        column: tokens[0].column,
+      });
+      section.trajectory.showWaypoints = parseAtlasBoolean(value, "showWaypoints", {
+        line,
+        column: tokens[0].column,
+      });
       return;
     case "hidden":
       section.trajectory.hidden = parseAtlasBoolean(value, "hidden", {
@@ -1838,6 +1898,37 @@ function applyTrajectorySegmentField(
       return;
     case "energy":
       target.energy = parseAtlasUnitValue(value, { line, column: tokens[0].column });
+      return;
+    case "waypointlabel":
+      warnIfSchema31Feature(section.sourceSchemaVersion, section.diagnostics, "segment.waypointLabel", {
+        line,
+        column: tokens[0].column,
+      });
+      target.waypointLabel = value;
+      return;
+    case "waypointdate":
+      warnIfSchema31Feature(section.sourceSchemaVersion, section.diagnostics, "segment.waypointDate", {
+        line,
+        column: tokens[0].column,
+      });
+      target.waypointDate = value;
+      return;
+    case "renderhidden":
+      warnIfSchema31Feature(section.sourceSchemaVersion, section.diagnostics, "segment.renderHidden", {
+        line,
+        column: tokens[0].column,
+      });
+      target.renderHidden = parseAtlasBoolean(value, "renderHidden", {
+        line,
+        column: tokens[0].column,
+      });
+      return;
+    case "sampledensity":
+      warnIfSchema31Feature(section.sourceSchemaVersion, section.diagnostics, "segment.sampleDensity", {
+        line,
+        column: tokens[0].column,
+      });
+      target.sampleDensity = parsePositiveNumber(value, line, tokens[0].column, "sampleDensity");
       return;
     case "notes":
       target.notes = parseTokenList(tokens.slice(1), line, "notes");
@@ -2064,7 +2155,8 @@ function parseLayerTokens(
       raw === "events" ||
       raw === "objects" ||
       raw === "labels" ||
-      raw === "metadata"
+      raw === "metadata" ||
+      raw === "trajectories"
     ) {
       if (raw === "events" && sourceSchemaVersion && diagnostics) {
         warnIfSchema21Feature(sourceSchemaVersion, diagnostics, "layers.events", {
@@ -2255,6 +2347,11 @@ function parseInlineObjectFields(
           line,
           column: keyToken.column,
         });
+      } else if (spec.version === "3.1") {
+        warnIfSchema31Feature(sourceSchemaVersion, diagnostics, keyToken.value, {
+          line,
+          column: keyToken.column,
+        });
       }
 
     index++;
@@ -2329,6 +2426,11 @@ function parseObjectField(
       });
     } else if (spec.version === "3.0") {
       warnIfSchema30Feature(sourceSchemaVersion, diagnostics, tokens[0].value, {
+        line,
+        column: tokens[0].column,
+      });
+    } else if (spec.version === "3.1") {
+      warnIfSchema31Feature(sourceSchemaVersion, diagnostics, tokens[0].value, {
         line,
         column: tokens[0].column,
       });
@@ -2800,15 +2902,35 @@ function warnIfSchema30Feature(
   });
 }
 
+function warnIfSchema31Feature(
+  sourceSchemaVersion: SourceSchemaVersion,
+  diagnostics: WorldOrbitDiagnostic[],
+  featureName: string,
+  location: AstSourceLocation,
+): void {
+  if (!isSchemaOlderThan(sourceSchemaVersion, "3.1")) {
+    return;
+  }
+
+  diagnostics.push({
+    code: "parse.schema31.featureCompatibility",
+    severity: "warning",
+    source: "parse",
+    message: `Feature "${featureName}" requires schema 3.1; parsed in compatibility mode because the document header is "schema ${sourceSchemaVersion}".`,
+    line: location.line,
+    column: location.column,
+  });
+}
+
 function isSchemaOlderThan(
   sourceSchemaVersion: SourceSchemaVersion,
-  requiredVersion: "2.1" | "2.5" | "2.6" | "3.0",
+  requiredVersion: "2.1" | "2.5" | "2.6" | "3.0" | "3.1",
 ): boolean {
   return schemaVersionRank(sourceSchemaVersion) < schemaVersionRank(requiredVersion);
 }
 
 function schemaVersionRank(
-  version: SourceSchemaVersion | "2.1" | "2.5" | "2.6" | "3.0",
+  version: SourceSchemaVersion | "2.1" | "2.5" | "2.6" | "3.0" | "3.1",
 ): number {
   switch (version) {
     case "2.0-draft":
@@ -2823,8 +2945,10 @@ function schemaVersionRank(
       return 4;
     case "3.0":
       return 5;
-    default:
+    case "3.1":
       return 6;
+    default:
+      return 7;
   }
 }
 

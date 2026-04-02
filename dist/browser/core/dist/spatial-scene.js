@@ -36,6 +36,7 @@ export function renderDocumentToSpatialScene(document, options = {}) {
     const spatialObjects = scene.objects.map((entry) => createSpatialObject(entry, scene, sceneCenter, objectMap, orbitMap, scaleModel, positionCache, minimumMotionMetric));
     const spatialObjectMap = new Map(spatialObjects.map((object) => [object.objectId, object]));
     const spatialOrbits = scene.orbitVisuals.map((orbit) => createSpatialOrbit(orbit, spatialObjectMap, minimumMotionMetric, scene.activeEventId !== null));
+    const spatialTrajectories = scene.trajectories.map((trajectory) => createSpatialTrajectory(trajectory, spatialObjectMap));
     const focusTargets = spatialObjects.map((object) => ({
         objectId: object.objectId,
         center: { ...object.position },
@@ -65,6 +66,7 @@ export function renderDocumentToSpatialScene(document, options = {}) {
         timeFrozen: scene.activeEventId !== null,
         objects: spatialObjects,
         orbits: spatialOrbits,
+        trajectories: spatialTrajectories,
         focusTargets,
     };
 }
@@ -115,6 +117,41 @@ function createSpatialOrbit(orbit, objectMap, minimumMotionMetric, frozen) {
         hidden: orbit.hidden,
         motion: owner?.motion ??
             createMotionModel(orbit.object, orbit, minimumMotionMetric, frozen),
+    };
+}
+function createSpatialTrajectory(trajectory, objectMap) {
+    const samples = samplePathPoints(trajectory.path).map((point) => ({
+        x: point.x,
+        y: 0,
+        z: point.y,
+    }));
+    return {
+        trajectoryId: trajectory.trajectoryId,
+        trajectory: trajectory.trajectory,
+        craftObjectId: trajectory.craftObjectId,
+        mode: trajectory.mode,
+        stroke: trajectory.stroke,
+        strokeWidth: trajectory.strokeWidth,
+        marker: trajectory.marker,
+        labelMode: trajectory.labelMode,
+        showWaypoints: trajectory.showWaypoints,
+        samples,
+        waypoints: trajectory.waypoints.map((waypoint) => {
+            const object = waypoint.objectId ? objectMap.get(waypoint.objectId) ?? null : null;
+            return {
+                trajectoryId: waypoint.trajectoryId,
+                segmentId: waypoint.segmentId,
+                maneuverId: waypoint.maneuverId,
+                objectId: waypoint.objectId,
+                position: object
+                    ? { ...object.position }
+                    : { x: waypoint.x, y: 0, z: waypoint.y },
+                label: waypoint.label,
+                dateLabel: waypoint.dateLabel,
+                hidden: waypoint.hidden,
+            };
+        }),
+        hidden: trajectory.hidden,
     };
 }
 function resolveSpatialObjectPosition(entry, scene, sceneCenter, objectMap, orbitMap, cache) {
@@ -418,4 +455,23 @@ function clampNumber(value, min, max) {
 }
 function degreesToRadians(value) {
     return (value * Math.PI) / 180;
+}
+function samplePathPoints(path) {
+    const matches = [...path.matchAll(/[MLQ]\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)(?:\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?))?(?:\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?))?/g)];
+    if (matches.length === 0) {
+        return [];
+    }
+    const points = [];
+    for (const match of matches) {
+        const command = match[0][0];
+        if (command === "M" || command === "L") {
+            points.push({ x: Number(match[1]), y: Number(match[2]) });
+            continue;
+        }
+        if (command === "Q") {
+            points.push({ x: Number(match[1]), y: Number(match[2]) });
+            points.push({ x: Number(match[5]), y: Number(match[6]) });
+        }
+    }
+    return points;
 }

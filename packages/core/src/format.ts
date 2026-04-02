@@ -69,11 +69,13 @@ export function formatDocument(
     schema === "2.5" ||
     schema === "2.6" ||
     schema === "3.0" ||
+    schema === "3.1" ||
     schema === "2.0-draft" ||
     document.version === "2.0" ||
     document.version === "2.1" ||
     document.version === "2.5" ||
     document.version === "3.0" ||
+    document.version === "3.1" ||
     document.version === "2.6" ||
     document.version === "2.0-draft";
 
@@ -93,7 +95,12 @@ export function formatDocument(
     }
 
     const atlasDocument =
-      document.version === "2.0" || document.version === "2.1" || document.version === "2.5" || document.version === "2.6" || document.version === "3.0"
+      document.version === "2.0" ||
+      document.version === "2.1" ||
+      document.version === "2.5" ||
+      document.version === "2.6" ||
+      document.version === "3.0" ||
+      document.version === "3.1"
         ? document
         : document.version === "2.0-draft"
           ? {
@@ -102,7 +109,15 @@ export function formatDocument(
               schemaVersion: "2.0" as const,
             }
           : upgradeDocumentToV2(document as WorldOrbitDocument);
-    if ((schema === "2.0" || schema === "2.1" || schema === "2.5" || schema === "2.6" || schema === "3.0") && atlasDocument.version !== schema) {
+    if (
+      (schema === "2.0" ||
+        schema === "2.1" ||
+        schema === "2.5" ||
+        schema === "2.6" ||
+        schema === "3.0" ||
+        schema === "3.1") &&
+      atlasDocument.version !== schema
+    ) {
       return formatAtlasDocument({
         ...atlasDocument,
         version: schema,
@@ -644,6 +659,24 @@ function formatAtlasTrajectory(trajectory: WorldOrbitTrajectory): string[] {
   if (trajectory.color) {
     lines.push(`  color ${quoteIfNeeded(trajectory.color)}`);
   }
+  if (trajectory.renderMode) {
+    lines.push(`  renderMode ${trajectory.renderMode}`);
+  }
+  if (trajectory.stroke) {
+    lines.push(`  stroke ${quoteIfNeeded(trajectory.stroke)}`);
+  }
+  if (trajectory.strokeWidth !== null && trajectory.strokeWidth !== undefined) {
+    lines.push(`  strokeWidth ${trajectory.strokeWidth}`);
+  }
+  if (trajectory.marker) {
+    lines.push(`  marker ${quoteIfNeeded(trajectory.marker)}`);
+  }
+  if (trajectory.labelMode) {
+    lines.push(`  labelMode ${quoteIfNeeded(trajectory.labelMode)}`);
+  }
+  if (trajectory.showWaypoints !== null && trajectory.showWaypoints !== undefined) {
+    lines.push(`  showWaypoints ${trajectory.showWaypoints ? "true" : "false"}`);
+  }
   if (trajectory.hidden) {
     lines.push("  hidden true");
   }
@@ -683,6 +716,14 @@ function formatTrajectorySegmentFields(segment: WorldOrbitTrajectorySegment): st
     ...formatOptionalUnit("phaseAngle", segment.phaseAngle),
     ...formatOptionalUnit("turnAngle", segment.turnAngle),
     ...formatOptionalUnit("energy", segment.energy),
+    ...(segment.waypointLabel ? [`waypointLabel ${quoteIfNeeded(segment.waypointLabel)}`] : []),
+    ...(segment.waypointDate ? [`waypointDate ${quoteIfNeeded(segment.waypointDate)}`] : []),
+    ...(segment.renderHidden !== null && segment.renderHidden !== undefined
+      ? [`renderHidden ${segment.renderHidden ? "true" : "false"}`]
+      : []),
+    ...(segment.sampleDensity !== null && segment.sampleDensity !== undefined
+      ? [`sampleDensity ${segment.sampleDensity}`]
+      : []),
     ...(segment.notes.length > 0 ? [`notes ${segment.notes.map(quoteIfNeeded).join(" ")}`] : []),
   ];
 }
@@ -763,7 +804,7 @@ function formatDraftLayers(
     );
   }
 
-  for (const key of ["background", "guides", "relations", "events", "objects", "labels", "metadata"] as const) {
+  for (const key of ["background", "guides", "relations", "events", "objects", "trajectories", "labels", "metadata"] as const) {
     if (layers[key] !== undefined) {
       tokens.push(layers[key] ? key : `-${key}`);
     }

@@ -1,30 +1,29 @@
 # WorldOrbit Language Reference
 
-WorldOrbit is a text-first DSL for fictional orbital systems. This reference covers the currently recommended atlas format, Schema 3.0, while also calling out the older compatibility paths that remain supported.
+WorldOrbit is a text-first DSL for fictional orbital systems. This reference covers the currently recommended atlas format, Schema 3.1, while also calling out the older compatibility paths that remain supported.
 
 ## Version overview
 
-- `schema 3.0` is the recommended header for new atlas documents.
-- `schema 2.6` remains fully readable and is the direct compatibility base for Schema 3.0.
+- `schema 3.1` is the recommended header for new atlas documents.
+- `schema 3.0` and `schema 2.6` remain fully readable compatibility bases for Schema 3.1.
 - `schema 2.1` remains fully readable for older atlases.
 - `schema 2.0` remains fully supported.
 - `schema 2.0-draft` remains readable as a legacy compatibility path and emits a deprecation diagnostic.
 - Schema 1.0 source without a header is still supported through the older parser/normalization pipeline.
 
-## What's new in Schema 3.0
+## What's new in Schema 3.1
 
-Schema 3.0 is a backward-compatible extension of Schema 2.6 focused on declarative mission authoring, not on becoming a full orbital solver.
+Schema 3.1 is a backward-compatible extension of Schema 3.0 focused on visible mission rendering, not on becoming a full orbital solver.
 
-Schema 3.0 adds:
+Schema 3.1 adds:
 
-- a canonical `craft` object type for ships, probes, and stations
-- a declarative `trajectory` block for reusable mission paths
-- trajectory segments for departures, transfers, flybys, captures, escapes, and stationkeeping
-- swing-by and gravity-assist metadata such as `assist`, `turnAngle`, `periapsis`, `deltaV`, and `energy`
-- explicit links between `craft`, `trajectory`, `event`, and `pose` snapshots for curated mission states
-- solver-friendly data without forcing the core parser to perform numerical simulation
+- visible trajectory curves in 2D and 3D scenes
+- trajectory render metadata such as `renderMode`, `stroke`, `strokeWidth`, `marker`, `labelMode`, and `showWaypoints`
+- segment render hints such as `waypointLabel`, `waypointDate`, `renderHidden`, and `sampleDensity`
+- official solver sampling APIs and `auto` fallback between illustrative and solver rendering
+- continued support for declarative `craft`, `trajectory`, `event`, and `pose` mission authoring
 
-Schema 3.0 still does not add a built-in orbital solver, continuous XYZ path authoring, meshes, materials, quaternions, or lighting.
+Schema 3.1 still does not add a built-in N-body solver, continuous freeform XYZ path authoring, meshes, materials, quaternions, or lighting.
 
 Schema 2.6 remains the direct compatibility base, and older documents continue to load through the same parser and normalization pipeline.
 

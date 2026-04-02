@@ -1,30 +1,29 @@
 # WorldOrbit Sprachreferenz
 
-WorldOrbit ist eine text-first DSL fuer fiktionale orbitale Systeme. Diese Referenz beschreibt das aktuell empfohlene Atlasformat Schema 3.0 und nennt zugleich die weiterhin unterstuetzten Kompatibilitaetspfade.
+WorldOrbit ist eine text-first DSL fuer fiktionale orbitale Systeme. Diese Referenz beschreibt das aktuell empfohlene Atlasformat Schema 3.1 und nennt zugleich die weiterhin unterstuetzten Kompatibilitaetspfade.
 
 ## Versionsueberblick
 
-- `schema 3.0` ist der empfohlene Header fuer neue Atlas-Dokumente.
-- `schema 2.6` bleibt voll lesbar und ist die direkte Kompatibilitaetsbasis fuer Schema 3.0.
+- `schema 3.1` ist der empfohlene Header fuer neue Atlas-Dokumente.
+- `schema 3.0` und `schema 2.6` bleiben voll lesbare Kompatibilitaetsbasen fuer Schema 3.1.
 - `schema 2.1` bleibt voll lesbar fuer aeltere Atlanten.
 - `schema 2.0` bleibt voll unterstuetzt.
 - `schema 2.0-draft` bleibt als Legacy-Kompatibilitaetspfad lesbar und erzeugt eine Deprecation-Diagnose.
 - Schema-1.0-Quellen ohne Header werden weiterhin ueber die aeltere Parser-/Normalisierungsstrecke unterstuetzt.
 
-## Neu in Schema 3.0
+## Neu in Schema 3.1
 
-Schema 3.0 ist eine rueckwaertskompatible Erweiterung von Schema 2.6 mit Fokus auf deklarativer Missionsbeschreibung, nicht auf einem vollwertigen Orbitalsolver.
+Schema 3.1 ist eine rueckwaertskompatible Erweiterung von Schema 3.0 mit Fokus auf sichtbarer Missionsdarstellung, nicht auf einem vollwertigen Orbitalsolver.
 
-Schema 3.0 fuegt hinzu:
+Schema 3.1 fuegt hinzu:
 
-- einen kanonischen `craft`-Objekttyp fuer Schiffe, Sonden und Stationen
-- einen deklarativen `trajectory`-Block fuer wiederverwendbare Missionspfade
-- Trajectory-Segmente fuer Starts, Transfers, Flybys, Captures, Escapes und Stationkeeping
-- Swing-by- und Gravity-Assist-Metadaten wie `assist`, `turnAngle`, `periapsis`, `deltaV` und `energy`
-- explizite Verknuepfungen zwischen `craft`, `trajectory`, `event` und `pose`-Snapshots
-- solverfreundliche Daten, ohne den Core-Parser zu numerischer Simulation zu zwingen
+- sichtbare Trajektorienkurven in 2D- und 3D-Szenen
+- Trajektorien-Render-Metadaten wie `renderMode`, `stroke`, `strokeWidth`, `marker`, `labelMode` und `showWaypoints`
+- Segment-Render-Hinweise wie `waypointLabel`, `waypointDate`, `renderHidden` und `sampleDensity`
+- offizielle Solver-Sampling-APIs und `auto`-Fallback zwischen illustrativer und solver-basierter Darstellung
+- weiterhin deklarative `craft`-, `trajectory`-, `event`- und `pose`-Missionsbeschreibung
 
-Schema 3.0 fuegt weiterhin bewusst **nicht** einen eingebauten Orbitalsolver, kontinuierliche XYZ-Pfadbeschreibung, Meshes, Materialien, Quaternionen oder Licht hinzu.
+Schema 3.1 fuegt weiterhin bewusst **nicht** einen eingebauten N-Koerper-Solver, kontinuierliche freie XYZ-Pfadbeschreibung, Meshes, Materialien, Quaternionen oder Licht hinzu.
 
 Schema 2.6 bleibt die direkte Kompatibilitaetsbasis, und aeltere Dokumente laden weiterhin ueber dieselbe Parser- und Normalisierungsstrecke.
 

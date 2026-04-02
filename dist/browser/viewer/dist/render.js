@@ -40,6 +40,13 @@ export function renderSceneToSvg(scene, options = {}) {
             .map((relation) => `<line class="wo-relation" x1="${relation.x1}" y1="${relation.y1}" x2="${relation.x2}" y2="${relation.y2}" data-render-id="${escapeXml(relation.renderId)}" data-relation-id="${escapeAttribute(relation.relationId)}" />`)
             .join("")
         : "";
+    const trajectoryMarkup = layers.trajectories
+        ? renderTrajectoryLayer(scene, visibleObjectIds, {
+            showLabels: options.showTrajectoryLabels ?? true,
+            showWaypoints: options.showTrajectoryWaypoints ?? true,
+            includeStructures: layers.structures,
+        })
+        : "";
     const eventMarkup = layers.events
         ? scene.events
             .filter((event) => !event.hidden)
@@ -82,6 +89,9 @@ export function renderSceneToSvg(scene, options = {}) {
       <stop offset="0%" stop-color="${theme.backgroundGlow}" />
       <stop offset="100%" stop-color="transparent" />
     </radialGradient>
+    <marker id="wo-trajectory-arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="${theme.accent}" />
+    </marker>
     ${imageDefinitions}
   </defs>
   <style>
@@ -93,6 +103,10 @@ export function renderSceneToSvg(scene, options = {}) {
     .wo-orbit-front { opacity: 0.9; }
     .wo-orbit-band { stroke: ${theme.orbitBand}; stroke-linecap: round; }
     .wo-relation { stroke: ${theme.relation}; stroke-width: 2; stroke-dasharray: 10 6; }
+    .wo-trajectory { fill: none; stroke: ${theme.accent}; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; opacity: 0.92; }
+    .wo-trajectory-waypoint { fill: ${theme.spaceFog}; stroke: ${theme.selected}; stroke-width: 1.4; }
+    .wo-trajectory-label { fill: ${theme.accent}; font-family: ${theme.fontFamily}; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+    .wo-trajectory-date { fill: ${theme.muted}; font-family: ${theme.fontFamily}; font-weight: 500; }
     .wo-event-line { stroke: ${theme.accent}; stroke-width: 1.6; stroke-dasharray: 5 5; opacity: 0.72; }
     .wo-event-node { fill: ${theme.accent}; stroke: ${theme.selected}; stroke-width: 1.4; opacity: 0.92; }
     .wo-event-label { fill: ${theme.accent}; font-family: ${theme.fontFamily}; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -133,6 +147,7 @@ export function renderSceneToSvg(scene, options = {}) {
         ${layers.events ? `<g data-layer-id="events">${eventMarkup}</g>` : ""}
         ${layers.objects ? `<g data-layer-id="objects">${objectMarkup}</g>` : ""}
         ${layers.orbits ? `<g data-layer-id="orbits-front">${orbitMarkup.front}</g>` : ""}
+        ${layers.trajectories ? `<g data-layer-id="trajectories">${trajectoryMarkup}</g>` : ""}
         ${layers.labels ? `<g data-layer-id="labels">${labelMarkup}</g>` : ""}
       </g>
     </g>
@@ -156,6 +171,47 @@ function renderSceneEventOverlay(scene, event, visibleObjectIds, theme) {
     ${lineMarkup}
     <circle class="wo-event-node" cx="${event.x}" cy="${event.y}" r="5" fill="${escapeAttribute(stroke)}" />
     <text class="wo-event-label" x="${event.x}" y="${event.y - 10}" text-anchor="middle" font-size="10">${escapeXml(label)}</text>
+  </g>`;
+}
+function renderTrajectoryLayer(scene, visibleObjectIds, options) {
+    return scene.trajectories
+        .filter((trajectory) => !trajectory.hidden)
+        .filter((trajectory) => trajectory.objectIds.length === 0 || trajectory.objectIds.some((objectId) => visibleObjectIds.has(objectId)))
+        .filter((trajectory) => options.includeStructures ||
+        !trajectory.objectIds.some((objectId) => {
+            const object = scene.objects.find((entry) => entry.objectId === objectId)?.object;
+            return object ? isStructureLike(object) : false;
+        }))
+        .map((trajectory) => {
+        const stroke = trajectory.stroke ?? "#f0b464";
+        const markerEnd = trajectory.marker === "none" ? "" : ` marker-end="url(#wo-trajectory-arrow)"`;
+        const waypointMarkup = trajectory.showWaypoints && options.showWaypoints
+            ? trajectory.waypoints
+                .filter((waypoint) => !waypoint.hidden)
+                .map((waypoint) => renderTrajectoryWaypoint(trajectory, waypoint, options.showLabels))
+                .join("")
+            : "";
+        return `<g class="wo-trajectory-group" data-render-id="${escapeXml(trajectory.renderId)}" data-trajectory-id="${escapeAttribute(trajectory.trajectoryId)}">
+    <path class="wo-trajectory wo-trajectory-${trajectory.mode}" d="${trajectory.path}" stroke="${escapeAttribute(stroke)}" stroke-width="${trajectory.strokeWidth}"${markerEnd} />
+    ${waypointMarkup}
+  </g>`;
+    })
+        .join("");
+}
+function renderTrajectoryWaypoint(trajectory, waypoint, showLabels) {
+    const labelMarkup = showLabels && trajectory.labelMode !== "hidden"
+        ? [
+            waypoint.label
+                ? `<text class="wo-trajectory-label" x="${waypoint.x + 10}" y="${waypoint.y - 10}" font-size="10">${escapeXml(waypoint.label)}</text>`
+                : "",
+            waypoint.dateLabel
+                ? `<text class="wo-trajectory-date" x="${waypoint.x + 10}" y="${waypoint.y + 4}" font-size="9">${escapeXml(waypoint.dateLabel)}</text>`
+                : "",
+        ].join("")
+        : "";
+    return `<g class="wo-trajectory-waypoint-group" data-render-id="${escapeXml(waypoint.renderId)}" data-trajectory-id="${escapeAttribute(waypoint.trajectoryId)}">
+    <circle class="wo-trajectory-waypoint" cx="${waypoint.x}" cy="${waypoint.y}" r="4.5" />
+    ${labelMarkup}
   </g>`;
 }
 export function renderDocumentToSvg(document, options = {}) {

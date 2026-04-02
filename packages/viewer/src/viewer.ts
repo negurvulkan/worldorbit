@@ -2133,6 +2133,33 @@ function fallbackSpatialSceneFromRenderScene(scene: RenderScene): SpatialScene {
       hidden: orbit.hidden,
       motion: null,
     })),
+    trajectories: scene.trajectories.map((trajectory) => ({
+      trajectoryId: trajectory.trajectoryId,
+      trajectory: trajectory.trajectory,
+      craftObjectId: trajectory.craftObjectId,
+      mode: trajectory.mode,
+      stroke: trajectory.stroke,
+      strokeWidth: trajectory.strokeWidth,
+      marker: trajectory.marker,
+      labelMode: trajectory.labelMode,
+      showWaypoints: trajectory.showWaypoints,
+      samples: [],
+      waypoints: trajectory.waypoints.map((waypoint) => ({
+        trajectoryId: waypoint.trajectoryId,
+        segmentId: waypoint.segmentId,
+        maneuverId: waypoint.maneuverId,
+        objectId: waypoint.objectId,
+        position: {
+          x: waypoint.x - scene.contentBounds.centerX,
+          y: 0,
+          z: waypoint.y - scene.contentBounds.centerY,
+        },
+        label: waypoint.label,
+        dateLabel: waypoint.dateLabel,
+        hidden: waypoint.hidden,
+      })),
+      hidden: trajectory.hidden,
+    })),
     focusTargets: scene.objects.map((object) => ({
       objectId: object.objectId,
       center: {

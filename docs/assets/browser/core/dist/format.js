@@ -41,11 +41,13 @@ export function formatDocument(document, options = {}) {
         schema === "2.5" ||
         schema === "2.6" ||
         schema === "3.0" ||
+        schema === "3.1" ||
         schema === "2.0-draft" ||
         document.version === "2.0" ||
         document.version === "2.1" ||
         document.version === "2.5" ||
         document.version === "3.0" ||
+        document.version === "3.1" ||
         document.version === "2.6" ||
         document.version === "2.0-draft";
     if (useDraft) {
@@ -61,7 +63,12 @@ export function formatDocument(document, options = {}) {
                     : upgradeDocumentToDraftV2(document);
             return formatDraftDocument(legacyDraftDocument);
         }
-        const atlasDocument = document.version === "2.0" || document.version === "2.1" || document.version === "2.5" || document.version === "2.6" || document.version === "3.0"
+        const atlasDocument = document.version === "2.0" ||
+            document.version === "2.1" ||
+            document.version === "2.5" ||
+            document.version === "2.6" ||
+            document.version === "3.0" ||
+            document.version === "3.1"
             ? document
             : document.version === "2.0-draft"
                 ? {
@@ -70,7 +77,13 @@ export function formatDocument(document, options = {}) {
                     schemaVersion: "2.0",
                 }
                 : upgradeDocumentToV2(document);
-        if ((schema === "2.0" || schema === "2.1" || schema === "2.5" || schema === "2.6" || schema === "3.0") && atlasDocument.version !== schema) {
+        if ((schema === "2.0" ||
+            schema === "2.1" ||
+            schema === "2.5" ||
+            schema === "2.6" ||
+            schema === "3.0" ||
+            schema === "3.1") &&
+            atlasDocument.version !== schema) {
             return formatAtlasDocument({
                 ...atlasDocument,
                 version: schema,
@@ -534,6 +547,24 @@ function formatAtlasTrajectory(trajectory) {
     if (trajectory.color) {
         lines.push(`  color ${quoteIfNeeded(trajectory.color)}`);
     }
+    if (trajectory.renderMode) {
+        lines.push(`  renderMode ${trajectory.renderMode}`);
+    }
+    if (trajectory.stroke) {
+        lines.push(`  stroke ${quoteIfNeeded(trajectory.stroke)}`);
+    }
+    if (trajectory.strokeWidth !== null && trajectory.strokeWidth !== undefined) {
+        lines.push(`  strokeWidth ${trajectory.strokeWidth}`);
+    }
+    if (trajectory.marker) {
+        lines.push(`  marker ${quoteIfNeeded(trajectory.marker)}`);
+    }
+    if (trajectory.labelMode) {
+        lines.push(`  labelMode ${quoteIfNeeded(trajectory.labelMode)}`);
+    }
+    if (trajectory.showWaypoints !== null && trajectory.showWaypoints !== undefined) {
+        lines.push(`  showWaypoints ${trajectory.showWaypoints ? "true" : "false"}`);
+    }
     if (trajectory.hidden) {
         lines.push("  hidden true");
     }
@@ -570,6 +601,14 @@ function formatTrajectorySegmentFields(segment) {
         ...formatOptionalUnit("phaseAngle", segment.phaseAngle),
         ...formatOptionalUnit("turnAngle", segment.turnAngle),
         ...formatOptionalUnit("energy", segment.energy),
+        ...(segment.waypointLabel ? [`waypointLabel ${quoteIfNeeded(segment.waypointLabel)}`] : []),
+        ...(segment.waypointDate ? [`waypointDate ${quoteIfNeeded(segment.waypointDate)}`] : []),
+        ...(segment.renderHidden !== null && segment.renderHidden !== undefined
+            ? [`renderHidden ${segment.renderHidden ? "true" : "false"}`]
+            : []),
+        ...(segment.sampleDensity !== null && segment.sampleDensity !== undefined
+            ? [`sampleDensity ${segment.sampleDensity}`]
+            : []),
         ...(segment.notes.length > 0 ? [`notes ${segment.notes.map(quoteIfNeeded).join(" ")}`] : []),
     ];
 }
@@ -634,7 +673,7 @@ function formatDraftLayers(layers) {
             ? "orbits"
             : "-orbits");
     }
-    for (const key of ["background", "guides", "relations", "events", "objects", "labels", "metadata"]) {
+    for (const key of ["background", "guides", "relations", "events", "objects", "trajectories", "labels", "metadata"]) {
         if (layers[key] !== undefined) {
             tokens.push(layers[key] ? key : `-${key}`);
         }

@@ -95,6 +95,10 @@ export function renderDocumentToSpatialScene(
     ),
   );
 
+  const spatialTrajectories = scene.trajectories.map((trajectory) =>
+    createSpatialTrajectory(trajectory, spatialObjectMap),
+  );
+
   const focusTargets = spatialObjects.map<SpatialFocusTarget>((object) => ({
     objectId: object.objectId,
     center: { ...object.position },
@@ -125,6 +129,7 @@ export function renderDocumentToSpatialScene(
     timeFrozen: scene.activeEventId !== null,
     objects: spatialObjects,
     orbits: spatialOrbits,
+    trajectories: spatialTrajectories,
     focusTargets,
   };
 }
@@ -220,6 +225,46 @@ function createSpatialOrbit(
         minimumMotionMetric,
         frozen,
       ),
+  };
+}
+
+function createSpatialTrajectory(
+  trajectory: RenderScene["trajectories"][number],
+  objectMap: Map<string, SpatialSceneObject>,
+): SpatialScene["trajectories"][number] {
+  const samples = samplePathPoints(trajectory.path).map((point) => ({
+    x: point.x,
+    y: 0,
+    z: point.y,
+  }));
+
+  return {
+    trajectoryId: trajectory.trajectoryId,
+    trajectory: trajectory.trajectory,
+    craftObjectId: trajectory.craftObjectId,
+    mode: trajectory.mode,
+    stroke: trajectory.stroke,
+    strokeWidth: trajectory.strokeWidth,
+    marker: trajectory.marker,
+    labelMode: trajectory.labelMode,
+    showWaypoints: trajectory.showWaypoints,
+    samples,
+    waypoints: trajectory.waypoints.map((waypoint) => {
+      const object = waypoint.objectId ? objectMap.get(waypoint.objectId) ?? null : null;
+      return {
+        trajectoryId: waypoint.trajectoryId,
+        segmentId: waypoint.segmentId,
+        maneuverId: waypoint.maneuverId,
+        objectId: waypoint.objectId,
+        position: object
+          ? { ...object.position }
+          : { x: waypoint.x, y: 0, z: waypoint.y },
+        label: waypoint.label,
+        dateLabel: waypoint.dateLabel,
+        hidden: waypoint.hidden,
+      };
+    }),
+    hidden: trajectory.hidden,
   };
 }
 
@@ -599,4 +644,25 @@ function clampNumber(value: number, min: number, max: number): number {
 
 function degreesToRadians(value: number): number {
   return (value * Math.PI) / 180;
+}
+
+function samplePathPoints(path: string): Array<{ x: number; y: number }> {
+  const matches = [...path.matchAll(/[MLQ]\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)(?:\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?))?(?:\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?))?/g)];
+  if (matches.length === 0) {
+    return [];
+  }
+
+  const points: Array<{ x: number; y: number }> = [];
+  for (const match of matches) {
+    const command = match[0][0];
+    if (command === "M" || command === "L") {
+      points.push({ x: Number(match[1]), y: Number(match[2]) });
+      continue;
+    }
+    if (command === "Q") {
+      points.push({ x: Number(match[1]), y: Number(match[2]) });
+      points.push({ x: Number(match[5]), y: Number(match[6]) });
+    }
+  }
+  return points;
 }

@@ -18,15 +18,15 @@ export function upgradeDocumentToV2(document, options = {}) {
     }
     return {
         format: "worldorbit",
-        version: "3.0",
-        schemaVersion: "3.0",
+        version: "3.1",
+        schemaVersion: "3.1",
         sourceVersion: document.version,
         theme: document.theme ?? null,
         system,
         groups: structuredClone(document.groups ?? []),
         relations: structuredClone(document.relations ?? []),
         events: structuredClone(document.events ?? []),
-        trajectories: [],
+        trajectories: structuredClone(document.trajectories ?? []),
         objects: document.objects.map(cloneWorldOrbitObject).map(normalizeLegacyCraftObject),
         diagnostics,
     };
@@ -490,7 +490,7 @@ function serializeViewpointLayers(layers) {
     if (orbitFront !== undefined || orbitBack !== undefined) {
         tokens.push(orbitFront !== false || orbitBack !== false ? "orbits" : "-orbits");
     }
-    for (const key of ["background", "guides", "relations", "events", "objects", "labels", "metadata"]) {
+    for (const key of ["background", "guides", "relations", "events", "objects", "trajectories", "labels", "metadata"]) {
         if (layers[key] !== undefined) {
             tokens.push(layers[key] ? key : `-${key}`);
         }

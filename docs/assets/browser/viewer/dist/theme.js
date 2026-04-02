@@ -4,6 +4,7 @@ const DEFAULT_LAYERS = {
     relations: true,
     events: true,
     orbits: true,
+    trajectories: true,
     objects: true,
     labels: true,
     structures: true,

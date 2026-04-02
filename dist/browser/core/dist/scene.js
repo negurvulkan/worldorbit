@@ -138,7 +138,8 @@ export function renderDocumentToScene(document, options = {}) {
     const labels = createSceneLabels(objects, width, height, scaleModel.labelMultiplier);
     const relations = createSceneRelations(document, objects);
     const events = createSceneEvents(document.events ?? [], objects, activeEventId);
-    const layers = createSceneLayers(orbitVisuals, relations, events, leaders, objects, labels);
+    const trajectories = createSceneTrajectories(document, objects, events, options);
+    const layers = createSceneLayers(orbitVisuals, trajectories, relations, events, leaders, objects, labels);
     const groups = createSceneGroups(objects, orbitVisuals, leaders, labels, relationships, scaleModel.labelMultiplier);
     const semanticGroups = createSceneSemanticGroups(document, objects);
     const viewpoints = createSceneViewpoints(document, schemaProjection, frame.preset, relationships, objectMap);
@@ -179,6 +180,7 @@ export function renderDocumentToScene(document, options = {}) {
         viewpoints,
         events,
         activeEventId,
+        trajectories,
         objects,
         orbitVisuals,
         relations,
@@ -662,7 +664,7 @@ function createLabelPlacement(object, direction, attempt, labelMultiplier) {
         }
     }
 }
-function createSceneLayers(orbitVisuals, relations, events, leaders, objects, labels) {
+function createSceneLayers(orbitVisuals, trajectories, relations, events, leaders, objects, labels) {
     const backOrbitIds = orbitVisuals
         .filter((visual) => !visual.hidden && Boolean(visual.backArcPath))
         .map((visual) => visual.renderId);
@@ -677,6 +679,15 @@ function createSceneLayers(orbitVisuals, relations, events, leaders, objects, la
         },
         { id: "orbits-back", renderIds: backOrbitIds },
         { id: "orbits-front", renderIds: frontOrbitIds },
+        {
+            id: "trajectories",
+            renderIds: trajectories
+                .filter((trajectory) => !trajectory.hidden)
+                .flatMap((trajectory) => [
+                trajectory.renderId,
+                ...trajectory.waypoints.filter((waypoint) => !waypoint.hidden).map((waypoint) => waypoint.renderId),
+            ]),
+        },
         {
             id: "relations",
             renderIds: relations.filter((relation) => !relation.hidden).map((relation) => relation.renderId),
@@ -818,6 +829,206 @@ function createSceneEvents(events, objects, activeEventId) {
         };
     })
         .sort((left, right) => left.event.id.localeCompare(right.event.id));
+}
+function createSceneTrajectories(document, objects, events, options) {
+    const objectMap = new Map(objects.map((object) => [object.objectId, object]));
+    return document.trajectories
+        .map((trajectory) => createSceneTrajectory(trajectory, objectMap, events, options))
+        .sort((left, right) => left.trajectoryId.localeCompare(right.trajectoryId));
+}
+function createSceneTrajectory(trajectory, objectMap, events, options) {
+    const craftObject = trajectory.craftObjectId ? objectMap.get(trajectory.craftObjectId) ?? null : null;
+    const mode = resolveTrajectoryMode(trajectory, options);
+    const stroke = trajectory.stroke ?? trajectory.color ?? craftObject?.fillColor ?? null;
+    const strokeWidth = trajectory.strokeWidth ?? 2.4;
+    const showWaypoints = options.showTrajectoryWaypoints ?? trajectory.showWaypoints ?? true;
+    const labelMode = trajectory.labelMode ?? (options.showTrajectoryLabels === false ? "hidden" : "waypoint");
+    const pathParts = [];
+    const waypoints = [];
+    const objectIds = new Set();
+    let lastAnchor = craftObject;
+    if (craftObject) {
+        objectIds.add(craftObject.objectId);
+    }
+    trajectory.segments.forEach((segment, index) => {
+        const geometry = buildTrajectorySegmentGeometry(trajectory, segment, index, mode, objectMap, lastAnchor, showWaypoints);
+        if (geometry.path) {
+            pathParts.push(geometry.path);
+        }
+        geometry.objectIds.forEach((objectId) => objectIds.add(objectId));
+        waypoints.push(...geometry.waypoints);
+        lastAnchor = geometry.lastAnchor ?? lastAnchor;
+    });
+    for (const event of events.filter((entry) => entry.event.trajectoryId === trajectory.id)) {
+        const eventObject = event.targetObjectId
+            ? objectMap.get(event.targetObjectId) ?? null
+            : event.objectIds.map((objectId) => objectMap.get(objectId) ?? null).find(Boolean) ?? null;
+        if (!eventObject) {
+            continue;
+        }
+        waypoints.push({
+            renderId: `${createRenderId(`${trajectory.id}-${event.eventId}`)}-waypoint`,
+            trajectoryId: trajectory.id,
+            segmentId: null,
+            maneuverId: null,
+            objectId: eventObject.objectId,
+            x: eventObject.x,
+            y: eventObject.y,
+            label: event.event.label ?? event.event.id,
+            dateLabel: event.event.epoch ?? null,
+            hidden: trajectory.hidden || event.hidden || !showWaypoints,
+        });
+        objectIds.add(eventObject.objectId);
+    }
+    return {
+        renderId: `${createRenderId(trajectory.id)}-trajectory`,
+        trajectoryId: trajectory.id,
+        trajectory,
+        craftObjectId: trajectory.craftObjectId,
+        mode,
+        path: pathParts.join(" "),
+        stroke,
+        strokeWidth,
+        marker: trajectory.marker ?? "arrow",
+        labelMode,
+        showWaypoints,
+        objectIds: [...objectIds],
+        waypoints,
+        hidden: trajectory.hidden || pathParts.length === 0,
+    };
+}
+function buildTrajectorySegmentGeometry(trajectory, segment, segmentIndex, mode, objectMap, fallbackStart, showWaypoints) {
+    const start = resolveTrajectoryObject(segment.fromObjectId, objectMap) ??
+        fallbackStart;
+    const assist = resolveTrajectoryObject(segment.assist?.objectId ?? segment.aroundObjectId ?? null, objectMap);
+    const end = resolveTrajectoryObject(segment.toObjectId, objectMap) ??
+        resolveTrajectoryObject(segment.aroundObjectId, objectMap) ??
+        assist ??
+        start;
+    if (!start || !end) {
+        return {
+            path: "",
+            objectIds: [],
+            waypoints: [],
+            lastAnchor: fallbackStart,
+        };
+    }
+    const objectIds = [start.objectId, end.objectId];
+    if (assist) {
+        objectIds.push(assist.objectId);
+    }
+    const hidden = trajectory.hidden || segment.renderHidden === true || start.hidden || end.hidden;
+    const waypoints = [];
+    const label = segment.waypointLabel ?? segment.label ?? humanizeIdentifier(segment.id);
+    const dateLabel = segment.waypointDate ?? segment.epoch ?? null;
+    if (showWaypoints) {
+        if (segmentIndex === 0) {
+            waypoints.push(createTrajectoryWaypoint(trajectory.id, segment.id, null, start, start.label, null, hidden));
+        }
+        if (assist && assist.objectId !== start.objectId && assist.objectId !== end.objectId) {
+            waypoints.push(createTrajectoryWaypoint(trajectory.id, segment.id, null, assist, label, dateLabel, hidden));
+        }
+        waypoints.push(createTrajectoryWaypoint(trajectory.id, segment.id, null, end, label, dateLabel, hidden));
+    }
+    const samples = mode === "solver"
+        ? sampleQuadraticPoints(start, resolveTrajectoryControlPoint(start, end, assist, segmentIndex), end, Math.max(10, Math.round((segment.sampleDensity ?? 1) * 14)))
+        : null;
+    const control = resolveTrajectoryControlPoint(start, end, assist, segmentIndex);
+    const path = mode === "solver"
+        ? pointsToPath(samples ?? [start, end])
+        : `M ${formatPathNumber(start.x)} ${formatPathNumber(start.y)} Q ${formatPathNumber(control.x)} ${formatPathNumber(control.y)} ${formatPathNumber(end.x)} ${formatPathNumber(end.y)}`;
+    segment.maneuvers.forEach((maneuver, maneuverIndex) => {
+        if (!showWaypoints) {
+            return;
+        }
+        const point = samplePointOnQuadratic(start, control, end, (maneuverIndex + 1) / (segment.maneuvers.length + 1));
+        waypoints.push({
+            renderId: `${createRenderId(`${trajectory.id}-${segment.id}-${maneuver.id}`)}-waypoint`,
+            trajectoryId: trajectory.id,
+            segmentId: segment.id,
+            maneuverId: maneuver.id,
+            objectId: null,
+            x: point.x,
+            y: point.y,
+            label: maneuver.label ?? maneuver.kind,
+            dateLabel: maneuver.epoch ?? null,
+            hidden,
+        });
+    });
+    return {
+        path,
+        objectIds: [...new Set(objectIds)],
+        waypoints,
+        lastAnchor: end,
+    };
+}
+function createTrajectoryWaypoint(trajectoryId, segmentId, maneuverId, object, label, dateLabel, hidden) {
+    return {
+        renderId: `${createRenderId(`${trajectoryId}-${segmentId ?? object.objectId}-${maneuverId ?? object.objectId}`)}-waypoint`,
+        trajectoryId,
+        segmentId,
+        maneuverId,
+        objectId: object.objectId,
+        x: object.x,
+        y: object.y,
+        label,
+        dateLabel,
+        hidden,
+    };
+}
+function resolveTrajectoryMode(trajectory, options) {
+    const requested = options.trajectoryMode ?? trajectory.renderMode ?? "auto";
+    if (requested !== "auto") {
+        return requested;
+    }
+    const segmentCount = trajectory.segments.filter((segment) => segment.fromObjectId || segment.toObjectId || segment.assist?.objectId || segment.aroundObjectId).length;
+    return segmentCount > 0 ? "solver" : "illustrative";
+}
+function resolveTrajectoryObject(objectId, objectMap) {
+    return objectId ? objectMap.get(objectId) ?? null : null;
+}
+function resolveTrajectoryControlPoint(start, end, assist, segmentIndex) {
+    if (assist) {
+        return {
+            x: assist.x,
+            y: assist.y,
+        };
+    }
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = Math.max(Math.hypot(dx, dy), 1);
+    const offset = Math.min(Math.max(length * 0.18, 26), 120) * (segmentIndex % 2 === 0 ? 1 : -1);
+    const normalX = -dy / length;
+    const normalY = dx / length;
+    return {
+        x: (start.x + end.x) / 2 + normalX * offset,
+        y: (start.y + end.y) / 2 + normalY * offset,
+    };
+}
+function sampleQuadraticPoints(start, control, end, count) {
+    const samples = [];
+    for (let index = 0; index <= count; index += 1) {
+        samples.push(samplePointOnQuadratic(start, control, end, index / count));
+    }
+    return samples;
+}
+function samplePointOnQuadratic(start, control, end, t) {
+    const inverse = 1 - t;
+    return {
+        x: inverse * inverse * start.x + 2 * inverse * t * control.x + t * t * end.x,
+        y: inverse * inverse * start.y + 2 * inverse * t * control.y + t * t * end.y,
+    };
+}
+function pointsToPath(points) {
+    if (points.length === 0) {
+        return "";
+    }
+    return points
+        .map((point, index) => `${index === 0 ? "M" : "L"} ${formatPathNumber(point.x)} ${formatPathNumber(point.y)}`)
+        .join(" ");
+}
+function formatPathNumber(value) {
+    return Number.isFinite(value) ? value.toFixed(2) : "0";
 }
 function createSceneViewpoints(document, projection, preset, relationships, objectMap) {
     const generatedOverview = createGeneratedOverviewViewpoint(document, projection, preset);
@@ -1099,7 +1310,8 @@ function parseViewpointLayers(value) {
             rawLayer === "events" ||
             rawLayer === "objects" ||
             rawLayer === "labels" ||
-            rawLayer === "metadata") {
+            rawLayer === "metadata" ||
+            rawLayer === "trajectories") {
             next[rawLayer] = enabled;
         }
     }

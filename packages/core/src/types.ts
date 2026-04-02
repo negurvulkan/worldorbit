@@ -43,7 +43,7 @@ export type Unit =
   | "deg"; // degrees
 
 export type WorldOrbitDocumentVersion = "1.0";
-export type WorldOrbitAtlasDocumentVersion = "2.0" | "2.1" | "2.5" | "2.6" | "3.0";
+export type WorldOrbitAtlasDocumentVersion = "2.0" | "2.1" | "2.5" | "2.6" | "3.0" | "3.1";
 export type WorldOrbitDraftDocumentVersion = "2.0-draft";
 export type WorldOrbitAnyDocumentVersion =
   | WorldOrbitDocumentVersion
@@ -276,6 +276,12 @@ export interface WorldOrbitTrajectory {
   tags: string[];
   color: string | null;
   hidden: boolean;
+  renderMode?: TrajectoryRenderMode | null;
+  stroke?: string | null;
+  strokeWidth?: number | null;
+  marker?: string | null;
+  labelMode?: string | null;
+  showWaypoints?: boolean | null;
   segments: WorldOrbitTrajectorySegment[];
 }
 
@@ -297,9 +303,15 @@ export interface WorldOrbitTrajectorySegment {
   phaseAngle?: UnitValue;
   turnAngle?: UnitValue;
   energy?: UnitValue;
+  waypointLabel?: string | null;
+  waypointDate?: string | null;
+  renderHidden?: boolean | null;
+  sampleDensity?: number | null;
   notes: string[];
   maneuvers: WorldOrbitManeuver[];
 }
+
+export type TrajectoryRenderMode = "illustrative" | "solver" | "auto";
 
 export type WorldOrbitTrajectorySegmentKind =
   | "departure"
@@ -446,6 +458,9 @@ export interface SceneRenderOptions {
   scaleModel?: Partial<RenderScaleModel>;
   bodyScaleMode?: BodyScaleMode;
   activeEventId?: string | null;
+  trajectoryMode?: TrajectoryRenderMode;
+  showTrajectoryWaypoints?: boolean;
+  showTrajectoryLabels?: boolean;
 }
 
 export interface SpatialScaleModel {
@@ -561,11 +576,42 @@ export interface RenderSceneEvent {
   hidden: boolean;
 }
 
+export interface RenderSceneTrajectoryWaypoint {
+  renderId: string;
+  trajectoryId: string;
+  segmentId: string | null;
+  maneuverId: string | null;
+  objectId: string | null;
+  x: number;
+  y: number;
+  label: string | null;
+  dateLabel: string | null;
+  hidden: boolean;
+}
+
+export interface RenderSceneTrajectory {
+  renderId: string;
+  trajectoryId: string;
+  trajectory: WorldOrbitTrajectory;
+  craftObjectId: string | null;
+  mode: TrajectoryRenderMode;
+  path: string;
+  stroke: string | null;
+  strokeWidth: number;
+  marker: string | null;
+  labelMode: string | null;
+  showWaypoints: boolean;
+  objectIds: string[];
+  waypoints: RenderSceneTrajectoryWaypoint[];
+  hidden: boolean;
+}
+
 export type SceneLayerId =
   | "background"
   | "guides"
   | "orbits-back"
   | "orbits-front"
+  | "trajectories"
   | "relations"
   | "events"
   | "objects"
@@ -700,6 +746,36 @@ export interface SpatialOrbit {
   motion: OrbitalMotionModel | null;
 }
 
+export interface SpatialTrajectorySample {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface SpatialTrajectory {
+  trajectoryId: string;
+  trajectory: WorldOrbitTrajectory;
+  craftObjectId: string | null;
+  mode: TrajectoryRenderMode;
+  stroke: string | null;
+  strokeWidth: number;
+  marker: string | null;
+  labelMode: string | null;
+  showWaypoints: boolean;
+  samples: SpatialTrajectorySample[];
+  waypoints: Array<{
+    trajectoryId: string;
+    segmentId: string | null;
+    maneuverId: string | null;
+    objectId: string | null;
+    position: CoordinatePoint3D;
+    label: string | null;
+    dateLabel: string | null;
+    hidden: boolean;
+  }>;
+  hidden: boolean;
+}
+
 export interface SpatialFocusTarget {
   objectId: string;
   center: CoordinatePoint3D;
@@ -728,6 +804,7 @@ export interface RenderScene {
   viewpoints: RenderSceneViewpoint[];
   events: RenderSceneEvent[];
   activeEventId: string | null;
+  trajectories: RenderSceneTrajectory[];
   objects: RenderSceneObject[];
   orbitVisuals: RenderOrbitVisual[];
   relations: RenderSceneRelation[];
@@ -756,6 +833,7 @@ export interface SpatialScene {
   timeFrozen: boolean;
   objects: SpatialSceneObject[];
   orbits: SpatialOrbit[];
+  trajectories: SpatialTrajectory[];
   focusTargets: SpatialFocusTarget[];
 }
 

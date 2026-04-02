@@ -848,6 +848,92 @@ test("schema 2.5 scenes preserve projection intent, camera metadata, and 2D fall
   );
 });
 
+test("schema 3.1 scenes render visible trajectories, waypoints, and solver samples", () => {
+  const loaded = loadWorldOrbitSource(`
+schema 3.1
+
+system Voyager
+  title "Voyager Mission Diagram"
+
+defaults
+  view topdown
+  scale presentation
+
+object star Sol
+  radius 1sol
+
+object planet Earth
+  orbit Sol
+  semiMajor 1au
+
+object planet Jupiter
+  orbit Sol
+  semiMajor 5.2au
+
+object craft Voyager-2
+  free deep-space
+  trajectory grand-tour
+
+trajectory grand-tour
+  craft Voyager-2
+  renderMode solver
+  stroke #ffb347
+  showWaypoints true
+
+  segment departure
+    kind departure
+    from Earth
+    to Jupiter
+    waypointLabel Launch
+    waypointDate "20 Aug 77"
+
+    maneuver tcm-1
+      kind burn
+      label "TCM-1"
+      epoch "01 Sep 77"
+
+  segment jupiter-flyby
+    kind flyby
+    from Earth
+    to Jupiter
+    assist Jupiter
+    waypointLabel Jupiter
+    waypointDate "09 Jul 79"
+    sampleDensity 2
+
+event voyager-jupiter
+  kind flyby
+  label "Jupiter Encounter"
+  target Voyager-2
+  participants Jupiter Voyager-2
+  trajectory grand-tour
+`.trim());
+
+  const scene = renderDocumentToScene(loaded.document, {
+    trajectoryMode: "auto",
+    showTrajectoryWaypoints: true,
+    showTrajectoryLabels: true,
+  });
+  const spatialScene = renderDocumentToSpatialScene(loaded.document, {
+    trajectoryMode: "auto",
+  });
+  const svg = renderSceneToSvg(scene, {
+    showTrajectoryWaypoints: true,
+    showTrajectoryLabels: true,
+  });
+
+  assert.equal(scene.trajectories.length, 1);
+  assert.equal(scene.trajectories[0].mode, "solver");
+  assert.match(scene.trajectories[0].path, /^M /);
+  assert.ok(scene.trajectories[0].waypoints.some((waypoint) => waypoint.label === "Launch"));
+  assert.ok(scene.layers.some((layer) => layer.id === "trajectories"));
+  assert.equal(spatialScene.trajectories.length, 1);
+  assert.ok(spatialScene.trajectories[0].samples.length >= 2);
+  assert.match(svg, /data-layer-id="trajectories"/);
+  assert.match(svg, /wo-trajectory/);
+  assert.match(svg, /Launch/);
+});
+
 test("spatial scenes reuse the shared document model, derive deterministic motion, and freeze event snapshots", () => {
   const loaded = loadWorldOrbitSource(spatialSource);
   const spatialScene = renderDocumentToSpatialScene(loaded.document, {

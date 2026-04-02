@@ -309,8 +309,8 @@ test("upgradeDocumentToV2 promotes viewpoints, metadata, and annotations into th
   const result = parse(source);
   const atlas = upgradeDocumentToV2(result.document, { preset: "atlas-card" });
 
-  assert.equal(atlas.version, "3.0");
-  assert.equal(atlas.schemaVersion, "3.0");
+  assert.equal(atlas.version, "3.1");
+  assert.equal(atlas.schemaVersion, "3.1");
   assert.equal(atlas.sourceVersion, "1.0");
   assert.equal(atlas.system?.defaults.view, "isometric");
   assert.equal(atlas.system?.defaults.preset, "atlas-card");
@@ -377,7 +377,7 @@ test("parseWorldOrbitDraft still reads legacy schema 2.0-draft source", () => {
   assert.ok(document.objects.some((object) => object.id === "Naar"));
 });
 
-test("loadWorldOrbitSource supports v1, canonical v2, and legacy 2.0-draft sources", () => {
+test("loadWorldOrbitSource supports v1, canonical v2, and schema 2.0 atlas sources", () => {
   const stable = load(source);
   const atlas = loadWorldOrbitSource(atlasExample);
   const legacy = loadWorldOrbitSource(legacyDraftExample);
@@ -396,9 +396,9 @@ test("loadWorldOrbitSource supports v1, canonical v2, and legacy 2.0-draft sourc
     "Fit the whole system with the current atlas defaults.",
   );
 
-  assert.equal(legacy.schemaVersion, "2.0-draft");
+  assert.equal(legacy.schemaVersion, "2.0");
   assert.equal(legacy.atlasDocument?.version, "2.0");
-  assert.equal(legacy.draftDocument?.system?.id, "Iyath");
+  assert.equal(legacy.atlasDocument?.system?.id, "Iyath");
 });
 
 test("loadWorldOrbitSourceWithDiagnostics returns structured results for schema 2.0 input", () => {
@@ -407,24 +407,16 @@ test("loadWorldOrbitSourceWithDiagnostics returns structured results for schema 
   assert.equal(result.ok, true);
   assert.equal(result.value?.schemaVersion, "2.0");
   assert.equal(result.value?.document.system?.properties.view, "isometric");
-  assert.ok(result.diagnostics.every((diagnostic) => diagnostic.severity === "warning"));
-  assert.ok(
-    result.diagnostics.some((diagnostic) => diagnostic.code === "validate.phase.epochMissing"),
-  );
-  assert.ok(
-    result.diagnostics.some(
-      (diagnostic) => diagnostic.code === "validate.inclination.referencePlaneMissing",
-    ),
-  );
+  assert.deepEqual(result.diagnostics, []);
 });
 
-test("loadWorldOrbitSourceWithDiagnostics warns when reading legacy schema 2.0-draft input", () => {
+test("loadWorldOrbitSourceWithDiagnostics reads the schema 2.0 compatibility example cleanly", () => {
   const result = loadWorldOrbitSourceWithDiagnostics(legacyDraftExample);
 
   assert.equal(result.ok, true);
-  assert.equal(result.value?.schemaVersion, "2.0-draft");
+  assert.equal(result.value?.schemaVersion, "2.0");
   assert.equal(result.value?.atlasDocument?.version, "2.0");
-  assert.equal(result.diagnostics[0]?.code, "load.schema.deprecatedDraft");
+  assert.deepEqual(result.diagnostics, []);
 });
 
 test("parseWorldOrbitAtlas supports schema 2.1 comments, groups, relations, and typed object blocks", () => {

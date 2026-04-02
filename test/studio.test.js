@@ -166,7 +166,7 @@ test("studio and docs shells use local workspace and docs asset paths with page-
   assert.match(studioHtml, /"@worldorbit\/viewer": "\.\.\/packages\/viewer\/dist\/index\.js"/);
   assert.match(docsStudioHtml, /"@worldorbit\/viewer": "\.\.\/assets\/browser\/viewer\/dist\/index\.js"/);
   assert.match(studioHtml, /data-example-url="\.\.\/examples\/studio\.(?:schema25|current)\.worldorbit"/);
-  assert.match(docsStudioHtml, /data-example-url="\.\.\/\.\.\/examples\/studio\.(?:schema25|current)\.worldorbit"/);
+  assert.match(docsStudioHtml, /data-example-url="\.\.\/examples\/studio\.(?:schema25|current)\.worldorbit"/);
   assert.match(
     studioHtml,
     /"@worldorbit\/editor": "\.\.\/packages\/editor\/dist\/index\.js"/,

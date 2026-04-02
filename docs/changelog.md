@@ -1,5 +1,14 @@
 # Changelog
 
+## v5.0.0
+
+- promoted `schema 3.1` to the canonical atlas format
+- added visible mission-curve rendering for trajectories in scene, viewer, and studio workflows
+- added official trajectory sampling APIs under `worldorbit/core/solver`
+- added trajectory render metadata such as `renderMode`, `stroke`, `strokeWidth`, `marker`, `labelMode`, and `showWaypoints`
+- added segment render hints such as `waypointLabel`, `waypointDate`, `renderHidden`, and `sampleDensity`
+- updated docs, examples, and tests for the new trajectory rendering pipeline
+
 ## v4.0.0
 
 - promoted Schema `3.0` to the canonical authoring target and aligned the release-facing docs around declarative trajectories, swing-by metadata, and the new `craft` object type
