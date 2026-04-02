@@ -64,6 +64,7 @@ export function normalizeDocument(ast: AstDocument): WorldOrbitDocument {
     groups: [],
     relations: [],
     events: [],
+    trajectories: [],
     objects,
   };
 }

@@ -1,0 +1,47 @@
+schema 3.0
+
+system Helion
+  title "Helion Transfer Corridor"
+  epoch "JY-0002.0"
+  referencePlane ecliptic
+
+defaults
+  view orthographic
+  scale presentation
+  preset atlas-card
+
+object star Helion
+  mass 1sol
+
+object planet Astera
+  orbit Helion
+  semiMajor 0.8au
+  phase 45deg
+
+object craft Courier
+  free 8au
+  trajectory courier-transfer
+
+trajectory courier-transfer
+  craft Courier
+  from DeepSpace
+  to Astera
+
+  maneuver departure
+    deltaV 1.7km/s
+
+  maneuver flyby
+    assist Helion
+    around Helion
+    periapsis 500000km
+    turnAngle 10deg
+
+  maneuver capture
+    to Astera
+    deltaV 0.5km/s
+
+event courier-window
+  kind transfer-window
+  target Courier
+  participants Helion Astera
+  trajectory courier-transfer

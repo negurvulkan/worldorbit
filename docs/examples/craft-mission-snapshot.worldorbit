@@ -1,0 +1,67 @@
+schema 3.0
+
+system Iyath
+  title "Mission Snapshot"
+  epoch "JY-0001.0"
+  referencePlane ecliptic
+
+defaults
+  view perspective
+  scale presentation
+  preset atlas-card
+
+object star Iyath
+  mass 1sol
+
+object planet Naar
+  orbit Iyath
+  semiMajor 0.92au
+  phase 84deg
+
+object moon Seyra
+  orbit Naar
+  distance 310000km
+
+object craft Courier
+  free 9au
+  trajectory courier-transfer
+
+trajectory courier-transfer
+  craft Courier
+  from DeepSpace
+  to Naar
+
+  maneuver departure
+    deltaV 1.8km/s
+
+  maneuver flyby
+    assist Iyath
+    around Iyath
+    periapsis 420000km
+    turnAngle 13deg
+
+  maneuver capture
+    to Naar
+    deltaV 0.6km/s
+
+event courier-arrival
+  kind transfer-window
+  label "Courier Arrival"
+  target Courier
+  participants Iyath Naar Seyra
+  trajectory courier-transfer
+
+  positions
+    pose Courier
+      free 9au
+      phase 0deg
+
+    pose Naar
+      orbit Iyath
+      semiMajor 0.92au
+      phase 90deg
+
+    pose Seyra
+      orbit Naar
+      distance 310000km
+      phase 90deg

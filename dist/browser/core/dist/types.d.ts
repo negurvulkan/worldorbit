@@ -1,8 +1,8 @@
-export type WorldOrbitObjectType = "system" | "star" | "planet" | "moon" | "belt" | "asteroid" | "comet" | "ring" | "structure" | "phenomenon";
+export type WorldOrbitObjectType = "system" | "star" | "planet" | "moon" | "belt" | "asteroid" | "comet" | "ring" | "craft" | "structure" | "phenomenon";
 export type PlacementMode = "orbit" | "at" | "surface" | "free";
 export type Unit = "au" | "km" | "m" | "ly" | "pc" | "kpc" | "re" | "rj" | "sol" | "me" | "mj" | "s" | "min" | "h" | "d" | "y" | "ky" | "my" | "gy" | "K" | "deg";
 export type WorldOrbitDocumentVersion = "1.0";
-export type WorldOrbitAtlasDocumentVersion = "2.0" | "2.1" | "2.5" | "2.6";
+export type WorldOrbitAtlasDocumentVersion = "2.0" | "2.1" | "2.5" | "2.6" | "3.0";
 export type WorldOrbitDraftDocumentVersion = "2.0-draft";
 export type WorldOrbitAnyDocumentVersion = WorldOrbitDocumentVersion | WorldOrbitAtlasDocumentVersion | WorldOrbitDraftDocumentVersion;
 export type ViewProjection = "topdown" | "isometric" | "orthographic" | "perspective";
@@ -86,6 +86,7 @@ export interface WorldOrbitDocument {
     groups: WorldOrbitGroup[];
     relations: WorldOrbitRelation[];
     events: WorldOrbitEvent[];
+    trajectories: WorldOrbitTrajectory[];
     objects: WorldOrbitObject[];
 }
 export interface WorldOrbitAtlasDocument {
@@ -98,6 +99,7 @@ export interface WorldOrbitAtlasDocument {
     groups: WorldOrbitGroup[];
     relations: WorldOrbitRelation[];
     events: WorldOrbitEvent[];
+    trajectories: WorldOrbitTrajectory[];
     objects: WorldOrbitObject[];
     diagnostics: WorldOrbitDiagnostic[];
 }
@@ -111,6 +113,7 @@ export interface WorldOrbitDraftDocument {
     groups: WorldOrbitGroup[];
     relations: WorldOrbitRelation[];
     events: WorldOrbitEvent[];
+    trajectories: WorldOrbitTrajectory[];
     objects: WorldOrbitObject[];
     diagnostics: WorldOrbitDiagnostic[];
 }
@@ -127,6 +130,7 @@ export interface WorldOrbitSystem {
 export interface WorldOrbitObject {
     type: Exclude<WorldOrbitObjectType, "system">;
     id: string;
+    trajectoryId?: string | null;
     groups?: string[];
     epoch?: string | null;
     referencePlane?: string | null;
@@ -167,6 +171,7 @@ export interface WorldOrbitEvent {
     kind: string;
     label: string;
     summary: string | null;
+    trajectoryId?: string | null;
     targetObjectId: string | null;
     participantObjectIds: string[];
     timing: string | null;
@@ -181,10 +186,59 @@ export interface WorldOrbitEvent {
 export interface WorldOrbitEventPose {
     objectId: string;
     placement: Placement | null;
+    trajectorySegmentId?: string | null;
+    trajectoryManeuverId?: string | null;
     inner?: UnitValue;
     outer?: UnitValue;
     epoch?: string | null;
     referencePlane?: string | null;
+}
+export interface WorldOrbitTrajectory {
+    id: string;
+    label: string;
+    summary: string | null;
+    craftObjectId: string | null;
+    tags: string[];
+    color: string | null;
+    hidden: boolean;
+    segments: WorldOrbitTrajectorySegment[];
+}
+export interface WorldOrbitTrajectorySegment {
+    id: string;
+    kind: WorldOrbitTrajectorySegmentKind;
+    label: string | null;
+    summary: string | null;
+    fromObjectId: string | null;
+    toObjectId: string | null;
+    aroundObjectId: string | null;
+    assist: WorldOrbitGravityAssist | null;
+    epoch: string | null;
+    periapsis?: UnitValue;
+    apoapsis?: UnitValue;
+    inclination?: UnitValue;
+    duration?: UnitValue;
+    deltaV?: UnitValue;
+    phaseAngle?: UnitValue;
+    turnAngle?: UnitValue;
+    energy?: UnitValue;
+    notes: string[];
+    maneuvers: WorldOrbitManeuver[];
+}
+export type WorldOrbitTrajectorySegmentKind = "departure" | "transfer" | "flyby" | "capture" | "stationkeeping" | "escape";
+export interface WorldOrbitManeuver {
+    id: string;
+    kind: string;
+    label: string | null;
+    epoch: string | null;
+    deltaV?: UnitValue;
+    duration?: UnitValue;
+    notes: string[];
+}
+export interface WorldOrbitGravityAssist {
+    objectId: string;
+    periapsis?: UnitValue;
+    turnAngle?: UnitValue;
+    notes: string[];
 }
 export interface WorldOrbitResonance {
     targetObjectId: string;
@@ -632,7 +686,7 @@ export interface WorldOrbitAtlasSystem {
     viewpoints: WorldOrbitAtlasViewpoint[];
     annotations: WorldOrbitAtlasAnnotation[];
 }
-export type AtlasDocumentPathKind = "system" | "defaults" | "metadata" | "group" | "event" | "event-pose" | "object" | "viewpoint" | "annotation" | "relation";
+export type AtlasDocumentPathKind = "system" | "defaults" | "metadata" | "group" | "event" | "event-pose" | "trajectory" | "trajectory-segment" | "trajectory-maneuver" | "object" | "viewpoint" | "annotation" | "relation";
 export interface AtlasDocumentPath {
     kind: AtlasDocumentPathKind;
     id?: string;

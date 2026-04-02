@@ -55,8 +55,8 @@
           </div>
         </div>
         <div class="glass hero-panel">
-          <div class="panel-head"><span>Live Orbital Preview</span><span>schema 2.6</span></div>
-          <div class="code-block">schema 2.6
+          <div class="panel-head"><span>Live Orbital Preview</span><span>schema 3.0</span></div>
+          <div class="code-block">schema 3.0
 
 system Iyath
   title "Iyath System"
@@ -83,7 +83,25 @@ object planet Naar
 
 object moon Seyra
   orbit Naar
-  distance 384400km</div>
+  distance 384400km
+
+object craft Courier
+  free 9au
+  trajectory courier-transfer
+
+trajectory courier-transfer
+  craft Courier
+  from DeepSpace
+  to Naar
+
+  maneuver departure
+    deltaV 1.8km/s
+
+  maneuver flyby
+    assist Iyath
+    around Iyath
+    periapsis 420000km
+    turnAngle 13deg</div>
           <div class="hero-preview">
             <div class="panel-head" style="margin-bottom:10px"><span>Viewer</span><span id="hero-view-tag">Live 3D demo powered by the same document</span></div>
             <div class="mode-switch" aria-label="Hero view mode">
@@ -126,7 +144,7 @@ object moon Seyra
               <button class="button button-secondary" id="playground-reset" type="button">Reset Example</button>
             </div>
             <div class="playground-shell">
-              <textarea id="playground-source" spellcheck="false">schema 2.6
+              <textarea id="playground-source" spellcheck="false">schema 3.0
 
 system Iyath
   title "Iyath System"
@@ -168,6 +186,24 @@ object moon Seyra
   orbit Naar
   distance 384400km
   groups inner-system
+
+object craft Courier
+  free 9au
+  trajectory courier-transfer
+
+trajectory courier-transfer
+  craft Courier
+  from DeepSpace
+  to Naar
+
+  maneuver departure
+    deltaV 1.8km/s
+
+  maneuver flyby
+    assist Iyath
+    around Iyath
+    periapsis 420000km
+    turnAngle 13deg
 
 event naar-eclipse
   kind solar-eclipse

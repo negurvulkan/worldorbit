@@ -8,6 +8,7 @@ export { validateDocument } from "./validate.js";
 export { createDiagnostic, diagnosticFromError, normalizeWithDiagnostics, parseWithDiagnostics, validateDocumentWithDiagnostics, } from "./diagnostics.js";
 export { renderDocumentToScene, rotatePoint } from "./scene.js";
 export { evaluateSpatialSceneAtTime, renderDocumentToSpatialScene, } from "./spatial-scene.js";
+export { createTrajectorySolverSnapshot } from "./solver.js";
 export { formatAtlasDocument, formatDocument, formatDraftDocument } from "./format.js";
 export { materializeAtlasDocument, materializeDraftDocument, upgradeDocumentToDraftV2, upgradeDocumentToV2, } from "./draft.js";
 export { parseWorldOrbitAtlas, parseWorldOrbitDraft } from "./draft-parse.js";

@@ -69,6 +69,8 @@ function minimapColorForObject(type: RenderSceneObject["object"]["type"]): strin
       return "#a7a5b8";
     case "comet":
       return "#9ce7ff";
+    case "craft":
+      return "#ffb47f";
     case "structure":
       return "#ff7f5f";
     case "phenomenon":

@@ -1,0 +1,48 @@
+schema 3.0
+
+system Iyath
+  title "Swing-By Example"
+  epoch "JY-0004.0"
+  referencePlane ecliptic
+
+defaults
+  view orthographic
+  scale presentation
+  preset atlas-card
+
+object star Iyath
+  mass 1.02sol
+
+object planet Naar
+  orbit Iyath
+  semiMajor 1.18au
+  phase 42deg
+
+object craft Scout
+  free 11au
+  trajectory scout-assist
+
+trajectory scout-assist
+  craft Scout
+  from OuterSystem
+  to Naar
+
+  maneuver approach
+    deltaV 1.2km/s
+
+  maneuver flyby
+    assist Iyath
+    around Iyath
+    periapsis 360000km
+    turnAngle 14deg
+    notes "capture window"
+
+  maneuver insertion
+    to Naar
+    deltaV 0.7km/s
+
+event assist-window
+  kind gravity-assist
+  target Scout
+  participants Iyath Naar
+  trajectory scout-assist

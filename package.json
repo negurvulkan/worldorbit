@@ -1,6 +1,6 @@
 {
   "name": "worldorbit",
-  "version": "3.2.8",
+  "version": "4.0.0",
   "description": "A text-based DSL and parser pipeline for orbital worldbuilding",
   "type": "module",
   "main": "./dist/unpkg/worldorbit.esm.js",
@@ -27,6 +27,10 @@
     "./core/scene": {
       "types": "./packages/core/dist/scene.d.ts",
       "import": "./packages/core/dist/scene.js"
+    },
+    "./core/solver": {
+      "types": "./packages/core/dist/solver.d.ts",
+      "import": "./packages/core/dist/solver.js"
     },
     "./core/types": {
       "types": "./packages/core/dist/types.d.ts",

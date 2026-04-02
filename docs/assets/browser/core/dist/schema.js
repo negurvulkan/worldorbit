@@ -7,6 +7,7 @@ const ALL_OBJECTS = [
     "asteroid",
     "comet",
     "ring",
+    "craft",
     "structure",
     "phenomenon",
 ];
@@ -17,10 +18,11 @@ const IMAGE_OBJECTS = [
     "moon",
     "asteroid",
     "comet",
+    "craft",
     "structure",
     "phenomenon",
 ];
-const ANCHORED_OBJECTS = ["structure", "phenomenon"];
+const ANCHORED_OBJECTS = ["craft", "structure", "phenomenon"];
 const ORBITAL_OBJECTS = [
     "star",
     "planet",
@@ -29,6 +31,7 @@ const ORBITAL_OBJECTS = [
     "asteroid",
     "comet",
     "ring",
+    "craft",
     "structure",
     "phenomenon",
 ];
@@ -40,6 +43,7 @@ const FREE_OBJECTS = [
     "asteroid",
     "comet",
     "ring",
+    "craft",
     "structure",
     "phenomenon",
 ];
@@ -268,6 +272,12 @@ export const WORLDORBIT_FIELD_SCHEMAS = new Map([
         arity: "single",
         objectTypes: NON_SYSTEM_OBJECTS,
         unitFamily: "duration",
+    }),
+    createField("trajectory", {
+        kind: "string",
+        placement: false,
+        arity: "single",
+        objectTypes: ["craft", "structure"],
     }),
 ].map((schema) => [schema.key, schema]));
 export const WORLDORBIT_FIELD_KEYS = new Set(WORLDORBIT_FIELD_SCHEMAS.keys());

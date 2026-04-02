@@ -422,3 +422,88 @@ event partial-eclipse
     result.diagnostics.some((diagnostic) => /base placement/i.test(diagnostic.message)),
   );
 });
+
+test("schema 3.0 parses craft trajectories and declarative maneuvers", () => {
+  const result = loadWorldOrbitSourceWithDiagnostics(`
+schema 3.0
+
+system Iyath
+  epoch "JY-0001.0"
+  referencePlane ecliptic
+
+object star Primary
+  mass 1sol
+
+object planet Home
+  orbit Primary
+  semiMajor 1au
+
+object moon Moonlet
+  orbit Home
+  distance 384400km
+
+object craft Courier
+  trajectory courier-run
+  at Home:L4
+  kind shuttle
+
+trajectory courier-run
+  craft Courier
+
+  segment departure
+    kind departure
+    from Home
+    to Moonlet
+    duration 6h
+
+  segment transfer
+    kind transfer
+    from Home
+    to Moonlet
+    duration 18h
+    deltaV 0.9km
+    maneuver correction
+      kind correction-burn
+      deltaV 0.1km
+      duration 12min
+`.trim());
+
+  assert.equal(result.ok, true);
+  assert.equal(result.value?.atlasDocument?.version, "3.0");
+  assert.equal(result.value?.atlasDocument?.trajectories.length, 1);
+  assert.equal(result.value?.atlasDocument?.objects.find((object) => object.id === "Courier")?.type, "craft");
+});
+
+test("schema 3.0 validation requires assist on flyby trajectory segments", () => {
+  const result = loadWorldOrbitSourceWithDiagnostics(`
+schema 3.0
+
+system Iyath
+
+object star Primary
+  mass 1sol
+
+object planet Home
+  orbit Primary
+  semiMajor 1au
+
+object craft Courier
+  trajectory courier-run
+  kind shuttle
+  free "inner system"
+
+trajectory courier-run
+  craft Courier
+
+  segment slingshot
+    kind flyby
+    from Home
+    to Home
+    duration 2d
+`.trim());
+
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.diagnostics.some((diagnostic) => /requires an "assist" object/i.test(diagnostic.message)),
+  );
+});

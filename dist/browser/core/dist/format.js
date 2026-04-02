@@ -40,10 +40,12 @@ export function formatDocument(document, options = {}) {
         schema === "2.1" ||
         schema === "2.5" ||
         schema === "2.6" ||
+        schema === "3.0" ||
         schema === "2.0-draft" ||
         document.version === "2.0" ||
         document.version === "2.1" ||
         document.version === "2.5" ||
+        document.version === "3.0" ||
         document.version === "2.6" ||
         document.version === "2.0-draft";
     if (useDraft) {
@@ -59,7 +61,7 @@ export function formatDocument(document, options = {}) {
                     : upgradeDocumentToDraftV2(document);
             return formatDraftDocument(legacyDraftDocument);
         }
-        const atlasDocument = document.version === "2.0" || document.version === "2.1" || document.version === "2.5" || document.version === "2.6"
+        const atlasDocument = document.version === "2.0" || document.version === "2.1" || document.version === "2.5" || document.version === "2.6" || document.version === "3.0"
             ? document
             : document.version === "2.0-draft"
                 ? {
@@ -68,7 +70,7 @@ export function formatDocument(document, options = {}) {
                     schemaVersion: "2.0",
                 }
                 : upgradeDocumentToV2(document);
-        if ((schema === "2.0" || schema === "2.1" || schema === "2.5" || schema === "2.6") && atlasDocument.version !== schema) {
+        if ((schema === "2.0" || schema === "2.1" || schema === "2.5" || schema === "2.6" || schema === "3.0") && atlasDocument.version !== schema) {
             return formatAtlasDocument({
                 ...atlasDocument,
                 version: schema,
@@ -107,6 +109,10 @@ export function formatAtlasDocument(document) {
     for (const event of [...document.events].sort(compareIdLike)) {
         lines.push("");
         lines.push(...formatAtlasEvent(event));
+    }
+    for (const trajectory of [...document.trajectories].sort(compareIdLike)) {
+        lines.push("");
+        lines.push(...formatAtlasTrajectory(trajectory));
     }
     const sortedObjects = [...document.objects].sort(compareObjects);
     if (sortedObjects.length > 0 && lines.at(-1) !== "") {
@@ -295,6 +301,9 @@ function formatObjectMetadata(object) {
     if (object.groups?.length) {
         lines.push(`groups ${object.groups.join(" ")}`);
     }
+    if (object.trajectoryId) {
+        lines.push(`trajectory ${object.trajectoryId}`);
+    }
     if (object.epoch) {
         lines.push(`epoch ${quoteIfNeeded(object.epoch)}`);
     }
@@ -455,6 +464,9 @@ function formatAtlasEvent(event) {
     if (event.summary) {
         lines.push(`  summary ${quoteIfNeeded(event.summary)}`);
     }
+    if (event.trajectoryId) {
+        lines.push(`  trajectory ${event.trajectoryId}`);
+    }
     if (event.targetObjectId) {
         lines.push(`  target ${event.targetObjectId}`);
     }
@@ -497,10 +509,78 @@ function formatAtlasEvent(event) {
 function formatEventPoseFields(pose) {
     return [
         ...formatPlacement(pose.placement),
+        ...(pose.trajectorySegmentId ? [`segment ${pose.trajectorySegmentId}`] : []),
+        ...(pose.trajectoryManeuverId ? [`maneuver ${pose.trajectoryManeuverId}`] : []),
         ...(pose.epoch ? [`epoch ${quoteIfNeeded(pose.epoch)}`] : []),
         ...(pose.referencePlane ? [`referencePlane ${quoteIfNeeded(pose.referencePlane)}`] : []),
         ...formatOptionalUnit("inner", pose.inner),
         ...formatOptionalUnit("outer", pose.outer),
+    ];
+}
+function formatAtlasTrajectory(trajectory) {
+    const lines = [`trajectory ${trajectory.id}`];
+    if (trajectory.label) {
+        lines.push(`  label ${quoteIfNeeded(trajectory.label)}`);
+    }
+    if (trajectory.summary) {
+        lines.push(`  summary ${quoteIfNeeded(trajectory.summary)}`);
+    }
+    if (trajectory.craftObjectId) {
+        lines.push(`  craft ${trajectory.craftObjectId}`);
+    }
+    if (trajectory.tags.length > 0) {
+        lines.push(`  tags ${trajectory.tags.map(quoteIfNeeded).join(" ")}`);
+    }
+    if (trajectory.color) {
+        lines.push(`  color ${quoteIfNeeded(trajectory.color)}`);
+    }
+    if (trajectory.hidden) {
+        lines.push("  hidden true");
+    }
+    for (const segment of [...trajectory.segments].sort(compareIdLike)) {
+        lines.push("");
+        lines.push(`  segment ${segment.id}`);
+        for (const field of formatTrajectorySegmentFields(segment)) {
+            lines.push(`    ${field}`);
+        }
+        for (const maneuver of [...segment.maneuvers].sort(compareIdLike)) {
+            lines.push(`    maneuver ${maneuver.id}`);
+            for (const field of formatTrajectoryManeuverFields(maneuver)) {
+                lines.push(`      ${field}`);
+            }
+        }
+    }
+    return lines;
+}
+function formatTrajectorySegmentFields(segment) {
+    return [
+        `kind ${segment.kind}`,
+        ...(segment.label ? [`label ${quoteIfNeeded(segment.label)}`] : []),
+        ...(segment.summary ? [`summary ${quoteIfNeeded(segment.summary)}`] : []),
+        ...(segment.fromObjectId ? [`from ${segment.fromObjectId}`] : []),
+        ...(segment.toObjectId ? [`to ${segment.toObjectId}`] : []),
+        ...(segment.aroundObjectId ? [`around ${segment.aroundObjectId}`] : []),
+        ...(segment.assist?.objectId ? [`assist ${segment.assist.objectId}`] : []),
+        ...(segment.epoch ? [`epoch ${quoteIfNeeded(segment.epoch)}`] : []),
+        ...formatOptionalUnit("periapsis", segment.periapsis),
+        ...formatOptionalUnit("apoapsis", segment.apoapsis),
+        ...formatOptionalUnit("inclination", segment.inclination),
+        ...formatOptionalUnit("duration", segment.duration),
+        ...formatOptionalUnit("deltaV", segment.deltaV),
+        ...formatOptionalUnit("phaseAngle", segment.phaseAngle),
+        ...formatOptionalUnit("turnAngle", segment.turnAngle),
+        ...formatOptionalUnit("energy", segment.energy),
+        ...(segment.notes.length > 0 ? [`notes ${segment.notes.map(quoteIfNeeded).join(" ")}`] : []),
+    ];
+}
+function formatTrajectoryManeuverFields(maneuver) {
+    return [
+        `kind ${quoteIfNeeded(maneuver.kind)}`,
+        ...(maneuver.label ? [`label ${quoteIfNeeded(maneuver.label)}`] : []),
+        ...(maneuver.epoch ? [`epoch ${quoteIfNeeded(maneuver.epoch)}`] : []),
+        ...formatOptionalUnit("deltaV", maneuver.deltaV),
+        ...formatOptionalUnit("duration", maneuver.duration),
+        ...(maneuver.notes.length > 0 ? [`notes ${maneuver.notes.map(quoteIfNeeded).join(" ")}`] : []),
     ];
 }
 function hasCameraValues(camera) {
@@ -601,10 +681,12 @@ function objectTypeIndex(objectType) {
             return 5;
         case "ring":
             return 6;
-        case "structure":
+        case "craft":
             return 7;
-        case "phenomenon":
+        case "structure":
             return 8;
+        case "phenomenon":
+            return 9;
     }
 }
 function quoteIfNeeded(value) {

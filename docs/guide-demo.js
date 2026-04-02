@@ -1,4 +1,4 @@
-const heroSource = `schema 2.6
+const heroSource = `schema 3.0
 
 system Iyath
 
@@ -27,15 +27,36 @@ object planet Naar
 
 object moon Seyra
   orbit Naar
-  distance 384400km`;
+  distance 384400km
 
-const example1Source = `schema 2.6
+object craft Courier
+  free 9au
+  trajectory courier-transfer
+
+trajectory courier-transfer
+  craft Courier
+  from DeepSpace
+  to Naar
+
+  maneuver departure
+    deltaV 1.8km/s
+
+  maneuver flyby
+    assist Iyath
+    around Iyath
+    periapsis 420000km
+    turnAngle 13deg`;
+
+const example1Source = `schema 3.0
 
 system Sol
 
-object star Sun`;
+object star Sun
 
-const example2Source = `schema 2.6
+object craft Scout
+  free 5au`;
+
+const example2Source = `schema 3.0
 
 system Iyath
   title "Iyath System"
@@ -73,9 +94,25 @@ object moon Leth
 
 object structure Relay-One
   at Naar:L4
-  kind relay`;
+  kind relay
 
-const playgroundDefaultSource = `schema 2.6
+object craft Courier
+  free 9au
+  trajectory courier-transfer
+
+trajectory courier-transfer
+  craft Courier
+  from DeepSpace
+  to Naar
+
+  maneuver departure
+    deltaV 1.8km/s
+
+  maneuver capture
+    to Naar
+    deltaV 0.6km/s`;
+
+const playgroundDefaultSource = `schema 3.0
 
 system Demo
   title "Demo System"
@@ -108,7 +145,25 @@ object planet Belis
 object moon B1
   orbit Belis
   distance 250000km
-  phase 80deg`;
+  phase 80deg
+
+object craft Courier
+  free 9au
+  trajectory courier-transfer
+
+trajectory courier-transfer
+  craft Courier
+  from DeepSpace
+  to Belis
+
+  maneuver departure
+    deltaV 1.8km/s
+
+  maneuver flyby
+    assist Helion
+    around Helion
+    periapsis 480000km
+    turnAngle 11deg`;
 
 const previewModes = {
   hero: "3d",

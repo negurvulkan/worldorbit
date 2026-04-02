@@ -1,4 +1,4 @@
-schema 2.5
+schema 3.0
 
 system Solar-System
   title "Solar System"
@@ -1254,17 +1254,23 @@ object structure Huygens
   kind probe
   groups artificial giant-systems
 
-object structure Voyager-1
+object craft Voyager-1
+  trajectory voyager-1-grand-tour
   free 165au
   kind outbound-probe
   color #b8c5d4
   groups artificial deep-space
+  info
+    summary "Outbound probe on a Jupiter-Saturn gravity-assist path into interstellar space."
 
-object structure Voyager-2
+object craft Voyager-2
+  trajectory voyager-2-grand-tour
   free 138au
   kind outbound-probe
   color #aebed2
   groups artificial deep-space
+  info
+    summary "Outbound probe on the four-giant-planet grand tour enabled by sequential gravity assists."
 
 object structure Pioneer-10
   free 135au
@@ -1295,3 +1301,98 @@ object structure Philae
   surface Churyumov-Gerasimenko
   kind lander
   groups artificial deep-space
+
+trajectory voyager-1-grand-tour
+  label "Voyager 1 Grand Tour"
+  craft Voyager-1
+  summary "Declarative reconstruction of the Jupiter-Saturn assist chain and outbound heliopause crossing."
+  tags voyager gravity-assist interstellar
+  color #b8c5d4
+
+  segment earth-departure
+    kind departure
+    from Earth
+    to Jupiter
+    duration 546d
+    deltaV 16.6km
+    notes launch transfer-window
+
+  segment jupiter-flyby
+    kind flyby
+    from Jupiter
+    to Saturn
+    assist Jupiter
+    periapsis 349000km
+    turnAngle 160deg
+    duration 625d
+    notes gravity-assist ring-plane-imaging
+    maneuver titan-targeting
+      kind targeting-burn
+      deltaV 0.18km
+      duration 22min
+      notes saturn-encounter-setup
+
+  segment saturn-flyby
+    kind flyby
+    from Saturn
+    to Heliopause
+    assist Saturn
+    periapsis 124000km
+    turnAngle 35deg
+    duration 16000d
+    notes heliosphere-exit titan-assisted-escape
+
+trajectory voyager-2-grand-tour
+  label "Voyager 2 Grand Tour"
+  craft Voyager-2
+  summary "Declarative reconstruction of the Jupiter-Saturn-Uranus-Neptune assist sequence."
+  tags voyager gravity-assist grand-tour
+  color #aebed2
+
+  segment earth-departure
+    kind departure
+    from Earth
+    to Jupiter
+    duration 689d
+    deltaV 15.4km
+    notes launch transfer-window
+
+  segment jupiter-flyby
+    kind flyby
+    from Jupiter
+    to Saturn
+    assist Jupiter
+    periapsis 570000km
+    turnAngle 142deg
+    duration 610d
+    notes gravity-assist outer-planets
+
+  segment saturn-flyby
+    kind flyby
+    from Saturn
+    to Uranus
+    assist Saturn
+    periapsis 101000km
+    turnAngle 96deg
+    duration 1600d
+    notes trajectory-reshape
+
+  segment uranus-flyby
+    kind flyby
+    from Uranus
+    to Neptune
+    assist Uranus
+    periapsis 81500km
+    turnAngle 81deg
+    duration 2100d
+    notes south-pole-view
+
+  segment neptune-flyby
+    kind flyby
+    from Neptune
+    to Heliopause
+    assist Neptune
+    periapsis 4950km
+    turnAngle 47deg
+    duration 13000d
+    notes triton-encounter heliosphere-exit

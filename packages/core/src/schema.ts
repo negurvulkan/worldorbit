@@ -13,6 +13,7 @@ const ALL_OBJECTS: WorldOrbitObjectType[] = [
   "asteroid",
   "comet",
   "ring",
+  "craft",
   "structure",
   "phenomenon",
 ];
@@ -26,11 +27,12 @@ const IMAGE_OBJECTS: WorldOrbitObjectType[] = [
   "moon",
   "asteroid",
   "comet",
+  "craft",
   "structure",
   "phenomenon",
 ];
 
-const ANCHORED_OBJECTS: WorldOrbitObjectType[] = ["structure", "phenomenon"];
+const ANCHORED_OBJECTS: WorldOrbitObjectType[] = ["craft", "structure", "phenomenon"];
 const ORBITAL_OBJECTS: WorldOrbitObjectType[] = [
   "star",
   "planet",
@@ -39,6 +41,7 @@ const ORBITAL_OBJECTS: WorldOrbitObjectType[] = [
   "asteroid",
   "comet",
   "ring",
+  "craft",
   "structure",
   "phenomenon",
 ];
@@ -50,6 +53,7 @@ const FREE_OBJECTS: WorldOrbitObjectType[] = [
   "asteroid",
   "comet",
   "ring",
+  "craft",
   "structure",
   "phenomenon",
 ];
@@ -286,6 +290,12 @@ export const WORLDORBIT_FIELD_SCHEMAS: ReadonlyMap<string, WorldOrbitFieldSchema
         arity: "single",
         objectTypes: NON_SYSTEM_OBJECTS,
         unitFamily: "duration",
+      }),
+      createField("trajectory", {
+        kind: "string",
+        placement: false,
+        arity: "single",
+        objectTypes: ["craft", "structure"],
       }),
     ].map((schema) => [schema.key, schema]),
   );

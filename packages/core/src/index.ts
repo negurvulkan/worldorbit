@@ -17,6 +17,7 @@ export {
   evaluateSpatialSceneAtTime,
   renderDocumentToSpatialScene,
 } from "./spatial-scene.js";
+export { createTrajectorySolverSnapshot } from "./solver.js";
 export { formatAtlasDocument, formatDocument, formatDraftDocument } from "./format.js";
 export {
   materializeAtlasDocument,

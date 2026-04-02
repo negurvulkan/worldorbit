@@ -259,6 +259,8 @@ function renderObjectBody(object, x, y, radius, palette, options = {}) {
                 ? `<circle cx="${x}" cy="${y}" r="${radius}" fill="transparent" stroke="${palette.stroke}" stroke-width="1.4" />`
                 : `<path d="M ${x - radius * 2} ${y + radius * 1.3} Q ${x - radius * 0.7} ${y + radius * 0.3} ${x - radius * 0.45} ${y}" fill="none" stroke="${tail}" stroke-width="${Math.max(2, radius * 0.8)}" stroke-linecap="round" opacity="0.85" />
 <circle cx="${x}" cy="${y}" r="${radius}" fill="${fill}" stroke="${palette.stroke}" stroke-width="1.4" />`;
+        case "craft":
+            return `<polygon points="${diamondPoints(x, y, radius * 0.85)}" fill="${fill}" stroke="${palette.stroke}" stroke-width="1.4" />`;
         case "structure":
             return `<polygon points="${diamondPoints(x, y, radius)}" fill="${fill}" stroke="${palette.stroke}" stroke-width="1.4" />`;
         case "phenomenon": {
@@ -443,6 +445,8 @@ function basePaletteForType(type, kind, theme) {
             return { fill: "#9ce7ff", stroke: "#e7fbff" };
         case "ring":
             return { fill: "#e59f7d", stroke: "#fff0d3" };
+        case "craft":
+            return { fill: "#ffb47f", stroke: "#fff0d3" };
         case "structure":
             return { fill: theme.accentStrong, stroke: "#fff2ea" };
         case "phenomenon":

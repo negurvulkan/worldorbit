@@ -1,33 +1,37 @@
 # WorldOrbit Language Reference
 
-WorldOrbit is a text-first DSL for fictional orbital systems. This reference covers the currently recommended atlas format, Schema 2.5, while also calling out the older compatibility paths that remain supported.
+WorldOrbit is a text-first DSL for fictional orbital systems. This reference covers the currently recommended atlas format, Schema 3.0, while also calling out the older compatibility paths that remain supported.
 
 ## Version overview
 
-- `schema 2.5` is the recommended header for new atlas documents.
-- `schema 2.1` remains fully readable and is the direct compatibility base for Schema 2.5.
+- `schema 3.0` is the recommended header for new atlas documents.
+- `schema 2.6` remains fully readable and is the direct compatibility base for Schema 3.0.
+- `schema 2.1` remains fully readable for older atlases.
 - `schema 2.0` remains fully supported.
 - `schema 2.0-draft` remains readable as a legacy compatibility path and emits a deprecation diagnostic.
 - Schema 1.0 source without a header is still supported through the older parser/normalization pipeline.
 
-## What's new in Schema 2.5
+## What's new in Schema 3.0
 
-Schema 2.5 is a backward-compatible extension of Schema 2.1 focused on clearer 3D preparation, not on becoming a full 3D scene or simulation format.
+Schema 3.0 is a backward-compatible extension of Schema 2.6 focused on declarative mission authoring, not on becoming a full orbital solver.
 
-Schema 2.5 adds:
+Schema 3.0 adds:
 
-- two additional viewpoint projections: `orthographic` and `perspective`
-- an optional `camera` block on `viewpoint`
-- explicit inheritance rules for `epoch` and `referencePlane` across system, object, event, and pose contexts
-- stronger event/pose snapshot semantics for reproducible curated scenes
-- stronger validation around viewpoints, camera fields, and event/pose context
+- a canonical `craft` object type for ships, probes, and stations
+- a declarative `trajectory` block for reusable mission paths
+- trajectory segments for departures, transfers, flybys, captures, escapes, and stationkeeping
+- swing-by and gravity-assist metadata such as `assist`, `turnAngle`, `periapsis`, `deltaV`, and `energy`
+- explicit links between `craft`, `trajectory`, `event`, and `pose` snapshots for curated mission states
+- solver-friendly data without forcing the core parser to perform numerical simulation
 
-Schema 2.5 still does not add general XYZ coordinates, meshes, materials, quaternions, lighting, or a full orbital solver.
+Schema 3.0 still does not add a built-in orbital solver, continuous XYZ path authoring, meshes, materials, quaternions, or lighting.
+
+Schema 2.6 remains the direct compatibility base, and older documents continue to load through the same parser and normalization pipeline.
 
 ## Document skeleton
 
 ```worldorbit
-schema 2.5
+schema 3.0
 
 system Iyath
   title "The Iyath System"
@@ -67,7 +71,7 @@ object planet Naar
 
 ## Comments
 
-Schema 2.1 adds real comments, and Schema 2.5 keeps them unchanged.
+Schema 2.1 adds real comments, and Schema 3.0 keeps them unchanged.
 
 - `# ...` starts a line comment and continues to the end of the line.
 - `/* ... */` starts a block comment and may span multiple lines.
@@ -78,7 +82,7 @@ Schema 2.1 adds real comments, and Schema 2.5 keeps them unchanged.
 Example:
 
 ```worldorbit
-schema 2.5
+schema 3.0
 
 # Main atlas
 system Iyath
@@ -140,8 +144,8 @@ Supported fields:
 
 - `topdown`
 - `isometric`
-- `orthographic`, Schema 2.5+
-- `perspective`, Schema 2.5+
+- `orthographic`, Schema 3.0+
+- `perspective`, Schema 3.0+
 
 ### `theme`
 
@@ -200,12 +204,12 @@ Supported fields:
 
 - `topdown`
 - `isometric`
-- `orthographic`, Schema 2.5+
-- `perspective`, Schema 2.5+
+- `orthographic`, Schema 3.0+
+- `perspective`, Schema 3.0+
 
-`rotation` remains the legacy 2D screen-rotation hint. It is still supported in Schema 2.5 and is not an alias for `camera.azimuth`.
+`rotation` remains the legacy 2D screen-rotation hint. It is still supported in Schema 3.0 and is not an alias for `camera.azimuth`.
 
-`camera` is a Schema 2.5 block with:
+`camera` is a Schema 3.0 block with:
 
 - `azimuth`
 - `elevation`
@@ -219,7 +223,7 @@ Supported fields:
 - `tags`
 - `groups`
 
-In Schema 2.1 and Schema 2.5, `filter.groups` refers to semantic `group` ids. For older atlases it still falls back to the legacy render-group behavior.
+In Schema 2.1 and Schema 3.0, `filter.groups` refers to semantic `group` ids. For older atlases it still falls back to the legacy render-group behavior.
 
 `events` is a Schema 2.1+ list of event ids that this viewpoint should feature in its panel or event picker.
 
@@ -269,7 +273,7 @@ Relations are not orbital placement. They model logistics, politics, infrastruct
 
 ### `event`
 
-Schema 2.1+ declarative event section. Schema 2.5 extends it with explicit event-level context.
+Schema 2.1+ declarative event section. Schema 3.0 extends it with explicit event-level context and optional trajectory links.
 
 Supported fields:
 
@@ -280,20 +284,20 @@ Supported fields:
 - `participants` list of object ids
 - `timing` string
 - `visibility` string
-- `epoch` string, Schema 2.5+
-- `referencePlane` string, Schema 2.5+
+- `epoch` string, Schema 3.0+
+- `referencePlane` string, Schema 3.0+
 - `tags` list
 - `color` string
 - `hidden` boolean
 - `positions` block
 
-Events are semantic timeline or snapshot markers for things like eclipses, transits, conjunctions, or ceremonial windows. They do not turn WorldOrbit into a simulation language.
+Events are semantic timeline or snapshot markers for things like eclipses, transits, conjunctions, maneuver windows, or ceremonial windows. They do not turn WorldOrbit into a simulation language.
 
 At least one of `target` or `participants` should be present.
 
 #### `positions` and `pose`
 
-Inside an `event`, Schema 2.1 optionally supports a `positions` block with repeated `pose <objectId>` blocks. Schema 2.5 keeps that shape and clarifies how missing pose data falls back to base object, event, and system context.
+Inside an `event`, Schema 2.1 optionally supports a `positions` block with repeated `pose <objectId>` blocks. Schema 3.0 keeps that shape and clarifies how missing pose data falls back to base object, event, and system context.
 
 Example:
 
@@ -319,8 +323,8 @@ Each `pose` reuses the placement language for a curated event snapshot:
 
 - exactly one of `orbit`, `at`, `surface`, or `free`
 - optional placement geometry such as `distance`, `semiMajor`, `eccentricity`, `period`, `angle`, `inclination`, `phase`, `inner`, and `outer`
-- optional `epoch`, Schema 2.5+
-- optional `referencePlane`, Schema 2.5+
+- optional `epoch`, Schema 3.0+
+- optional `referencePlane`, Schema 3.0+
 
 `pose` blocks are for position and geometry only. They are not a second place to redefine `mass`, `radius`, `info`, typed lore blocks, or other non-placement object metadata.
 
@@ -351,7 +355,58 @@ Supported object types:
 - `comet`
 - `ring`
 - `structure`
+- `craft`
 - `phenomenon`
+
+### `trajectory`
+
+Declarative mission path section for reusable flight plans, swing-bys, and transfer arcs.
+
+Header format:
+
+```worldorbit
+trajectory <id>
+```
+
+Supported fields:
+
+- `kind` string
+- `craft` object id
+- `from` object id
+- `to` object id
+- `around` object id
+- `assist` object id
+- `epoch` string
+- `referencePlane` string
+- `notes` string
+- `segments` block
+
+`segments` contains repeated `maneuver <type>` blocks. Supported maneuver kinds include:
+
+- `departure`
+- `transfer`
+- `flyby`
+- `capture`
+- `stationkeeping`
+- `escape`
+
+Each maneuver may include semantic fields such as:
+
+- `from`
+- `to`
+- `around`
+- `assist`
+- `periapsis`
+- `apoapsis`
+- `inclination`
+- `duration`
+- `deltaV`
+- `phaseAngle`
+- `turnAngle`
+- `energy`
+- `notes`
+
+Trajectory blocks are declarative and can be referenced by `craft`, `event`, or `pose` snapshots. They describe mission structure and gravity-assist intent, not a built-in numeric solver.
 
 ## Placement modes
 
@@ -449,9 +504,9 @@ Common scalar and list fields include:
 
 Field compatibility still depends on object type.
 
-### Schema 2.1 object metadata
+### Shared object metadata
 
-Schema 2.1 adds these optional object-level fields:
+Schema 2.1 and newer add these optional object-level fields:
 
 - `groups <groupId...>`
 - `epoch <string>`
@@ -508,6 +563,8 @@ Current validator support focuses on:
 - `at`/`surface` constraints
 - group references
 - event targets, participants, and viewpoint event references
+- trajectory references, including `craft`, `from`, `to`, `around`, and `assist`
+- swing-by segments requiring an `assist` body
 - simple Kepler-style period checks when enough mass and orbital data are present
 
 ## `info` and typed lore blocks

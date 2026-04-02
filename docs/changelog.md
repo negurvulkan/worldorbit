@@ -1,5 +1,11 @@
 # Changelog
 
+## v4.0.0
+
+- promoted Schema `3.0` to the canonical authoring target and aligned the release-facing docs around declarative trajectories, swing-by metadata, and the new `craft` object type
+- updated the reference docs, migration guide, examples, and browser-facing samples to describe mission structure as a first-class DSL concept
+- kept the parser-first and declarative posture intact by treating numeric orbital solving as an optional future subpath rather than a core requirement
+
 ## v3.0.7
 
 - made interactive embeds responsive to their host container with resize tracking and safe height fallbacks

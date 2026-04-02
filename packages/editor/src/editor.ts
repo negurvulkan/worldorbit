@@ -37,6 +37,7 @@ import type {
   WorldOrbitEditor,
   WorldOrbitEditorFormState,
   WorldOrbitEditorOptions,
+  WorldOrbitEditorObjectType,
   WorldOrbitEditorSelection,
   WorldOrbitEditorSnapshot,
 } from "./types.js";
@@ -82,6 +83,15 @@ interface FieldHelpEntry {
   references?: string[];
 }
 
+type TrajectoryAwareEvent = WorldOrbitEvent & {
+  trajectory?: string | null;
+};
+
+type TrajectoryAwareObject = Omit<WorldOrbitObject, "type"> & {
+  type: WorldOrbitEditorObjectType;
+  trajectory?: string | null;
+};
+
 const STYLE_ID = "worldorbit-editor-style";
 const SOURCE_INPUT_DEBOUNCE_MS = 120;
 const PREVIEW_BATCH_DELAY_MS = 16;
@@ -109,7 +119,7 @@ const SURFACE_TARGET_TYPES = new Set<WorldOrbitObject["type"]>([
   "asteroid",
   "comet",
 ]);
-const OBJECT_TYPES: WorldOrbitObject["type"][] = [
+const OBJECT_TYPES: WorldOrbitEditorObjectType[] = [
   "star",
   "planet",
   "moon",
@@ -119,6 +129,7 @@ const OBJECT_TYPES: WorldOrbitObject["type"][] = [
   "ring",
   "structure",
   "phenomenon",
+  "craft",
 ];
 const OBJECT_STRING_FIELDS = [
   "kind",
@@ -171,11 +182,11 @@ const FIELD_HELP: Partial<Record<string, FieldHelpEntry>> = {
     references: ["1 = scene fit", "2+ = close-up"],
   },
   "viewpoint-rotation": {
-    description: "Legacy 2D screen rotation. This is separate from the Schema 2.5 camera block.",
+    description: "Legacy 2D screen rotation. This is separate from the Schema 3.0 camera block.",
     references: ["90deg = quarter turn", "Use camera.azimuth for semantic view direction"],
   },
   "viewpoint-camera-azimuth": {
-    description: "Horizontal camera direction in degrees for Schema 2.5 viewpoints.",
+    description: "Horizontal camera direction in degrees for Schema 3.0 viewpoints.",
     references: ["0 = forward/default", "90 = quarter orbit around the scene"],
   },
   "viewpoint-camera-elevation": {
@@ -226,9 +237,17 @@ const FIELD_HELP: Partial<Record<string, FieldHelpEntry>> = {
     description: "Viewpoint IDs that should list this event prominently.",
     references: ["naar-system", "overview inner-system"],
   },
+  "event-trajectory": {
+    description: "Links the event to a declarative trajectory or maneuver plan.",
+    references: ["courier-run", "swing-by-window"],
+  },
   "placement-target": {
     description: "Names the body or reference this object is attached to.",
     references: ["orbit Primary", "surface Homeworld", "at Naar:L4"],
+  },
+  "object-trajectory": {
+    description: "Links a craft to a declarative trajectory definition.",
+    references: ["courier-run", "transfer-orbit"],
   },
   "placement-free": {
     description: "Stores a free-placement offset or a descriptive label for loose placement.",
@@ -480,7 +499,7 @@ export function createWorldOrbitEditor(
       restoreHistoryEntry(entry);
       return true;
     },
-    addObject(type = "planet"): string {
+    addObject(type: WorldOrbitEditorObjectType = "planet"): string {
       const id = createUniqueId(type, atlasDocument.objects.map((object) => object.id));
       const created = createNewObject(type, id, atlasDocument);
       const nextDocument = insertObject(atlasDocument, created);
@@ -1303,7 +1322,7 @@ export function createWorldOrbitEditor(
       case "add-object": {
         const type =
           (toolbar.querySelector("[data-editor-add-object-type]") as HTMLSelectElement | null)
-            ?.value as WorldOrbitObject["type"] | undefined;
+            ?.value as WorldOrbitEditorObjectType | undefined;
         api.addObject(type ?? "planet");
         return;
       }
@@ -1787,7 +1806,7 @@ export function createWorldOrbitEditor(
   function buildEventDocumentFromInspector(currentId: string): WorldOrbitAtlasDocument {
     const nextDocument = cloneAtlasDocument(atlasDocument);
     const form = inspector?.querySelector("form[data-editor-form='event']") as HTMLFormElement | null;
-    const current = nextDocument.events.find((entry) => entry.id === currentId);
+    const current = nextDocument.events.find((entry) => entry.id === currentId) as TrajectoryAwareEvent | undefined;
     if (!form || !current) {
       return nextDocument;
     }
@@ -1809,6 +1828,13 @@ export function createWorldOrbitEditor(
       color: readOptionalTextInput(form, "event-color"),
       hidden: readCheckbox(form, "event-hidden"),
     };
+
+    const nextTrajectory = readOptionalTextInput(form, "event-trajectory");
+    if (nextTrajectory) {
+      (replacement as TrajectoryAwareEvent).trajectory = nextTrajectory;
+    } else {
+      delete (replacement as TrajectoryAwareEvent).trajectory;
+    }
 
     nextDocument.events = nextDocument.events
       .filter((entry) => entry.id !== current.id)
@@ -1907,7 +1933,7 @@ export function createWorldOrbitEditor(
   function buildObjectDocumentFromInspector(currentId: string): WorldOrbitAtlasDocument {
     const nextDocument = cloneAtlasDocument(atlasDocument);
     const form = inspector?.querySelector("form[data-editor-form='object']") as HTMLFormElement | null;
-    const current = nextDocument.objects.find((object) => object.id === currentId);
+    const current = nextDocument.objects.find((object) => object.id === currentId) as TrajectoryAwareObject | undefined;
     if (!form || !current) {
       return nextDocument;
     }
@@ -1916,11 +1942,18 @@ export function createWorldOrbitEditor(
     const replacement: WorldOrbitObject = {
       ...current,
       id: nextId,
-      type: (readTextInput(form, "object-type") as WorldOrbitObject["type"]) || current.type,
+      type: ((readTextInput(form, "object-type") as WorldOrbitEditorObjectType) || current.type) as WorldOrbitObject["type"],
       properties: { ...current.properties },
       info: { ...current.info },
-      placement: buildPlacementFromForm(form, current),
+      placement: buildPlacementFromForm(form, current as WorldOrbitObject),
     };
+
+    const nextTrajectory = readOptionalTextInput(form, "object-trajectory");
+    if (nextTrajectory) {
+      (replacement as TrajectoryAwareObject).trajectory = nextTrajectory;
+    } else {
+      delete (replacement as TrajectoryAwareObject).trajectory;
+    }
 
     for (const field of OBJECT_STRING_FIELDS) {
       setOptionalProperty(replacement.properties, field, readOptionalTextInput(form, `prop-${field}`));
@@ -2478,7 +2511,7 @@ function renderViewpointInspector(
       ${renderTextField("Elevation", "viewpoint-camera-elevation", viewpoint.camera?.elevation === null || viewpoint.camera?.elevation === undefined ? "" : String(viewpoint.camera.elevation))}
       ${renderTextField("Roll", "viewpoint-camera-roll", viewpoint.camera?.roll === null || viewpoint.camera?.roll === undefined ? "" : String(viewpoint.camera.roll))}
       ${renderTextField("Distance", "viewpoint-camera-distance", viewpoint.camera?.distance === null || viewpoint.camera?.distance === undefined ? "" : String(viewpoint.camera.distance))}
-      <p class="wo-editor-inline-note">Rotation stays a 2D screen-rotation hint. The camera block stores Schema 2.5 view direction and framing.</p>`,
+      <p class="wo-editor-inline-note">Rotation stays a 2D screen-rotation hint. The camera block stores Schema 3.0 view direction and framing.</p>`,
     )}
     ${renderInspectorSection(
       "viewpoint",
@@ -2513,7 +2546,7 @@ function renderEventInspector(
   formState: WorldOrbitEditorFormState,
   id: string,
 ): string {
-  const eventEntry = formState.events.find((entry) => entry.id === id);
+  const eventEntry = formState.events.find((entry) => entry.id === id) as TrajectoryAwareEvent | undefined;
   if (!eventEntry) {
     return `<p class="wo-editor-empty">Event not found.</p>`;
   }
@@ -2543,6 +2576,13 @@ function renderEventInspector(
       ${renderTextField("Color", "event-color", eventEntry.color ?? "")}
       ${renderCheckboxField("Hidden", "event-hidden", eventEntry.hidden === true)}`,
       true,
+    )}
+    ${renderInspectorSection(
+      "event",
+      "trajectory",
+      "Trajectory",
+      `${renderTextField("Trajectory", "event-trajectory", eventEntry.trajectory ?? "")}
+      <p class="wo-editor-inline-note">Declarative transfer windows, flybys, and maneuver phases can be attached here. The core remains non-numeric.</p>`,
     )}
     ${renderInspectorSection(
       "event",
@@ -2675,7 +2715,7 @@ function renderObjectInspector(
   formState: WorldOrbitEditorFormState,
   id: string,
 ): string {
-  const object = formState.objects.find((entry) => entry.id === id);
+  const object = formState.objects.find((entry) => entry.id === id) as TrajectoryAwareObject | undefined;
   if (!object) {
     return `<p class="wo-editor-empty">Object not found.</p>`;
   }
@@ -2724,6 +2764,17 @@ function renderObjectInspector(
       ${renderTextField("Phase", "placement-phase", object.placement?.mode === "orbit" && object.placement.phase ? formatUnitValue(object.placement.phase) : "")}`,
       true,
     )}
+    ${
+      object.type === "craft"
+        ? renderInspectorSection(
+            "object",
+            "trajectory",
+            "Trajectory",
+            `${renderTextField("Trajectory", "object-trajectory", object.trajectory ?? "")}
+            <p class="wo-editor-inline-note">Crafts can reference declarative trajectory definitions here. Swing-by and transfer details stay in the DSL, not the editor canvas.</p>`,
+          )
+        : ""
+    }
     ${renderInspectorSection(
       "object",
       "properties",
@@ -2961,7 +3012,7 @@ function splitTokens(value: string | null): string[] {
 }
 
 function createNewObject(
-  type: WorldOrbitObject["type"],
+  type: WorldOrbitEditorObjectType,
   id: string,
   document: WorldOrbitAtlasDocument,
 ): WorldOrbitObject {
@@ -2970,8 +3021,21 @@ function createNewObject(
     document.objects[0]?.id ??
     id;
 
+  if (type === "craft") {
+    return {
+      type: type as WorldOrbitObject["type"],
+      id,
+      properties: {},
+      placement: {
+        mode: "free",
+        distance: { value: 1, unit: "au" },
+      },
+      info: {},
+    };
+  }
+
   return {
-    type,
+    type: type as WorldOrbitObject["type"],
     id,
     properties: {},
     placement:
@@ -3963,6 +4027,10 @@ function mapDiagnosticFieldToInputNames(
         default:
           return [];
       }
+    case "trajectory":
+    case "trajectory-segment":
+    case "trajectory-maneuver":
+      return [];
     case "object":
       if (field === "id") {
         return ["object-id"];
@@ -3989,6 +4057,8 @@ function mapDiagnosticFieldToInputNames(
         return [`placement-${field}`];
       }
       return [`prop-${field}`];
+    default:
+      return [];
   }
 }
 
@@ -4018,6 +4088,12 @@ function describePath(path: AtlasDocumentPath): string {
       return `Event: ${path.id ?? ""}`;
     case "event-pose":
       return `Event Pose: ${path.id ?? ""} / ${path.key ?? ""}`;
+    case "trajectory":
+      return `Trajectory: ${path.id ?? ""}`;
+    case "trajectory-segment":
+      return `Trajectory Segment: ${path.id ?? ""} / ${path.key ?? ""}`;
+    case "trajectory-maneuver":
+      return `Trajectory Maneuver: ${path.id ?? ""} / ${path.key ?? ""}`;
     case "object":
       return `Object: ${path.id ?? ""}`;
     case "viewpoint":
@@ -4026,6 +4102,8 @@ function describePath(path: AtlasDocumentPath): string {
       return `Annotation: ${path.id ?? ""}`;
     case "relation":
       return `Relation: ${path.id ?? ""}`;
+    default:
+      return "Selection";
   }
 }
 
