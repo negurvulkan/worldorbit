@@ -1,4 +1,4 @@
-const heroSource = `schema 2.6
+const heroSource = `schema 3.0
 
 system Iyath
   title "Iyath System"
@@ -35,12 +35,35 @@ object moon Seyra
   orbit Naar
   distance 384400km
 
-event naar-eclipse
-  kind solar-eclipse
-  target Naar
-  participants Iyath Naar Seyra`;
+object craft Courier
+  free 9au
+  trajectory courier-transfer
 
-const playgroundDefaultSource = `schema 2.6
+trajectory courier-transfer
+  craft Courier
+  from DeepSpace
+  to Naar
+
+  maneuver departure
+    deltaV 1.8km/s
+
+  maneuver flyby
+    assist Iyath
+    around Iyath
+    periapsis 420000km
+    turnAngle 13deg
+
+  maneuver capture
+    to Naar
+    deltaV 0.6km/s
+
+event courier-arrival
+  kind transfer-window
+  target Courier
+  participants Iyath Naar
+  trajectory courier-transfer`;
+
+const playgroundDefaultSource = `schema 3.0
 
 system Iyath
   title "Iyath System"
@@ -83,10 +106,33 @@ object moon Seyra
   distance 384400km
   groups inner-system
 
-event naar-eclipse
-  kind solar-eclipse
-  target Naar
-  participants Iyath Naar Seyra
+object craft Courier
+  free 9au
+  trajectory courier-transfer
+
+trajectory courier-transfer
+  craft Courier
+  from DeepSpace
+  to Naar
+
+  maneuver departure
+    deltaV 1.8km/s
+
+  maneuver flyby
+    assist Iyath
+    around Iyath
+    periapsis 420000km
+    turnAngle 13deg
+
+  maneuver capture
+    to Naar
+    deltaV 0.6km/s
+
+event courier-arrival
+  kind transfer-window
+  target Courier
+  participants Iyath Naar
+  trajectory courier-transfer
 
   positions
     pose Naar

@@ -10,15 +10,18 @@ import type {
   WorldOrbitEventPose,
   WorldOrbitAtlasSystem,
   WorldOrbitGroup,
+  WorldOrbitManeuver,
   WorldOrbitAtlasViewpoint,
   WorldOrbitDiagnostic,
   WorldOrbitRelation,
   WorldOrbitObject,
+  WorldOrbitTrajectory,
+  WorldOrbitTrajectorySegment,
 } from "./types.js";
 
 export function createEmptyAtlasDocument(
   systemId = "WorldOrbit",
-  version: WorldOrbitAtlasDocumentVersion = "2.6",
+  version: WorldOrbitAtlasDocumentVersion = "3.0",
 ): WorldOrbitAtlasDocument {
   return {
     format: "worldorbit",
@@ -50,6 +53,7 @@ export function createEmptyAtlasDocument(
     groups: [],
     relations: [],
     events: [],
+    trajectories: [],
     objects: [],
     diagnostics: [],
   };
@@ -91,6 +95,20 @@ export function listAtlasDocumentPaths(document: WorldOrbitAtlasDocument): Atlas
     }
   }
 
+  for (const trajectory of [...document.trajectories].sort(compareIdLike)) {
+    paths.push({ kind: "trajectory", id: trajectory.id });
+    for (const segment of [...trajectory.segments].sort(compareIdLike)) {
+      paths.push({ kind: "trajectory-segment", id: trajectory.id, key: segment.id });
+      for (const maneuver of [...segment.maneuvers].sort(compareIdLike)) {
+        paths.push({
+          kind: "trajectory-maneuver",
+          id: trajectory.id,
+          key: `${segment.id}:${maneuver.id}`,
+        });
+      }
+    }
+  }
+
   for (const object of [...document.objects].sort(compareIdLike)) {
     paths.push({ kind: "object", id: object.id });
   }
@@ -115,6 +133,12 @@ export function getAtlasDocumentNode(
       return path.id ? findEvent(document, path.id) : null;
     case "event-pose":
       return path.id && path.key ? findEventPose(document, path.id, path.key) : null;
+    case "trajectory":
+      return path.id ? findTrajectory(document, path.id) : null;
+    case "trajectory-segment":
+      return path.id && path.key ? findTrajectorySegment(document, path.id, path.key) : null;
+    case "trajectory-maneuver":
+      return path.id && path.key ? findTrajectoryManeuver(document, path.id, path.key) : null;
     case "object":
       return path.id ? findObject(document, path.id) : null;
     case "viewpoint":
@@ -171,6 +195,24 @@ export function upsertAtlasDocumentNode(
         throw new Error('Event pose updates require an event "id" and pose "key" value.');
       }
       upsertEventPose(next.events, path.id, value as WorldOrbitEventPose);
+      return next;
+    case "trajectory":
+      if (!path.id) {
+        throw new Error('Trajectory updates require an "id" value.');
+      }
+      upsertById(next.trajectories, value as WorldOrbitTrajectory);
+      return next;
+    case "trajectory-segment":
+      if (!path.id || !path.key) {
+        throw new Error('Trajectory segment updates require a trajectory "id" and segment "key" value.');
+      }
+      upsertTrajectorySegment(next.trajectories, path.id, value as WorldOrbitTrajectorySegment);
+      return next;
+    case "trajectory-maneuver":
+      if (!path.id || !path.key) {
+        throw new Error('Trajectory maneuver updates require a trajectory "id" and maneuver "key" value.');
+      }
+      upsertTrajectoryManeuver(next.trajectories, path.id, path.key, value as WorldOrbitManeuver);
       return next;
     case "object":
       if (!path.id) {
@@ -240,6 +282,30 @@ export function removeAtlasDocumentNode(
         const event = findEvent(next, path.id);
         if (event) {
           event.positions = event.positions.filter((pose) => pose.objectId !== path.key);
+        }
+      }
+      return next;
+    case "trajectory":
+      if (path.id) {
+        next.trajectories = next.trajectories.filter((trajectory) => trajectory.id !== path.id);
+      }
+      return next;
+    case "trajectory-segment":
+      if (path.id && path.key) {
+        const trajectory = findTrajectory(next, path.id);
+        if (trajectory) {
+          trajectory.segments = trajectory.segments.filter((segment) => segment.id !== path.key);
+        }
+      }
+      return next;
+    case "trajectory-maneuver":
+      if (path.id && path.key) {
+        const maneuver = splitTrajectoryManeuverKey(path.key);
+        if (maneuver) {
+          const segment = findTrajectorySegment(next, path.id, maneuver.segmentId);
+          if (segment) {
+            segment.maneuvers = segment.maneuvers.filter((entry) => entry.id !== maneuver.maneuverId);
+          }
         }
       }
       return next;
@@ -341,6 +407,35 @@ export function resolveAtlasDiagnosticPath(
     }
   }
 
+  if (diagnostic.field?.startsWith("trajectory.")) {
+    const parts = diagnostic.field.split(".");
+    if (parts[1] && findTrajectory(document, parts[1])) {
+      if (parts[2] === "segment" && parts[3] && findTrajectorySegment(document, parts[1], parts[3])) {
+        if (
+          parts[4] === "maneuver" &&
+          parts[5] &&
+          findTrajectoryManeuver(document, parts[1], `${parts[3]}:${parts[5]}`)
+        ) {
+          return {
+            kind: "trajectory-maneuver",
+            id: parts[1],
+            key: `${parts[3]}:${parts[5]}`,
+          };
+        }
+
+        return {
+          kind: "trajectory-segment",
+          id: parts[1],
+          key: parts[3],
+        };
+      }
+      return {
+        kind: "trajectory",
+        id: parts[1],
+      };
+    }
+  }
+
   if (diagnostic.field && diagnostic.field in ensureSystem(document).atlasMetadata) {
     return {
       kind: "metadata",
@@ -406,6 +501,35 @@ function findEventPose(
   return findEvent(document, eventId)?.positions.find((pose) => pose.objectId === objectId) ?? null;
 }
 
+function findTrajectory(
+  document: WorldOrbitAtlasDocument,
+  trajectoryId: string,
+): WorldOrbitTrajectory | null {
+  return document.trajectories.find((trajectory) => trajectory.id === trajectoryId) ?? null;
+}
+
+function findTrajectorySegment(
+  document: WorldOrbitAtlasDocument,
+  trajectoryId: string,
+  segmentId: string,
+): WorldOrbitTrajectorySegment | null {
+  return findTrajectory(document, trajectoryId)?.segments.find((segment) => segment.id === segmentId) ?? null;
+}
+
+function findTrajectoryManeuver(
+  document: WorldOrbitAtlasDocument,
+  trajectoryId: string,
+  combinedKey: string,
+): WorldOrbitManeuver | null {
+  const parsed = splitTrajectoryManeuverKey(combinedKey);
+  if (!parsed) {
+    return null;
+  }
+
+  return findTrajectorySegment(document, trajectoryId, parsed.segmentId)
+    ?.maneuvers.find((maneuver) => maneuver.id === parsed.maneuverId) ?? null;
+}
+
 function findViewpoint(
   system: WorldOrbitAtlasSystem | null,
   viewpointId: string,
@@ -449,6 +573,71 @@ function upsertEventPose(
   }
 
   event.positions[index] = value;
+}
+
+function upsertTrajectorySegment(
+  trajectories: WorldOrbitTrajectory[],
+  trajectoryId: string,
+  value: WorldOrbitTrajectorySegment,
+): void {
+  const trajectory = trajectories.find((entry) => entry.id === trajectoryId);
+  if (!trajectory) {
+    throw new Error(`Unknown trajectory "${trajectoryId}" for segment update.`);
+  }
+
+  const index = trajectory.segments.findIndex((entry) => entry.id === value.id);
+  if (index === -1) {
+    trajectory.segments.push(value);
+    trajectory.segments.sort(compareIdLike);
+    return;
+  }
+
+  trajectory.segments[index] = value;
+}
+
+function upsertTrajectoryManeuver(
+  trajectories: WorldOrbitTrajectory[],
+  trajectoryId: string,
+  combinedKey: string,
+  value: WorldOrbitManeuver,
+): void {
+  const parsed = splitTrajectoryManeuverKey(combinedKey);
+  if (!parsed) {
+    throw new Error(`Invalid trajectory maneuver key "${combinedKey}".`);
+  }
+
+  const trajectory = trajectories.find((entry) => entry.id === trajectoryId);
+  if (!trajectory) {
+    throw new Error(`Unknown trajectory "${trajectoryId}" for maneuver update.`);
+  }
+
+  const segment = trajectory.segments.find((entry) => entry.id === parsed.segmentId);
+  if (!segment) {
+    throw new Error(`Unknown trajectory segment "${parsed.segmentId}" on "${trajectoryId}".`);
+  }
+
+  const index = segment.maneuvers.findIndex((entry) => entry.id === value.id);
+  if (index === -1) {
+    segment.maneuvers.push(value);
+    segment.maneuvers.sort(compareIdLike);
+    return;
+  }
+
+  segment.maneuvers[index] = value;
+}
+
+function splitTrajectoryManeuverKey(
+  key: string,
+): { segmentId: string; maneuverId: string } | null {
+  const separator = key.indexOf(":");
+  if (separator <= 0 || separator >= key.length - 1) {
+    return null;
+  }
+
+  return {
+    segmentId: key.slice(0, separator),
+    maneuverId: key.slice(separator + 1),
+  };
 }
 
 function compareIdLike(left: { id: string }, right: { id: string }): number {

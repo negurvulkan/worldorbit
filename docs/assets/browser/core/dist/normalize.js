@@ -33,6 +33,7 @@ export function normalizeDocument(ast) {
         groups: [],
         relations: [],
         events: [],
+        trajectories: [],
         objects,
     };
 }

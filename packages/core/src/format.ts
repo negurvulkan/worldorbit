@@ -8,9 +8,12 @@ import type {
   WorldOrbitAtlasDocument,
   WorldOrbitEvent,
   WorldOrbitEventPose,
+  WorldOrbitManeuver,
   WorldOrbitGroup,
   WorldOrbitRelation,
   WorldOrbitAtlasSystem,
+  WorldOrbitTrajectory,
+  WorldOrbitTrajectorySegment,
   WorldOrbitAtlasViewpoint,
   WorldOrbitDraftDocument,
   WorldOrbitDocument,
@@ -65,10 +68,12 @@ export function formatDocument(
     schema === "2.1" ||
     schema === "2.5" ||
     schema === "2.6" ||
+    schema === "3.0" ||
     schema === "2.0-draft" ||
     document.version === "2.0" ||
     document.version === "2.1" ||
     document.version === "2.5" ||
+    document.version === "3.0" ||
     document.version === "2.6" ||
     document.version === "2.0-draft";
 
@@ -88,7 +93,7 @@ export function formatDocument(
     }
 
     const atlasDocument =
-      document.version === "2.0" || document.version === "2.1" || document.version === "2.5" || document.version === "2.6"
+      document.version === "2.0" || document.version === "2.1" || document.version === "2.5" || document.version === "2.6" || document.version === "3.0"
         ? document
         : document.version === "2.0-draft"
           ? {
@@ -97,7 +102,7 @@ export function formatDocument(
               schemaVersion: "2.0" as const,
             }
           : upgradeDocumentToV2(document as WorldOrbitDocument);
-    if ((schema === "2.0" || schema === "2.1" || schema === "2.5" || schema === "2.6") && atlasDocument.version !== schema) {
+    if ((schema === "2.0" || schema === "2.1" || schema === "2.5" || schema === "2.6" || schema === "3.0") && atlasDocument.version !== schema) {
       return formatAtlasDocument({
         ...atlasDocument,
         version: schema,
@@ -145,6 +150,11 @@ export function formatAtlasDocument(document: WorldOrbitAtlasDocument): string {
   for (const event of [...document.events].sort(compareIdLike)) {
     lines.push("");
     lines.push(...formatAtlasEvent(event));
+  }
+
+  for (const trajectory of [...document.trajectories].sort(compareIdLike)) {
+    lines.push("");
+    lines.push(...formatAtlasTrajectory(trajectory));
   }
 
   const sortedObjects = [...document.objects].sort(compareObjects);
@@ -305,7 +315,7 @@ function formatAtlasObject(object: WorldOrbitObject): string[] {
   return formatWorldOrbitObject(`object ${object.type}`, object.id, object);
 }
 
-function formatWorldOrbitObject(
+  function formatWorldOrbitObject(
   objectType: string,
   id: string,
   object: WorldOrbitObject,
@@ -381,10 +391,13 @@ function formatProperties(properties: Record<string, NormalizedValue>): string[]
 function formatObjectMetadata(object: WorldOrbitObject): string[] {
   const lines: string[] = [];
 
-  if (object.groups?.length) {
-    lines.push(`groups ${object.groups.join(" ")}`);
-  }
-  if (object.epoch) {
+    if (object.groups?.length) {
+      lines.push(`groups ${object.groups.join(" ")}`);
+    }
+    if (object.trajectoryId) {
+      lines.push(`trajectory ${object.trajectoryId}`);
+    }
+    if (object.epoch) {
     lines.push(`epoch ${quoteIfNeeded(object.epoch)}`);
   }
   if (object.referencePlane) {
@@ -548,16 +561,19 @@ function formatAtlasRelation(relation: WorldOrbitRelation): string[] {
   return lines;
 }
 
-function formatAtlasEvent(event: WorldOrbitEvent): string[] {
-  const lines = [`event ${event.id}`, `  kind ${quoteIfNeeded(event.kind)}`];
+  function formatAtlasEvent(event: WorldOrbitEvent): string[] {
+    const lines = [`event ${event.id}`, `  kind ${quoteIfNeeded(event.kind)}`];
 
   if (event.label) {
     lines.push(`  label ${quoteIfNeeded(event.label)}`);
   }
-  if (event.summary) {
-    lines.push(`  summary ${quoteIfNeeded(event.summary)}`);
-  }
-  if (event.targetObjectId) {
+    if (event.summary) {
+      lines.push(`  summary ${quoteIfNeeded(event.summary)}`);
+    }
+    if (event.trajectoryId) {
+      lines.push(`  trajectory ${event.trajectoryId}`);
+    }
+    if (event.targetObjectId) {
     lines.push(`  target ${event.targetObjectId}`);
   }
   if (event.participantObjectIds.length > 0) {
@@ -598,13 +614,87 @@ function formatAtlasEvent(event: WorldOrbitEvent): string[] {
   return lines;
 }
 
-function formatEventPoseFields(pose: WorldOrbitEventPose): string[] {
+  function formatEventPoseFields(pose: WorldOrbitEventPose): string[] {
+    return [
+      ...formatPlacement(pose.placement),
+      ...(pose.trajectorySegmentId ? [`segment ${pose.trajectorySegmentId}`] : []),
+      ...(pose.trajectoryManeuverId ? [`maneuver ${pose.trajectoryManeuverId}`] : []),
+      ...(pose.epoch ? [`epoch ${quoteIfNeeded(pose.epoch)}`] : []),
+      ...(pose.referencePlane ? [`referencePlane ${quoteIfNeeded(pose.referencePlane)}`] : []),
+      ...formatOptionalUnit("inner", pose.inner),
+      ...formatOptionalUnit("outer", pose.outer),
+    ];
+  }
+
+function formatAtlasTrajectory(trajectory: WorldOrbitTrajectory): string[] {
+  const lines = [`trajectory ${trajectory.id}`];
+
+  if (trajectory.label) {
+    lines.push(`  label ${quoteIfNeeded(trajectory.label)}`);
+  }
+  if (trajectory.summary) {
+    lines.push(`  summary ${quoteIfNeeded(trajectory.summary)}`);
+  }
+  if (trajectory.craftObjectId) {
+    lines.push(`  craft ${trajectory.craftObjectId}`);
+  }
+  if (trajectory.tags.length > 0) {
+    lines.push(`  tags ${trajectory.tags.map(quoteIfNeeded).join(" ")}`);
+  }
+  if (trajectory.color) {
+    lines.push(`  color ${quoteIfNeeded(trajectory.color)}`);
+  }
+  if (trajectory.hidden) {
+    lines.push("  hidden true");
+  }
+
+  for (const segment of [...trajectory.segments].sort(compareIdLike)) {
+    lines.push("");
+    lines.push(`  segment ${segment.id}`);
+    for (const field of formatTrajectorySegmentFields(segment)) {
+      lines.push(`    ${field}`);
+    }
+    for (const maneuver of [...segment.maneuvers].sort(compareIdLike)) {
+      lines.push(`    maneuver ${maneuver.id}`);
+      for (const field of formatTrajectoryManeuverFields(maneuver)) {
+        lines.push(`      ${field}`);
+      }
+    }
+  }
+
+  return lines;
+}
+
+function formatTrajectorySegmentFields(segment: WorldOrbitTrajectorySegment): string[] {
   return [
-    ...formatPlacement(pose.placement),
-    ...(pose.epoch ? [`epoch ${quoteIfNeeded(pose.epoch)}`] : []),
-    ...(pose.referencePlane ? [`referencePlane ${quoteIfNeeded(pose.referencePlane)}`] : []),
-    ...formatOptionalUnit("inner", pose.inner),
-    ...formatOptionalUnit("outer", pose.outer),
+    `kind ${segment.kind}`,
+    ...(segment.label ? [`label ${quoteIfNeeded(segment.label)}`] : []),
+    ...(segment.summary ? [`summary ${quoteIfNeeded(segment.summary)}`] : []),
+    ...(segment.fromObjectId ? [`from ${segment.fromObjectId}`] : []),
+    ...(segment.toObjectId ? [`to ${segment.toObjectId}`] : []),
+    ...(segment.aroundObjectId ? [`around ${segment.aroundObjectId}`] : []),
+    ...(segment.assist?.objectId ? [`assist ${segment.assist.objectId}`] : []),
+    ...(segment.epoch ? [`epoch ${quoteIfNeeded(segment.epoch)}`] : []),
+    ...formatOptionalUnit("periapsis", segment.periapsis),
+    ...formatOptionalUnit("apoapsis", segment.apoapsis),
+    ...formatOptionalUnit("inclination", segment.inclination),
+    ...formatOptionalUnit("duration", segment.duration),
+    ...formatOptionalUnit("deltaV", segment.deltaV),
+    ...formatOptionalUnit("phaseAngle", segment.phaseAngle),
+    ...formatOptionalUnit("turnAngle", segment.turnAngle),
+    ...formatOptionalUnit("energy", segment.energy),
+    ...(segment.notes.length > 0 ? [`notes ${segment.notes.map(quoteIfNeeded).join(" ")}`] : []),
+  ];
+}
+
+function formatTrajectoryManeuverFields(maneuver: WorldOrbitManeuver): string[] {
+  return [
+    `kind ${quoteIfNeeded(maneuver.kind)}`,
+    ...(maneuver.label ? [`label ${quoteIfNeeded(maneuver.label)}`] : []),
+    ...(maneuver.epoch ? [`epoch ${quoteIfNeeded(maneuver.epoch)}`] : []),
+    ...formatOptionalUnit("deltaV", maneuver.deltaV),
+    ...formatOptionalUnit("duration", maneuver.duration),
+    ...(maneuver.notes.length > 0 ? [`notes ${maneuver.notes.map(quoteIfNeeded).join(" ")}`] : []),
   ];
 }
 
@@ -724,14 +814,16 @@ function objectTypeIndex(objectType: WorldOrbitObject["type"]): number {
       return 4;
     case "comet":
       return 5;
-    case "ring":
-      return 6;
-    case "structure":
-      return 7;
-    case "phenomenon":
-      return 8;
+      case "ring":
+        return 6;
+      case "craft":
+        return 7;
+      case "structure":
+        return 8;
+      case "phenomenon":
+        return 9;
+    }
   }
-}
 
 function quoteIfNeeded(value: string): string {
   if (!/\s/.test(value) && !value.includes('"')) {

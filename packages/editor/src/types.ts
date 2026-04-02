@@ -20,6 +20,8 @@ export interface WorldOrbitEditorSnapshot {
   selection: WorldOrbitEditorSelection | null;
 }
 
+export type WorldOrbitEditorObjectType = WorldOrbitObject["type"] | "craft";
+
 export interface WorldOrbitEditorOptions {
   source?: string;
   atlasDocument?: WorldOrbitAtlasDocument;
@@ -52,7 +54,7 @@ export interface WorldOrbitEditor {
   canRedo(): boolean;
   undo(): boolean;
   redo(): boolean;
-  addObject(type?: WorldOrbitObject["type"]): string;
+  addObject(type?: WorldOrbitEditorObjectType): string;
   addEvent(): string;
   addViewpoint(): string;
   addAnnotation(): string;

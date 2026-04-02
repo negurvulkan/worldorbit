@@ -1,6 +1,6 @@
 {
   "name": "@worldorbit/obsidian-plugin",
-  "version": "3.2.0",
+  "version": "4.0.0",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -14,7 +14,7 @@
     "obsidian": ">=1.5.0"
   },
   "dependencies": {
-    "@worldorbit/core": "3.2.0",
-    "@worldorbit/viewer": "3.2.0"
+    "@worldorbit/core": "4.0.0",
+    "@worldorbit/viewer": "4.0.0"
   }
 }

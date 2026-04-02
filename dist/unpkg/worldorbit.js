@@ -30713,6 +30713,7 @@ void main() {
     createEmptyAtlasDocument: () => createEmptyAtlasDocument,
     createInteractiveViewer: () => createInteractiveViewer,
     createInteractiveViewer2D: () => createInteractiveViewer2D,
+    createTrajectorySolverSnapshot: () => createTrajectorySolverSnapshot,
     createWorldOrbitEmbedMarkup: () => createWorldOrbitEmbedMarkup,
     defineWorldOrbitViewerElement: () => defineWorldOrbitViewerElement,
     deserializeViewerAtlasState: () => deserializeViewerAtlasState,
@@ -30810,6 +30811,7 @@ void main() {
     "asteroid",
     "comet",
     "ring",
+    "craft",
     "structure",
     "phenomenon"
   ];
@@ -30820,10 +30822,11 @@ void main() {
     "moon",
     "asteroid",
     "comet",
+    "craft",
     "structure",
     "phenomenon"
   ];
-  var ANCHORED_OBJECTS = ["structure", "phenomenon"];
+  var ANCHORED_OBJECTS = ["craft", "structure", "phenomenon"];
   var ORBITAL_OBJECTS = [
     "star",
     "planet",
@@ -30832,6 +30835,7 @@ void main() {
     "asteroid",
     "comet",
     "ring",
+    "craft",
     "structure",
     "phenomenon"
   ];
@@ -30843,6 +30847,7 @@ void main() {
     "asteroid",
     "comet",
     "ring",
+    "craft",
     "structure",
     "phenomenon"
   ];
@@ -31071,6 +31076,12 @@ void main() {
       arity: "single",
       objectTypes: NON_SYSTEM_OBJECTS,
       unitFamily: "duration"
+    }),
+    createField("trajectory", {
+      kind: "string",
+      placement: false,
+      arity: "single",
+      objectTypes: ["craft", "structure"]
     })
   ].map((schema) => [schema.key, schema]));
   var WORLDORBIT_FIELD_KEYS = new Set(WORLDORBIT_FIELD_SCHEMAS.keys());
@@ -31384,6 +31395,7 @@ void main() {
       groups: [],
       relations: [],
       events: [],
+      trajectories: [],
       objects
     };
   }
@@ -32304,7 +32316,7 @@ void main() {
       anchorX,
       anchorY,
       label: object.id,
-      secondaryLabel: object.type === "structure" ? String(object.properties.kind ?? object.type) : object.type,
+      secondaryLabel: object.type === "structure" || object.type === "craft" ? String(object.properties.kind ?? object.type) : object.type,
       fillColor: customColorFor(object.properties.color),
       imageHref: typeof object.properties.image === "string" && object.properties.image.trim() ? object.properties.image : void 0,
       hidden: object.properties.hidden === true
@@ -32398,6 +32410,7 @@ void main() {
       case "asteroid":
       case "comet":
         return 4;
+      case "craft":
       case "structure":
       case "phenomenon":
         return 5;
@@ -32422,7 +32435,7 @@ void main() {
     const oppositeVertical = vertical === "below" ? "above" : "below";
     const horizontal = defaultHorizontalDirection(object, parent, sceneWidth);
     const oppositeHorizontal = horizontal === "right" ? "left" : "right";
-    const preferHorizontal = object.object.type === "structure" || object.object.type === "phenomenon" || object.object.placement?.mode === "at" || object.object.placement?.mode === "surface" || object.object.placement?.mode === "free";
+    const preferHorizontal = object.object.type === "craft" || object.object.type === "structure" || object.object.type === "phenomenon" || object.object.placement?.mode === "at" || object.object.placement?.mode === "surface" || object.object.placement?.mode === "free";
     return preferHorizontal ? [horizontal, vertical, oppositeHorizontal, oppositeVertical] : [vertical, horizontal, oppositeVertical, oppositeHorizontal];
   }
   function defaultVerticalDirection(object, parent, sceneHeight) {
@@ -32886,7 +32899,7 @@ void main() {
     return next;
   }
   function parseViewpointObjectTypes(value) {
-    return splitListValue(value).filter((entry) => entry === "star" || entry === "planet" || entry === "moon" || entry === "belt" || entry === "asteroid" || entry === "comet" || entry === "ring" || entry === "structure" || entry === "phenomenon");
+    return splitListValue(value).filter((entry) => entry === "star" || entry === "planet" || entry === "moon" || entry === "belt" || entry === "asteroid" || entry === "comet" || entry === "ring" || entry === "craft" || entry === "structure" || entry === "phenomenon");
   }
   function parseViewpointGroups(value, document2, relationships, objectMap) {
     return splitListValue(value).map((entry) => {
@@ -33507,6 +33520,8 @@ void main() {
         return clampNumber(6 * multiplier, scaleModel.minBodyRadius, scaleModel.maxBodyRadius);
       case "ring":
         return clampNumber(5 * multiplier, scaleModel.minBodyRadius, scaleModel.maxBodyRadius);
+      case "craft":
+        return clampNumber(5 * multiplier, scaleModel.minBodyRadius, scaleModel.maxBodyRadius);
       case "structure":
         return clampNumber(6 * multiplier, scaleModel.minBodyRadius, scaleModel.maxBodyRadius);
       case "phenomenon":
@@ -33520,6 +33535,8 @@ void main() {
         return radius * 2.4;
       case "phenomenon":
         return radius * 1.25;
+      case "craft":
+        return radius + 1.5;
       case "structure":
         return radius + 2;
       default:
@@ -34085,6 +34102,35 @@ void main() {
     return value * Math.PI / 180;
   }
 
+  // packages/core/dist/solver.js
+  function createTrajectorySolverSnapshot(trajectory) {
+    return {
+      trajectoryId: trajectory.id,
+      craftObjectId: trajectory.craftObjectId,
+      segments: trajectory.segments.map((segment) => ({
+        segmentId: segment.id,
+        kind: segment.kind,
+        fromObjectId: segment.fromObjectId,
+        toObjectId: segment.toObjectId,
+        aroundObjectId: segment.aroundObjectId,
+        assistObjectId: segment.assist?.objectId ?? null,
+        duration: segment.duration ?? null,
+        deltaV: segment.deltaV ?? null
+      })),
+      maneuvers: trajectory.segments.flatMap((segment) => segment.maneuvers.map((maneuver) => mapManeuver(segment.id, maneuver)))
+    };
+  }
+  function mapManeuver(segmentId, maneuver) {
+    return {
+      segmentId,
+      maneuverId: maneuver.id,
+      kind: maneuver.kind,
+      epoch: maneuver.epoch,
+      deltaV: maneuver.deltaV ?? null,
+      duration: maneuver.duration ?? null
+    };
+  }
+
   // packages/core/dist/draft.js
   function upgradeDocumentToV2(document2, options = {}) {
     const scene = renderDocumentToScene(document2, options);
@@ -34103,15 +34149,16 @@ void main() {
     }
     return {
       format: "worldorbit",
-      version: "2.6",
-      schemaVersion: "2.6",
+      version: "3.0",
+      schemaVersion: "3.0",
       sourceVersion: document2.version,
       theme: document2.theme ?? null,
       system,
       groups: structuredClone(document2.groups ?? []),
       relations: structuredClone(document2.relations ?? []),
       events: structuredClone(document2.events ?? []),
-      objects: document2.objects.map(cloneWorldOrbitObject),
+      trajectories: [],
+      objects: document2.objects.map(cloneWorldOrbitObject).map(normalizeLegacyCraftObject),
       diagnostics
     };
   }
@@ -34140,6 +34187,7 @@ void main() {
       groups: structuredClone(document2.groups ?? []),
       relations: structuredClone(document2.relations ?? []),
       events: document2.events.map(cloneWorldOrbitEvent),
+      trajectories: document2.trajectories.map(cloneWorldOrbitTrajectory),
       objects
     };
   }
@@ -34287,6 +34335,7 @@ void main() {
   function cloneWorldOrbitObject(object) {
     return {
       ...object,
+      trajectoryId: object.trajectoryId ?? null,
       groups: object.groups ? [...object.groups] : void 0,
       resonance: object.resonance ? { ...object.resonance } : object.resonance,
       renderHints: object.renderHints ? { ...object.renderHints } : object.renderHints,
@@ -34306,6 +34355,7 @@ void main() {
   function cloneWorldOrbitEvent(event) {
     return {
       ...event,
+      trajectoryId: event.trajectoryId ?? null,
       participantObjectIds: [...event.participantObjectIds],
       tags: [...event.tags],
       positions: event.positions.map(cloneWorldOrbitEventPose)
@@ -34315,10 +34365,28 @@ void main() {
     return {
       objectId: pose.objectId,
       placement: clonePlacement(pose.placement),
+      trajectorySegmentId: pose.trajectorySegmentId ?? null,
+      trajectoryManeuverId: pose.trajectoryManeuverId ?? null,
       inner: pose.inner ? { ...pose.inner } : void 0,
       outer: pose.outer ? { ...pose.outer } : void 0,
       epoch: pose.epoch ?? null,
       referencePlane: pose.referencePlane ?? null
+    };
+  }
+  function cloneWorldOrbitTrajectory(trajectory) {
+    return structuredClone(trajectory);
+  }
+  function normalizeLegacyCraftObject(object) {
+    if (object.type !== "structure") {
+      return object;
+    }
+    const kind = typeof object.properties.kind === "string" ? object.properties.kind.toLowerCase() : "";
+    if (!["ship", "probe", "station"].includes(kind)) {
+      return object;
+    }
+    return {
+      ...object,
+      type: "craft"
     };
   }
   function clonePlacement(placement) {
@@ -34561,7 +34629,7 @@ void main() {
   ];
   function formatDocument(document2, options = {}) {
     const schema = options.schema ?? "auto";
-    const useDraft = schema === "2.0" || schema === "2.1" || schema === "2.5" || schema === "2.6" || schema === "2.0-draft" || document2.version === "2.0" || document2.version === "2.1" || document2.version === "2.5" || document2.version === "2.6" || document2.version === "2.0-draft";
+    const useDraft = schema === "2.0" || schema === "2.1" || schema === "2.5" || schema === "2.6" || schema === "3.0" || schema === "2.0-draft" || document2.version === "2.0" || document2.version === "2.1" || document2.version === "2.5" || document2.version === "3.0" || document2.version === "2.6" || document2.version === "2.0-draft";
     if (useDraft) {
       if (schema === "2.0-draft") {
         const legacyDraftDocument = document2.version === "2.0-draft" ? document2 : document2.version === "2.0" || document2.version === "2.1" || document2.version === "2.5" || document2.version === "2.6" ? {
@@ -34571,12 +34639,12 @@ void main() {
         } : upgradeDocumentToDraftV2(document2);
         return formatDraftDocument(legacyDraftDocument);
       }
-      const atlasDocument = document2.version === "2.0" || document2.version === "2.1" || document2.version === "2.5" || document2.version === "2.6" ? document2 : document2.version === "2.0-draft" ? {
+      const atlasDocument = document2.version === "2.0" || document2.version === "2.1" || document2.version === "2.5" || document2.version === "2.6" || document2.version === "3.0" ? document2 : document2.version === "2.0-draft" ? {
         ...document2,
         version: "2.0",
         schemaVersion: "2.0"
       } : upgradeDocumentToV2(document2);
-      if ((schema === "2.0" || schema === "2.1" || schema === "2.5" || schema === "2.6") && atlasDocument.version !== schema) {
+      if ((schema === "2.0" || schema === "2.1" || schema === "2.5" || schema === "2.6" || schema === "3.0") && atlasDocument.version !== schema) {
         return formatAtlasDocument({
           ...atlasDocument,
           version: schema,
@@ -34615,6 +34683,10 @@ void main() {
     for (const event of [...document2.events].sort(compareIdLike)) {
       lines.push("");
       lines.push(...formatAtlasEvent(event));
+    }
+    for (const trajectory of [...document2.trajectories].sort(compareIdLike)) {
+      lines.push("");
+      lines.push(...formatAtlasTrajectory(trajectory));
     }
     const sortedObjects = [...document2.objects].sort(compareObjects);
     if (sortedObjects.length > 0 && lines.at(-1) !== "") {
@@ -34799,6 +34871,9 @@ void main() {
     if (object.groups?.length) {
       lines.push(`groups ${object.groups.join(" ")}`);
     }
+    if (object.trajectoryId) {
+      lines.push(`trajectory ${object.trajectoryId}`);
+    }
     if (object.epoch) {
       lines.push(`epoch ${quoteIfNeeded(object.epoch)}`);
     }
@@ -34959,6 +35034,9 @@ void main() {
     if (event.summary) {
       lines.push(`  summary ${quoteIfNeeded(event.summary)}`);
     }
+    if (event.trajectoryId) {
+      lines.push(`  trajectory ${event.trajectoryId}`);
+    }
     if (event.targetObjectId) {
       lines.push(`  target ${event.targetObjectId}`);
     }
@@ -35001,10 +35079,78 @@ void main() {
   function formatEventPoseFields(pose) {
     return [
       ...formatPlacement(pose.placement),
+      ...pose.trajectorySegmentId ? [`segment ${pose.trajectorySegmentId}`] : [],
+      ...pose.trajectoryManeuverId ? [`maneuver ${pose.trajectoryManeuverId}`] : [],
       ...pose.epoch ? [`epoch ${quoteIfNeeded(pose.epoch)}`] : [],
       ...pose.referencePlane ? [`referencePlane ${quoteIfNeeded(pose.referencePlane)}`] : [],
       ...formatOptionalUnit("inner", pose.inner),
       ...formatOptionalUnit("outer", pose.outer)
+    ];
+  }
+  function formatAtlasTrajectory(trajectory) {
+    const lines = [`trajectory ${trajectory.id}`];
+    if (trajectory.label) {
+      lines.push(`  label ${quoteIfNeeded(trajectory.label)}`);
+    }
+    if (trajectory.summary) {
+      lines.push(`  summary ${quoteIfNeeded(trajectory.summary)}`);
+    }
+    if (trajectory.craftObjectId) {
+      lines.push(`  craft ${trajectory.craftObjectId}`);
+    }
+    if (trajectory.tags.length > 0) {
+      lines.push(`  tags ${trajectory.tags.map(quoteIfNeeded).join(" ")}`);
+    }
+    if (trajectory.color) {
+      lines.push(`  color ${quoteIfNeeded(trajectory.color)}`);
+    }
+    if (trajectory.hidden) {
+      lines.push("  hidden true");
+    }
+    for (const segment of [...trajectory.segments].sort(compareIdLike)) {
+      lines.push("");
+      lines.push(`  segment ${segment.id}`);
+      for (const field of formatTrajectorySegmentFields(segment)) {
+        lines.push(`    ${field}`);
+      }
+      for (const maneuver of [...segment.maneuvers].sort(compareIdLike)) {
+        lines.push(`    maneuver ${maneuver.id}`);
+        for (const field of formatTrajectoryManeuverFields(maneuver)) {
+          lines.push(`      ${field}`);
+        }
+      }
+    }
+    return lines;
+  }
+  function formatTrajectorySegmentFields(segment) {
+    return [
+      `kind ${segment.kind}`,
+      ...segment.label ? [`label ${quoteIfNeeded(segment.label)}`] : [],
+      ...segment.summary ? [`summary ${quoteIfNeeded(segment.summary)}`] : [],
+      ...segment.fromObjectId ? [`from ${segment.fromObjectId}`] : [],
+      ...segment.toObjectId ? [`to ${segment.toObjectId}`] : [],
+      ...segment.aroundObjectId ? [`around ${segment.aroundObjectId}`] : [],
+      ...segment.assist?.objectId ? [`assist ${segment.assist.objectId}`] : [],
+      ...segment.epoch ? [`epoch ${quoteIfNeeded(segment.epoch)}`] : [],
+      ...formatOptionalUnit("periapsis", segment.periapsis),
+      ...formatOptionalUnit("apoapsis", segment.apoapsis),
+      ...formatOptionalUnit("inclination", segment.inclination),
+      ...formatOptionalUnit("duration", segment.duration),
+      ...formatOptionalUnit("deltaV", segment.deltaV),
+      ...formatOptionalUnit("phaseAngle", segment.phaseAngle),
+      ...formatOptionalUnit("turnAngle", segment.turnAngle),
+      ...formatOptionalUnit("energy", segment.energy),
+      ...segment.notes.length > 0 ? [`notes ${segment.notes.map(quoteIfNeeded).join(" ")}`] : []
+    ];
+  }
+  function formatTrajectoryManeuverFields(maneuver) {
+    return [
+      `kind ${quoteIfNeeded(maneuver.kind)}`,
+      ...maneuver.label ? [`label ${quoteIfNeeded(maneuver.label)}`] : [],
+      ...maneuver.epoch ? [`epoch ${quoteIfNeeded(maneuver.epoch)}`] : [],
+      ...formatOptionalUnit("deltaV", maneuver.deltaV),
+      ...formatOptionalUnit("duration", maneuver.duration),
+      ...maneuver.notes.length > 0 ? [`notes ${maneuver.notes.map(quoteIfNeeded).join(" ")}`] : []
     ];
   }
   function hasCameraValues(camera) {
@@ -35098,10 +35244,12 @@ void main() {
         return 5;
       case "ring":
         return 6;
-      case "structure":
+      case "craft":
         return 7;
-      case "phenomenon":
+      case "structure":
         return 8;
+      case "phenomenon":
+        return 9;
     }
   }
   function quoteIfNeeded(value) {
@@ -35278,6 +35426,7 @@ void main() {
     const objectMap = new Map(document2.objects.map((object) => [object.id, object]));
     const groupIds = new Set(document2.groups.map((group) => group.id));
     const eventIds = new Set(document2.events.map((event) => event.id));
+    const trajectoryMap = new Map(document2.trajectories.map((trajectory) => [trajectory.id, trajectory]));
     if (!document2.system) {
       diagnostics.push(error("validate.system.required", "Atlas documents must declare exactly one system."));
     }
@@ -35288,6 +35437,7 @@ void main() {
       ["annotation", document2.system?.annotations.map((annotation) => annotation.id) ?? []],
       ["relation", document2.relations.map((relation) => relation.id)],
       ["event", document2.events.map((event) => event.id)],
+      ["trajectory", document2.trajectories.map((trajectory) => trajectory.id)],
       ["object", document2.objects.map((object) => object.id)]
     ]) {
       for (const id of ids) {
@@ -35306,10 +35456,13 @@ void main() {
       validateViewpoint(viewpoint, groupIds, eventIds, sourceSchemaVersion, diagnostics, objectMap);
     }
     for (const object of document2.objects) {
-      validateObject(object, document2.system, objectMap, groupIds, diagnostics);
+      validateObject(object, document2.system, objectMap, groupIds, trajectoryMap, diagnostics);
     }
     for (const event of document2.events) {
-      validateEvent(event, document2.system, objectMap, diagnostics);
+      validateEvent(event, document2.system, objectMap, trajectoryMap, diagnostics);
+    }
+    for (const trajectory of document2.trajectories) {
+      validateTrajectory(trajectory, objectMap, diagnostics);
     }
     return diagnostics;
   }
@@ -35347,7 +35500,7 @@ void main() {
     validateProjection(viewpoint.projection, diagnostics, `viewpoint.${viewpoint.id}.projection`, viewpoint.id);
     validateCamera(viewpoint.camera, viewpoint.projection, viewpoint.rotationDeg, diagnostics, viewpoint.id, viewpoint.focusObjectId, viewpoint.selectedObjectId, filter, objectMap);
   }
-  function validateObject(object, system, objectMap, groupIds, diagnostics) {
+  function validateObject(object, system, objectMap, groupIds, trajectoryMap, diagnostics) {
     const placement = object.placement;
     const orbitPlacement = placement?.mode === "orbit" ? placement : null;
     const parentObject = placement?.mode === "orbit" ? objectMap.get(placement.target) ?? null : null;
@@ -35363,6 +35516,13 @@ void main() {
     }
     if (typeof object.referencePlane === "string" && !object.referencePlane.trim()) {
       diagnostics.push(warn("validate.referencePlane.empty", `Object "${object.id}" defines an empty reference plane string.`, object.id, "referencePlane"));
+    }
+    if (object.trajectoryId) {
+      if (!trajectoryMap.has(object.trajectoryId)) {
+        diagnostics.push(error("validate.trajectory.object.unknown", `Unknown trajectory "${object.trajectoryId}" on "${object.id}".`, object.id, "trajectory"));
+      } else if (!isTrajectoryCapableObject(object)) {
+        diagnostics.push(error("validate.trajectory.object.invalidType", `Only craft or legacy ship-like structures may reference trajectories; found "${object.type}" on "${object.id}".`, object.id, "trajectory"));
+      }
     }
     if (orbitPlacement) {
       if (!objectMap.has(orbitPlacement.target)) {
@@ -35390,8 +35550,8 @@ void main() {
       }
     }
     if (placement?.mode === "at") {
-      if (object.type !== "structure" && object.type !== "phenomenon") {
-        diagnostics.push(error("validate.at.objectType", `Only structures and phenomena may use "at" placement; found "${object.type}" on "${object.id}".`, object.id, "at"));
+      if (object.type !== "craft" && object.type !== "structure" && object.type !== "phenomenon") {
+        diagnostics.push(error("validate.at.objectType", `Only craft, structures, and phenomena may use "at" placement; found "${object.type}" on "${object.id}".`, object.id, "at"));
       }
       if (!validateAtTarget(object, objectMap, diagnostics)) {
         diagnostics.push(error("validate.at.target.unknown", `Unknown at-reference target "${placement.target}" on "${object.id}".`, object.id, "at"));
@@ -35435,7 +35595,7 @@ void main() {
       }
     }
   }
-  function validateEvent(event, system, objectMap, diagnostics) {
+  function validateEvent(event, system, objectMap, trajectoryMap, diagnostics) {
     const fieldPrefix = `event.${event.id}`;
     const referencedIds = /* @__PURE__ */ new Set();
     if (!event.kind.trim()) {
@@ -35446,6 +35606,9 @@ void main() {
     }
     if (typeof event.referencePlane === "string" && !event.referencePlane.trim()) {
       diagnostics.push(warn("validate.event.referencePlane.empty", `Event "${event.id}" defines an empty reference plane string.`, void 0, `${fieldPrefix}.referencePlane`));
+    }
+    if (event.trajectoryId && !trajectoryMap.has(event.trajectoryId)) {
+      diagnostics.push(error("validate.event.trajectory.unknown", `Unknown trajectory "${event.trajectoryId}" on event "${event.id}".`, void 0, `${fieldPrefix}.trajectory`));
     }
     if (!event.targetObjectId && event.participantObjectIds.length === 0) {
       diagnostics.push(error("validate.event.references.required", `Event "${event.id}" must define a "target" or at least one participant.`, void 0, `${fieldPrefix}.participants`));
@@ -35493,18 +35656,24 @@ void main() {
       if (!referencedIds.has(pose.objectId)) {
         diagnostics.push(warn("validate.event.pose.unreferenced", `Event pose "${pose.objectId}" on "${event.id}" is not listed in target/participants.`, void 0, poseFieldPrefix));
       }
-      validateEventPose(pose, object, event, system, objectMap, diagnostics, poseFieldPrefix, event.id);
+      validateEventPose(pose, object, event, system, objectMap, trajectoryMap, diagnostics, poseFieldPrefix, event.id);
     }
     const missingPoseIds = [...referencedIds].filter((objectId) => !poseIds.has(objectId));
     if (event.positions.length > 0 && missingPoseIds.length > 0) {
       diagnostics.push(warn("validate.event.positions.partial", `Event "${event.id}" leaves ${missingPoseIds.length} referenced object(s) on their base placement.`, void 0, `${fieldPrefix}.positions`));
     }
   }
-  function validateEventPose(pose, object, event, system, objectMap, diagnostics, fieldPrefix, eventId) {
+  function validateEventPose(pose, object, event, system, objectMap, trajectoryMap, diagnostics, fieldPrefix, eventId) {
     const placement = pose.placement;
     if (!placement) {
       diagnostics.push(error("validate.event.pose.placement.required", `Event "${eventId}" pose "${pose.objectId}" is missing a placement mode.`, void 0, fieldPrefix));
       return;
+    }
+    if (pose.trajectorySegmentId && !findTrajectorySegment(trajectoryMap, pose.trajectorySegmentId)) {
+      diagnostics.push(error("validate.event.pose.segment.unknown", `Unknown trajectory segment "${pose.trajectorySegmentId}" on "${eventId}:${pose.objectId}".`, void 0, `${fieldPrefix}.segment`));
+    }
+    if (pose.trajectoryManeuverId && !findTrajectoryManeuver(trajectoryMap, pose.trajectoryManeuverId)) {
+      diagnostics.push(error("validate.event.pose.maneuver.unknown", `Unknown trajectory maneuver "${pose.trajectoryManeuverId}" on "${eventId}:${pose.objectId}".`, void 0, `${fieldPrefix}.maneuver`));
     }
     if (placement.mode === "orbit") {
       if (!objectMap.has(placement.target)) {
@@ -35534,8 +35703,8 @@ void main() {
       return;
     }
     if (placement.mode === "at") {
-      if (object.type !== "structure" && object.type !== "phenomenon") {
-        diagnostics.push(error("validate.event.pose.at.objectType", `Only structures and phenomena may use "at" placement in events; found "${object.type}" on "${eventId}:${pose.objectId}".`, void 0, `${fieldPrefix}.at`));
+      if (object.type !== "craft" && object.type !== "structure" && object.type !== "phenomenon") {
+        diagnostics.push(error("validate.event.pose.at.objectType", `Only craft, structures, and phenomena may use "at" placement in events; found "${object.type}" on "${eventId}:${pose.objectId}".`, void 0, `${fieldPrefix}.at`));
       }
       const reference = placement.reference;
       if (reference.kind === "named" && !objectMap.has(reference.name)) {
@@ -35550,6 +35719,78 @@ void main() {
         }
       }
     }
+  }
+  function validateTrajectory(trajectory, objectMap, diagnostics) {
+    if (trajectory.craftObjectId) {
+      const craft = objectMap.get(trajectory.craftObjectId);
+      if (!craft) {
+        diagnostics.push(error("validate.trajectory.craft.unknown", `Unknown craft "${trajectory.craftObjectId}" on trajectory "${trajectory.id}".`, void 0, `trajectory.${trajectory.id}.craft`));
+      } else if (!isTrajectoryCapableObject(craft)) {
+        diagnostics.push(error("validate.trajectory.craft.invalidType", `Trajectory "${trajectory.id}" targets "${trajectory.craftObjectId}", which is not craft-like.`, void 0, `trajectory.${trajectory.id}.craft`));
+      }
+    }
+    for (const segment of trajectory.segments) {
+      validateTrajectorySegment(trajectory.id, segment, objectMap, diagnostics);
+    }
+  }
+  function validateTrajectorySegment(trajectoryId, segment, objectMap, diagnostics) {
+    const fieldPrefix = `trajectory.${trajectoryId}.segment.${segment.id}`;
+    for (const [field, objectId] of [
+      ["from", segment.fromObjectId],
+      ["to", segment.toObjectId],
+      ["around", segment.aroundObjectId]
+    ]) {
+      if (objectId && !objectMap.has(objectId)) {
+        diagnostics.push(error(`validate.trajectory.segment.${field}.unknown`, `Unknown ${field} object "${objectId}" on trajectory "${trajectoryId}" segment "${segment.id}".`, void 0, `${fieldPrefix}.${field}`));
+      }
+    }
+    if (segment.assist?.objectId && !objectMap.has(segment.assist.objectId)) {
+      diagnostics.push(error("validate.trajectory.segment.assist.unknown", `Unknown assist object "${segment.assist.objectId}" on trajectory "${trajectoryId}" segment "${segment.id}".`, void 0, `${fieldPrefix}.assist`));
+    }
+    if (segment.kind === "flyby" && !segment.assist?.objectId) {
+      diagnostics.push(error("validate.trajectory.segment.assist.required", `Trajectory "${trajectoryId}" segment "${segment.id}" is a flyby and requires an "assist" object.`, void 0, `${fieldPrefix}.assist`));
+    }
+    if ((segment.kind === "capture" || segment.kind === "departure") && !segment.toObjectId && !segment.aroundObjectId) {
+      diagnostics.push(error("validate.trajectory.segment.target.required", `Trajectory "${trajectoryId}" segment "${segment.id}" requires a target reference.`, void 0, `${fieldPrefix}.to`));
+    }
+    for (const maneuver of segment.maneuvers) {
+      validateTrajectoryManeuver(trajectoryId, segment.id, maneuver, diagnostics);
+    }
+  }
+  function validateTrajectoryManeuver(trajectoryId, segmentId, maneuver, diagnostics) {
+    if (!maneuver.kind.trim()) {
+      diagnostics.push(error("validate.trajectory.maneuver.kind.required", `Trajectory "${trajectoryId}" segment "${segmentId}" maneuver "${maneuver.id}" is missing a kind.`, void 0, `trajectory.${trajectoryId}.segment.${segmentId}.maneuver.${maneuver.id}.kind`));
+    }
+  }
+  function isTrajectoryCapableObject(object) {
+    if (object.type === "craft") {
+      return true;
+    }
+    if (object.type !== "structure") {
+      return false;
+    }
+    const kind = typeof object.properties.kind === "string" ? object.properties.kind.toLowerCase() : "";
+    return kind === "ship" || kind === "probe" || kind === "station";
+  }
+  function findTrajectorySegment(trajectories, segmentId) {
+    for (const trajectory of trajectories.values()) {
+      const match = trajectory.segments.find((segment) => segment.id === segmentId);
+      if (match) {
+        return match;
+      }
+    }
+    return null;
+  }
+  function findTrajectoryManeuver(trajectories, maneuverId) {
+    for (const trajectory of trajectories.values()) {
+      for (const segment of trajectory.segments) {
+        const match = segment.maneuvers.find((maneuver) => maneuver.id === maneuverId);
+        if (match) {
+          return match;
+        }
+      }
+    }
+    return null;
   }
   function validateAtTarget(object, objectMap, diagnostics) {
     const reference = object.placement?.mode === "at" ? object.placement.reference : null;
@@ -35731,6 +35972,14 @@ void main() {
     "habitability",
     "settlement"
   ]);
+  var TRAJECTORY_SEGMENT_KINDS = /* @__PURE__ */ new Set([
+    "departure",
+    "transfer",
+    "flyby",
+    "capture",
+    "stationkeeping",
+    "escape"
+  ]);
   var DRAFT_OBJECT_FIELD_SPECS = /* @__PURE__ */ new Map();
   for (const key of [
     "orbit",
@@ -35762,7 +36011,8 @@ void main() {
     "outer",
     "on",
     "source",
-    "cycle"
+    "cycle",
+    "trajectory"
   ]) {
     const schema = getFieldSchema(key);
     if (schema) {
@@ -35787,11 +36037,12 @@ void main() {
     { key: "derive", inlineMode: "pair", allowRepeat: true },
     { key: "validate", inlineMode: "single", allowRepeat: true },
     { key: "locked", inlineMode: "multiple", allowRepeat: false },
-    { key: "tolerance", inlineMode: "pair", allowRepeat: true }
+    { key: "tolerance", inlineMode: "pair", allowRepeat: true },
+    { key: "trajectory", inlineMode: "single", allowRepeat: false }
   ]) {
     DRAFT_OBJECT_FIELD_SPECS.set(spec.key, {
       key: spec.key,
-      version: "2.1",
+      version: spec.key === "trajectory" ? "3.0" : "2.1",
       inlineMode: spec.inlineMode,
       allowRepeat: spec.allowRepeat
     });
@@ -35812,7 +36063,9 @@ void main() {
     "inner",
     "outer",
     "epoch",
-    "referencePlane"
+    "referencePlane",
+    "segment",
+    "maneuver"
   ]);
   function parseWorldOrbitAtlas(source) {
     return parseAtlasSource(source);
@@ -35832,6 +36085,7 @@ void main() {
     const groups = [];
     const relations = [];
     const events = [];
+    const trajectories = [];
     const eventPoseNodes = /* @__PURE__ */ new Map();
     let sawDefaults = false;
     let sawAtlas = false;
@@ -35840,6 +36094,7 @@ void main() {
     const groupIds = /* @__PURE__ */ new Set();
     const relationIds = /* @__PURE__ */ new Set();
     const eventIds = /* @__PURE__ */ new Set();
+    const trajectoryIds = /* @__PURE__ */ new Set();
     for (let index = 0; index < lines.length; index++) {
       const rawLine = lines[index];
       const lineNumber = index + 1;
@@ -35870,7 +36125,7 @@ void main() {
         continue;
       }
       if (indent === 0) {
-        section = startTopLevelSection(tokens, lineNumber, sourceSchemaVersion, diagnostics, system, objectNodes, groups, relations, events, eventPoseNodes, viewpointIds, annotationIds, groupIds, relationIds, eventIds, { sawDefaults, sawAtlas });
+        section = startTopLevelSection(tokens, lineNumber, sourceSchemaVersion, diagnostics, system, objectNodes, groups, relations, events, trajectories, eventPoseNodes, viewpointIds, annotationIds, groupIds, relationIds, eventIds, trajectoryIds, { sawDefaults, sawAtlas });
         if (section.kind === "system") {
           system = section.system;
         } else if (section.kind === "defaults") {
@@ -35886,7 +36141,7 @@ void main() {
       handleSectionLine(section, indent, tokens, lineNumber);
     }
     if (!sawSchemaHeader) {
-      throw new WorldOrbitError('Missing required atlas schema header "schema 2.0"');
+      throw new WorldOrbitError('Missing required atlas schema header "schema 2.0" or "schema 3.0"');
     }
     const objects = objectNodes.map((node) => normalizeDraftObject(node, sourceSchemaVersion, diagnostics));
     const normalizedEvents = events.map((event) => normalizeDraftEvent(event, eventPoseNodes.get(event.id) ?? []));
@@ -35899,6 +36154,7 @@ void main() {
       groups,
       relations,
       events: normalizedEvents,
+      trajectories,
       objects,
       diagnostics
     };
@@ -35928,13 +36184,13 @@ void main() {
     return document2;
   }
   function assertDraftSchemaHeader(tokens, line) {
-    if (tokens.length !== 2 || tokens[0].value.toLowerCase() !== "schema" || !["2.0-draft", "2.0", "2.1", "2.5", "2.6"].includes(tokens[1].value.toLowerCase())) {
-      throw new WorldOrbitError('Expected atlas header "schema 2.0", "schema 2.1", "schema 2.5", "schema 2.6", or legacy "schema 2.0-draft"', line, tokens[0]?.column ?? 1);
+    if (tokens.length !== 2 || tokens[0].value.toLowerCase() !== "schema" || !["2.0-draft", "2.0", "2.1", "2.5", "2.6", "3.0"].includes(tokens[1].value.toLowerCase())) {
+      throw new WorldOrbitError('Expected atlas header "schema 2.0", "schema 2.1", "schema 2.5", "schema 2.6", "schema 3.0", or legacy "schema 2.0-draft"', line, tokens[0]?.column ?? 1);
     }
     const version = tokens[1].value.toLowerCase();
-    return version === "2.6" ? "2.6" : version === "2.5" ? "2.5" : version === "2.1" ? "2.1" : version === "2.0-draft" ? "2.0-draft" : "2.0";
+    return version === "2.6" ? "2.6" : version === "3.0" ? "3.0" : version === "2.5" ? "2.5" : version === "2.1" ? "2.1" : version === "2.0-draft" ? "2.0-draft" : "2.0";
   }
-  function startTopLevelSection(tokens, line, sourceSchemaVersion, diagnostics, system, objectNodes, groups, relations, events, eventPoseNodes, viewpointIds, annotationIds, groupIds, relationIds, eventIds, flags) {
+  function startTopLevelSection(tokens, line, sourceSchemaVersion, diagnostics, system, objectNodes, groups, relations, events, trajectories, eventPoseNodes, viewpointIds, annotationIds, groupIds, relationIds, eventIds, trajectoryIds, flags) {
     const keyword = tokens[0]?.value.toLowerCase();
     switch (keyword) {
       case "system":
@@ -35988,6 +36244,9 @@ void main() {
       case "event":
         warnIfSchema21Feature(sourceSchemaVersion, diagnostics, "event", { line, column: tokens[0].column });
         return startEventSection(tokens, line, events, eventPoseNodes, eventIds, sourceSchemaVersion, diagnostics);
+      case "trajectory":
+        warnIfSchema30Feature(sourceSchemaVersion, diagnostics, "trajectory", { line, column: tokens[0].column });
+        return startTrajectorySection(tokens, line, trajectories, trajectoryIds, sourceSchemaVersion, diagnostics);
       case "object":
         return startObjectSection(tokens, line, sourceSchemaVersion, diagnostics, objectNodes);
       default:
@@ -36195,6 +36454,45 @@ void main() {
       activePoseSeenFields: /* @__PURE__ */ new Set()
     };
   }
+  function startTrajectorySection(tokens, line, trajectories, trajectoryIds, sourceSchemaVersion, diagnostics) {
+    if (tokens.length !== 2) {
+      throw new WorldOrbitError("Invalid trajectory declaration", line, tokens[0]?.column ?? 1);
+    }
+    const id = normalizeIdentifier2(tokens[1].value);
+    if (!id) {
+      throw new WorldOrbitError("Trajectory id must not be empty", line, tokens[1].column);
+    }
+    if (trajectoryIds.has(id)) {
+      throw new WorldOrbitError(`Duplicate trajectory id "${id}"`, line, tokens[1].column);
+    }
+    const trajectory = {
+      id,
+      label: humanizeIdentifier3(id),
+      summary: null,
+      craftObjectId: null,
+      tags: [],
+      color: null,
+      hidden: false,
+      segments: []
+    };
+    trajectories.push(trajectory);
+    trajectoryIds.add(id);
+    return {
+      kind: "trajectory",
+      trajectory,
+      sourceSchemaVersion,
+      diagnostics,
+      seenFields: /* @__PURE__ */ new Set(),
+      inSegment: false,
+      segmentIndent: null,
+      activeSegment: null,
+      activeSegmentSeenFields: /* @__PURE__ */ new Set(),
+      inManeuver: false,
+      maneuverIndent: null,
+      activeManeuver: null,
+      activeManeuverSeenFields: /* @__PURE__ */ new Set()
+    };
+  }
   function startObjectSection(tokens, line, sourceSchemaVersion, diagnostics, objectNodes) {
     if (tokens.length < 3) {
       throw new WorldOrbitError("Invalid atlas object declaration", line, tokens[0]?.column ?? 1);
@@ -36253,6 +36551,9 @@ void main() {
         return;
       case "event":
         applyEventField(section, indent, tokens, line);
+        return;
+      case "trajectory":
+        applyTrajectoryField(section, indent, tokens, line);
         return;
       case "object":
         applyObjectField(section, indent, tokens, line);
@@ -36572,6 +36873,12 @@ void main() {
           column: tokens[0]?.column ?? 1
         });
       }
+      if (tokens[0]?.value === "segment" || tokens[0]?.value === "maneuver") {
+        warnIfSchema30Feature(section.sourceSchemaVersion, section.diagnostics, `pose.${tokens[0].value}`, {
+          line,
+          column: tokens[0]?.column ?? 1
+        });
+      }
       section.activePose.fields.push(parseEventPoseField(tokens, line, section.activePoseSeenFields));
       return;
     }
@@ -36614,6 +36921,13 @@ void main() {
       case "summary":
         section.event.summary = joinFieldValue(tokens, line);
         return;
+      case "trajectory":
+        warnIfSchema30Feature(section.sourceSchemaVersion, section.diagnostics, "event.trajectory", {
+          line,
+          column: tokens[0].column
+        });
+        section.event.trajectoryId = joinFieldValue(tokens, line);
+        return;
       case "target":
         section.event.targetObjectId = joinFieldValue(tokens, line);
         return;
@@ -36654,6 +36968,219 @@ void main() {
         return;
       default:
         throw new WorldOrbitError(`Unknown event field "${tokens[0].value}"`, line, tokens[0].column);
+    }
+  }
+  function applyTrajectoryField(section, indent, tokens, line) {
+    if (section.activeManeuver && indent <= (section.maneuverIndent ?? 0)) {
+      section.activeManeuver = null;
+      section.maneuverIndent = null;
+      section.activeManeuverSeenFields.clear();
+      section.inManeuver = false;
+    }
+    if (section.activeSegment && indent <= (section.segmentIndent ?? 0)) {
+      section.activeSegment = null;
+      section.segmentIndent = null;
+      section.activeSegmentSeenFields.clear();
+      section.inSegment = false;
+    }
+    if (section.activeManeuver) {
+      applyTrajectoryManeuverField(section, tokens, line);
+      return;
+    }
+    if (section.activeSegment) {
+      if (tokens[0]?.value.toLowerCase() === "maneuver") {
+        if (tokens.length !== 2) {
+          throw new WorldOrbitError("Invalid trajectory maneuver declaration", line, tokens[0]?.column ?? 1);
+        }
+        const id = normalizeIdentifier2(tokens[1].value);
+        if (!id) {
+          throw new WorldOrbitError("Trajectory maneuver id must not be empty", line, tokens[1].column);
+        }
+        if (section.activeSegment.maneuvers.some((maneuver2) => maneuver2.id === id)) {
+          throw new WorldOrbitError(`Duplicate trajectory maneuver id "${id}"`, line, tokens[1].column);
+        }
+        const maneuver = {
+          id,
+          kind: "burn",
+          label: null,
+          epoch: null,
+          notes: []
+        };
+        section.activeSegment.maneuvers.push(maneuver);
+        section.activeManeuver = maneuver;
+        section.inManeuver = true;
+        section.maneuverIndent = indent;
+        section.activeManeuverSeenFields = /* @__PURE__ */ new Set();
+        return;
+      }
+      applyTrajectorySegmentField(section, tokens, line);
+      return;
+    }
+    if (tokens[0]?.value.toLowerCase() === "segment") {
+      if (tokens.length !== 2) {
+        throw new WorldOrbitError("Invalid trajectory segment declaration", line, tokens[0]?.column ?? 1);
+      }
+      const id = normalizeIdentifier2(tokens[1].value);
+      if (!id) {
+        throw new WorldOrbitError("Trajectory segment id must not be empty", line, tokens[1].column);
+      }
+      if (section.trajectory.segments.some((segment2) => segment2.id === id)) {
+        throw new WorldOrbitError(`Duplicate trajectory segment id "${id}"`, line, tokens[1].column);
+      }
+      const segment = {
+        id,
+        kind: "transfer",
+        label: null,
+        summary: null,
+        fromObjectId: null,
+        toObjectId: null,
+        aroundObjectId: null,
+        assist: null,
+        epoch: null,
+        notes: [],
+        maneuvers: []
+      };
+      section.trajectory.segments.push(segment);
+      section.activeSegment = {
+        id,
+        fields: [],
+        maneuvers: segment.maneuvers,
+        assist: null,
+        location: { line, column: tokens[0].column }
+      };
+      section.inSegment = true;
+      section.segmentIndent = indent;
+      section.activeSegmentSeenFields = /* @__PURE__ */ new Set();
+      return;
+    }
+    const key = requireUniqueField(tokens, section.seenFields, line);
+    const value = joinFieldValue(tokens, line);
+    switch (key) {
+      case "label":
+        section.trajectory.label = value;
+        return;
+      case "summary":
+        section.trajectory.summary = value;
+        return;
+      case "craft":
+        section.trajectory.craftObjectId = value;
+        return;
+      case "tags":
+        section.trajectory.tags = parseTokenList(tokens.slice(1), line, "tags");
+        return;
+      case "color":
+        section.trajectory.color = value;
+        return;
+      case "hidden":
+        section.trajectory.hidden = parseAtlasBoolean(value, "hidden", {
+          line,
+          column: tokens[0].column
+        });
+        return;
+      default:
+        throw new WorldOrbitError(`Unknown trajectory field "${tokens[0].value}"`, line, tokens[0].column);
+    }
+  }
+  function applyTrajectorySegmentField(section, tokens, line) {
+    const segment = section.activeSegment;
+    if (!segment) {
+      return;
+    }
+    const key = requireUniqueField(tokens, section.activeSegmentSeenFields, line);
+    const value = joinFieldValue(tokens, line);
+    const target = section.trajectory.segments.find((entry) => entry.id === segment.id);
+    switch (key) {
+      case "kind": {
+        const normalized = value.toLowerCase();
+        if (!TRAJECTORY_SEGMENT_KINDS.has(normalized)) {
+          throw new WorldOrbitError(`Unknown trajectory segment kind "${value}"`, line, tokens[0].column);
+        }
+        target.kind = normalized;
+        return;
+      }
+      case "label":
+        target.label = value;
+        return;
+      case "summary":
+        target.summary = value;
+        return;
+      case "from":
+        target.fromObjectId = value;
+        return;
+      case "to":
+        target.toObjectId = value;
+        return;
+      case "around":
+        target.aroundObjectId = value;
+        return;
+      case "assist":
+        target.assist = {
+          objectId: value,
+          notes: []
+        };
+        return;
+      case "epoch":
+        target.epoch = value;
+        return;
+      case "periapsis":
+        target.periapsis = parseAtlasUnitValue(value, { line, column: tokens[0].column }, "periapsis");
+        return;
+      case "apoapsis":
+        target.apoapsis = parseAtlasUnitValue(value, { line, column: tokens[0].column }, "apoapsis");
+        return;
+      case "inclination":
+        target.inclination = parseAtlasUnitValue(value, { line, column: tokens[0].column }, "inclination");
+        return;
+      case "duration":
+        target.duration = parseAtlasUnitValue(value, { line, column: tokens[0].column }, "duration");
+        return;
+      case "deltav":
+        target.deltaV = parseAtlasUnitValue(value, { line, column: tokens[0].column });
+        return;
+      case "phaseangle":
+        target.phaseAngle = parseAtlasUnitValue(value, { line, column: tokens[0].column }, "phaseAngle");
+        return;
+      case "turnangle":
+        target.turnAngle = parseAtlasUnitValue(value, { line, column: tokens[0].column }, "turnAngle");
+        return;
+      case "energy":
+        target.energy = parseAtlasUnitValue(value, { line, column: tokens[0].column });
+        return;
+      case "notes":
+        target.notes = parseTokenList(tokens.slice(1), line, "notes");
+        return;
+      default:
+        throw new WorldOrbitError(`Unknown trajectory segment field "${tokens[0].value}"`, line, tokens[0].column);
+    }
+  }
+  function applyTrajectoryManeuverField(section, tokens, line) {
+    const maneuver = section.activeManeuver;
+    if (!maneuver) {
+      return;
+    }
+    const key = requireUniqueField(tokens, section.activeManeuverSeenFields, line);
+    const value = joinFieldValue(tokens, line);
+    switch (key) {
+      case "kind":
+        maneuver.kind = value;
+        return;
+      case "label":
+        maneuver.label = value;
+        return;
+      case "epoch":
+        maneuver.epoch = value;
+        return;
+      case "deltav":
+        maneuver.deltaV = parseAtlasUnitValue(value, { line, column: tokens[0].column });
+        return;
+      case "duration":
+        maneuver.duration = parseAtlasUnitValue(value, { line, column: tokens[0].column }, "duration");
+        return;
+      case "notes":
+        maneuver.notes = parseTokenList(tokens.slice(1), line, "notes");
+        return;
+      default:
+        throw new WorldOrbitError(`Unknown trajectory maneuver field "${tokens[0].value}"`, line, tokens[0].column);
     }
   }
   function parseEventPoseField(tokens, line, seenFields) {
@@ -36861,6 +37388,11 @@ void main() {
           line,
           column: keyToken.column
         });
+      } else if (spec.version === "3.0") {
+        warnIfSchema30Feature(sourceSchemaVersion, diagnostics, keyToken.value, {
+          line,
+          column: keyToken.column
+        });
       }
       index++;
       const valueTokens = [];
@@ -36911,6 +37443,11 @@ void main() {
         line,
         column: tokens[0].column
       });
+    } else if (spec.version === "3.0") {
+      warnIfSchema30Feature(sourceSchemaVersion, diagnostics, tokens[0].value, {
+        line,
+        column: tokens[0].column
+      });
     }
     const field = {
       type: "field",
@@ -36950,6 +37487,7 @@ void main() {
     const tolerances = fieldMap.get("tolerance")?.map((field) => parseToleranceField(field));
     const typedBlocks = normalizeTypedBlocks(node.typedBlockEntries);
     const info2 = normalizeInfoEntries(node.infoEntries, "info");
+    const trajectoryId = parseOptionalJoinedValue(fieldMap.get("trajectory")?.[0]);
     const object = {
       type: node.objectType,
       id: node.id,
@@ -36979,10 +37517,15 @@ void main() {
       object.tolerances = tolerances;
     if (typedBlocks && Object.keys(typedBlocks).length > 0)
       object.typedBlocks = typedBlocks;
+    if (trajectoryId)
+      object.trajectoryId = trajectoryId;
     if (isSchemaOlderThan(sourceSchemaVersion, "2.1")) {
-      if (object.groups || object.epoch || object.referencePlane || object.tidalLock !== void 0 || object.resonance || object.renderHints || object.deriveRules?.length || object.validationRules?.length || object.lockedFields?.length || object.tolerances?.length || object.typedBlocks) {
+      if (object.groups || object.epoch || object.referencePlane || object.tidalLock !== void 0 || object.resonance || object.renderHints || object.deriveRules?.length || object.validationRules?.length || object.lockedFields?.length || object.tolerances?.length || object.typedBlocks || object.trajectoryId) {
         warnIfSchema21Feature(sourceSchemaVersion, diagnostics, node.id, node.location);
       }
+    }
+    if (object.trajectoryId) {
+      warnIfSchema30Feature(sourceSchemaVersion, diagnostics, `${node.id}.trajectory`, node.location);
     }
     return object;
   }
@@ -37000,6 +37543,8 @@ void main() {
     return {
       objectId: rawPose.objectId,
       placement,
+      trajectorySegmentId: parseOptionalJoinedValue(fieldMap.get("segment")?.[0]),
+      trajectoryManeuverId: parseOptionalJoinedValue(fieldMap.get("maneuver")?.[0]),
       inner: parseOptionalUnitField(fieldMap.get("inner")?.[0], "inner"),
       outer: parseOptionalUnitField(fieldMap.get("outer")?.[0], "outer"),
       epoch: parseOptionalJoinedValue(fieldMap.get("epoch")?.[0]),
@@ -37215,6 +37760,19 @@ void main() {
       column: location.column
     });
   }
+  function warnIfSchema30Feature(sourceSchemaVersion, diagnostics, featureName, location) {
+    if (!isSchemaOlderThan(sourceSchemaVersion, "3.0")) {
+      return;
+    }
+    diagnostics.push({
+      code: "parse.schema30.featureCompatibility",
+      severity: "warning",
+      source: "parse",
+      message: `Feature "${featureName}" requires schema 3.0; parsed in compatibility mode because the document header is "schema ${sourceSchemaVersion}".`,
+      line: location.line,
+      column: location.column
+    });
+  }
   function isSchemaOlderThan(sourceSchemaVersion, requiredVersion) {
     return schemaVersionRank(sourceSchemaVersion) < schemaVersionRank(requiredVersion);
   }
@@ -37230,8 +37788,10 @@ void main() {
         return 3;
       case "2.6":
         return 4;
-      default:
+      case "3.0":
         return 5;
+      default:
+        return 6;
     }
   }
   function preprocessAtlasSource(source) {
@@ -37321,7 +37881,7 @@ void main() {
   }
 
   // packages/core/dist/atlas-edit.js
-  function createEmptyAtlasDocument(systemId = "WorldOrbit", version = "2.6") {
+  function createEmptyAtlasDocument(systemId = "WorldOrbit", version = "3.0") {
     return {
       format: "worldorbit",
       version,
@@ -37352,6 +37912,7 @@ void main() {
       groups: [],
       relations: [],
       events: [],
+      trajectories: [],
       objects: [],
       diagnostics: []
     };
@@ -37384,6 +37945,19 @@ void main() {
         paths.push({ kind: "event-pose", id: event.id, key: pose.objectId });
       }
     }
+    for (const trajectory of [...document2.trajectories].sort(compareIdLike2)) {
+      paths.push({ kind: "trajectory", id: trajectory.id });
+      for (const segment of [...trajectory.segments].sort(compareIdLike2)) {
+        paths.push({ kind: "trajectory-segment", id: trajectory.id, key: segment.id });
+        for (const maneuver of [...segment.maneuvers].sort(compareIdLike2)) {
+          paths.push({
+            kind: "trajectory-maneuver",
+            id: trajectory.id,
+            key: `${segment.id}:${maneuver.id}`
+          });
+        }
+      }
+    }
     for (const object of [...document2.objects].sort(compareIdLike2)) {
       paths.push({ kind: "object", id: object.id });
     }
@@ -37403,6 +37977,12 @@ void main() {
         return path.id ? findEvent(document2, path.id) : null;
       case "event-pose":
         return path.id && path.key ? findEventPose(document2, path.id, path.key) : null;
+      case "trajectory":
+        return path.id ? findTrajectory(document2, path.id) : null;
+      case "trajectory-segment":
+        return path.id && path.key ? findTrajectorySegment2(document2, path.id, path.key) : null;
+      case "trajectory-maneuver":
+        return path.id && path.key ? findTrajectoryManeuver2(document2, path.id, path.key) : null;
       case "object":
         return path.id ? findObject(document2, path.id) : null;
       case "viewpoint":
@@ -37453,6 +38033,24 @@ void main() {
           throw new Error('Event pose updates require an event "id" and pose "key" value.');
         }
         upsertEventPose(next.events, path.id, value);
+        return next;
+      case "trajectory":
+        if (!path.id) {
+          throw new Error('Trajectory updates require an "id" value.');
+        }
+        upsertById(next.trajectories, value);
+        return next;
+      case "trajectory-segment":
+        if (!path.id || !path.key) {
+          throw new Error('Trajectory segment updates require a trajectory "id" and segment "key" value.');
+        }
+        upsertTrajectorySegment(next.trajectories, path.id, value);
+        return next;
+      case "trajectory-maneuver":
+        if (!path.id || !path.key) {
+          throw new Error('Trajectory maneuver updates require a trajectory "id" and maneuver "key" value.');
+        }
+        upsertTrajectoryManeuver(next.trajectories, path.id, path.key, value);
         return next;
       case "object":
         if (!path.id) {
@@ -37512,6 +38110,30 @@ void main() {
           const event = findEvent(next, path.id);
           if (event) {
             event.positions = event.positions.filter((pose) => pose.objectId !== path.key);
+          }
+        }
+        return next;
+      case "trajectory":
+        if (path.id) {
+          next.trajectories = next.trajectories.filter((trajectory) => trajectory.id !== path.id);
+        }
+        return next;
+      case "trajectory-segment":
+        if (path.id && path.key) {
+          const trajectory = findTrajectory(next, path.id);
+          if (trajectory) {
+            trajectory.segments = trajectory.segments.filter((segment) => segment.id !== path.key);
+          }
+        }
+        return next;
+      case "trajectory-maneuver":
+        if (path.id && path.key) {
+          const maneuver = splitTrajectoryManeuverKey(path.key);
+          if (maneuver) {
+            const segment = findTrajectorySegment2(next, path.id, maneuver.segmentId);
+            if (segment) {
+              segment.maneuvers = segment.maneuvers.filter((entry) => entry.id !== maneuver.maneuverId);
+            }
           }
         }
         return next;
@@ -37599,6 +38221,29 @@ void main() {
         };
       }
     }
+    if (diagnostic.field?.startsWith("trajectory.")) {
+      const parts = diagnostic.field.split(".");
+      if (parts[1] && findTrajectory(document2, parts[1])) {
+        if (parts[2] === "segment" && parts[3] && findTrajectorySegment2(document2, parts[1], parts[3])) {
+          if (parts[4] === "maneuver" && parts[5] && findTrajectoryManeuver2(document2, parts[1], `${parts[3]}:${parts[5]}`)) {
+            return {
+              kind: "trajectory-maneuver",
+              id: parts[1],
+              key: `${parts[3]}:${parts[5]}`
+            };
+          }
+          return {
+            kind: "trajectory-segment",
+            id: parts[1],
+            key: parts[3]
+          };
+        }
+        return {
+          kind: "trajectory",
+          id: parts[1]
+        };
+      }
+    }
     if (diagnostic.field && diagnostic.field in ensureSystem(document2).atlasMetadata) {
       return {
         kind: "metadata",
@@ -37636,6 +38281,19 @@ void main() {
   function findEventPose(document2, eventId, objectId) {
     return findEvent(document2, eventId)?.positions.find((pose) => pose.objectId === objectId) ?? null;
   }
+  function findTrajectory(document2, trajectoryId) {
+    return document2.trajectories.find((trajectory) => trajectory.id === trajectoryId) ?? null;
+  }
+  function findTrajectorySegment2(document2, trajectoryId, segmentId) {
+    return findTrajectory(document2, trajectoryId)?.segments.find((segment) => segment.id === segmentId) ?? null;
+  }
+  function findTrajectoryManeuver2(document2, trajectoryId, combinedKey) {
+    const parsed = splitTrajectoryManeuverKey(combinedKey);
+    if (!parsed) {
+      return null;
+    }
+    return findTrajectorySegment2(document2, trajectoryId, parsed.segmentId)?.maneuvers.find((maneuver) => maneuver.id === parsed.maneuverId) ?? null;
+  }
   function findViewpoint(system, viewpointId) {
     return system?.viewpoints.find((viewpoint) => viewpoint.id === viewpointId) ?? null;
   }
@@ -37664,6 +38322,50 @@ void main() {
     }
     event.positions[index] = value;
   }
+  function upsertTrajectorySegment(trajectories, trajectoryId, value) {
+    const trajectory = trajectories.find((entry) => entry.id === trajectoryId);
+    if (!trajectory) {
+      throw new Error(`Unknown trajectory "${trajectoryId}" for segment update.`);
+    }
+    const index = trajectory.segments.findIndex((entry) => entry.id === value.id);
+    if (index === -1) {
+      trajectory.segments.push(value);
+      trajectory.segments.sort(compareIdLike2);
+      return;
+    }
+    trajectory.segments[index] = value;
+  }
+  function upsertTrajectoryManeuver(trajectories, trajectoryId, combinedKey, value) {
+    const parsed = splitTrajectoryManeuverKey(combinedKey);
+    if (!parsed) {
+      throw new Error(`Invalid trajectory maneuver key "${combinedKey}".`);
+    }
+    const trajectory = trajectories.find((entry) => entry.id === trajectoryId);
+    if (!trajectory) {
+      throw new Error(`Unknown trajectory "${trajectoryId}" for maneuver update.`);
+    }
+    const segment = trajectory.segments.find((entry) => entry.id === parsed.segmentId);
+    if (!segment) {
+      throw new Error(`Unknown trajectory segment "${parsed.segmentId}" on "${trajectoryId}".`);
+    }
+    const index = segment.maneuvers.findIndex((entry) => entry.id === value.id);
+    if (index === -1) {
+      segment.maneuvers.push(value);
+      segment.maneuvers.sort(compareIdLike2);
+      return;
+    }
+    segment.maneuvers[index] = value;
+  }
+  function splitTrajectoryManeuverKey(key) {
+    const separator = key.indexOf(":");
+    if (separator <= 0 || separator >= key.length - 1) {
+      return null;
+    }
+    return {
+      segmentId: key.slice(0, separator),
+      maneuverId: key.slice(separator + 1)
+    };
+  }
   function compareIdLike2(left, right) {
     return left.id.localeCompare(right.id);
   }
@@ -37672,10 +38374,11 @@ void main() {
   }
 
   // packages/core/dist/load.js
-  var ATLAS_SCHEMA_PATTERN = /^schema\s+2(?:\.0|\.1|\.5|\.6)?$/i;
+  var ATLAS_SCHEMA_PATTERN = /^schema\s+(?:2(?:\.0|\.1|\.5|\.6)?|3(?:\.0)?)$/i;
   var ATLAS_SCHEMA_21_PATTERN = /^schema\s+2\.1$/i;
   var ATLAS_SCHEMA_25_PATTERN = /^schema\s+2\.5$/i;
   var ATLAS_SCHEMA_26_PATTERN = /^schema\s+2\.6$/i;
+  var ATLAS_SCHEMA_30_PATTERN = /^schema\s+3(?:\.0)?$/i;
   var LEGACY_DRAFT_SCHEMA_PATTERN = /^schema\s+2\.0-draft$/i;
   function detectWorldOrbitSchemaVersion(source) {
     for (const line of stripCommentsForSchemaDetection(source).split(/\r?\n/)) {
@@ -37694,6 +38397,9 @@ void main() {
       }
       if (ATLAS_SCHEMA_26_PATTERN.test(trimmed)) {
         return "2.6";
+      }
+      if (ATLAS_SCHEMA_30_PATTERN.test(trimmed)) {
+        return "3.0";
       }
       if (ATLAS_SCHEMA_PATTERN.test(trimmed)) {
         return "2.0";
@@ -37755,7 +38461,7 @@ void main() {
   }
   function loadWorldOrbitSourceWithDiagnostics(source) {
     const schemaVersion = detectWorldOrbitSchemaVersion(source);
-    if (schemaVersion === "2.0" || schemaVersion === "2.0-draft" || schemaVersion === "2.1" || schemaVersion === "2.5" || schemaVersion === "2.6") {
+    if (schemaVersion === "2.0" || schemaVersion === "2.0-draft" || schemaVersion === "2.1" || schemaVersion === "2.5" || schemaVersion === "2.6" || schemaVersion === "3.0") {
       return loadAtlasSourceWithDiagnostics(source, schemaVersion);
     }
     let ast;
@@ -38653,6 +39359,8 @@ void main() {
       case "comet":
         return options.outlineOnly ? `<circle cx="${x}" cy="${y}" r="${radius}" fill="transparent" stroke="${palette.stroke}" stroke-width="1.4" />` : `<path d="M ${x - radius * 2} ${y + radius * 1.3} Q ${x - radius * 0.7} ${y + radius * 0.3} ${x - radius * 0.45} ${y}" fill="none" stroke="${tail}" stroke-width="${Math.max(2, radius * 0.8)}" stroke-linecap="round" opacity="0.85" />
 <circle cx="${x}" cy="${y}" r="${radius}" fill="${fill}" stroke="${palette.stroke}" stroke-width="1.4" />`;
+      case "craft":
+        return `<polygon points="${diamondPoints(x, y, radius * 0.85)}" fill="${fill}" stroke="${palette.stroke}" stroke-width="1.4" />`;
       case "structure":
         return `<polygon points="${diamondPoints(x, y, radius)}" fill="${fill}" stroke="${palette.stroke}" stroke-width="1.4" />`;
       case "phenomenon": {
@@ -38786,6 +39494,8 @@ void main() {
         return { fill: "#9ce7ff", stroke: "#e7fbff" };
       case "ring":
         return { fill: "#e59f7d", stroke: "#fff0d3" };
+      case "craft":
+        return { fill: "#ffb47f", stroke: "#fff0d3" };
       case "structure":
         return { fill: theme.accentStrong, stroke: "#fff2ea" };
       case "phenomenon":
@@ -39051,6 +39761,8 @@ void main() {
         return "#a7a5b8";
       case "comet":
         return "#9ce7ff";
+      case "craft":
+        return "#ffb47f";
       case "structure":
         return "#ff7f5f";
       case "phenomenon":
@@ -39709,6 +40421,8 @@ void main() {
         return "#b8926a";
       case "ring":
         return "#cdbf9a";
+      case "craft":
+        return "#ffce8a";
       case "structure":
         return "#ffce8a";
       case "phenomenon":

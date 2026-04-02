@@ -467,7 +467,9 @@ function createSceneObject(position, scaleModel, relationships) {
         anchorX,
         anchorY,
         label: object.id,
-        secondaryLabel: object.type === "structure" ? String(object.properties.kind ?? object.type) : object.type,
+        secondaryLabel: object.type === "structure" || object.type === "craft"
+            ? String(object.properties.kind ?? object.type)
+            : object.type,
         fillColor: customColorFor(object.properties.color),
         imageHref: typeof object.properties.image === "string" && object.properties.image.trim()
             ? object.properties.image
@@ -566,6 +568,7 @@ function labelPlacementPriority(object) {
         case "asteroid":
         case "comet":
             return 4;
+        case "craft":
         case "structure":
         case "phenomenon":
             return 5;
@@ -590,7 +593,8 @@ function preferredLabelDirections(object, objectMap, sceneWidth, sceneHeight) {
     const oppositeVertical = vertical === "below" ? "above" : "below";
     const horizontal = defaultHorizontalDirection(object, parent, sceneWidth);
     const oppositeHorizontal = horizontal === "right" ? "left" : "right";
-    const preferHorizontal = object.object.type === "structure" ||
+    const preferHorizontal = object.object.type === "craft" ||
+        object.object.type === "structure" ||
         object.object.type === "phenomenon" ||
         object.object.placement?.mode === "at" ||
         object.object.placement?.mode === "surface" ||
@@ -1109,6 +1113,7 @@ function parseViewpointObjectTypes(value) {
         entry === "asteroid" ||
         entry === "comet" ||
         entry === "ring" ||
+        entry === "craft" ||
         entry === "structure" ||
         entry === "phenomenon");
 }
@@ -1785,6 +1790,8 @@ function visualRadiusFor(object, depth, scaleModel, sceneMetricScale) {
             return clampNumber(6 * multiplier, scaleModel.minBodyRadius, scaleModel.maxBodyRadius);
         case "ring":
             return clampNumber(5 * multiplier, scaleModel.minBodyRadius, scaleModel.maxBodyRadius);
+        case "craft":
+            return clampNumber(5 * multiplier, scaleModel.minBodyRadius, scaleModel.maxBodyRadius);
         case "structure":
             return clampNumber(6 * multiplier, scaleModel.minBodyRadius, scaleModel.maxBodyRadius);
         case "phenomenon":
@@ -1798,6 +1805,8 @@ function visualExtentForObject(object, radius, scaleModel) {
             return radius * 2.4;
         case "phenomenon":
             return radius * 1.25;
+        case "craft":
+            return radius + 1.5;
         case "structure":
             return radius + 2;
         default:

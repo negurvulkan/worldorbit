@@ -88,11 +88,14 @@
           <div class="example-grid">
             <div class="code-shell">
               <div class="code-head"><span>Source</span><span>minimal</span></div>
-              <pre class="code">schema 2.6
+              <pre class="code">schema 3.0
 
 system Sol
 
-object star Sun</pre>
+object star Sun
+
+object craft Scout
+  free 5au</pre>
             </div>
             <div>
               <div class="preview-shell"><div id="example-1-preview"></div></div>
@@ -106,7 +109,7 @@ object star Sun</pre>
           <div class="example-grid">
             <div class="code-shell">
               <div class="code-head"><span>Source</span><span>intermediate</span></div>
-              <pre class="code">schema 2.6
+              <pre class="code">schema 3.0
 
 system Iyath
   title "Iyath System"
@@ -144,7 +147,25 @@ object moon Leth
 
 object structure Relay-One
   at Naar:L4
-  kind relay</pre>
+  kind relay
+
+object craft Courier
+  free 9au
+  trajectory courier-transfer
+
+trajectory courier-transfer
+  craft Courier
+  from DeepSpace
+  to Naar
+
+  maneuver departure
+    deltaV 1.8km/s
+
+  maneuver flyby
+    assist Iyath
+    around Iyath
+    periapsis 420000km
+    turnAngle 13deg</pre>
             </div>
             <div>
               <div class="preview-shell"><div id="example-2-preview"></div></div>
@@ -166,7 +187,7 @@ object structure Relay-One
             <div>
               <div class="code-shell">
                 <div class="code-head"><span>Editable source</span><span>live preview</span></div>
-                <textarea id="playground-source" class="code" spellcheck="false">schema 2.6
+              <textarea id="playground-source" class="code" spellcheck="false">schema 3.0
 
 system Demo
   title "Demo System"
@@ -199,7 +220,23 @@ object planet Belis
 object moon B1
   orbit Belis
   distance 250000km
-  phase 80deg</textarea>
+  phase 80deg
+
+object craft Courier
+  free 9au
+  trajectory courier-transfer
+
+trajectory courier-transfer
+  craft Courier
+  from DeepSpace
+  to Belis
+
+  maneuver departure
+    deltaV 1.8km/s
+
+  maneuver capture
+    to Belis
+    deltaV 0.6km/s</textarea>
               </div>
               <div class="example-actions">
                 <button class="button button-secondary" id="playground-preview-2d" aria-pressed="false">Preview 2D</button>

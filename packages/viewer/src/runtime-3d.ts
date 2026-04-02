@@ -945,6 +945,8 @@ function colorForObject(object: SpatialSceneObject): string {
       return "#b8926a";
     case "ring":
       return "#cdbf9a";
+    case "craft":
+      return "#ffce8a";
     case "structure":
       return "#ffce8a";
     case "phenomenon":

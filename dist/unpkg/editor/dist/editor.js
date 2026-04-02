@@ -39,6 +39,7 @@ const OBJECT_TYPES = [
     "ring",
     "structure",
     "phenomenon",
+    "craft",
 ];
 const OBJECT_STRING_FIELDS = [
     "kind",
@@ -91,11 +92,11 @@ const FIELD_HELP = {
         references: ["1 = scene fit", "2+ = close-up"],
     },
     "viewpoint-rotation": {
-        description: "Legacy 2D screen rotation. This is separate from the Schema 2.5 camera block.",
+        description: "Legacy 2D screen rotation. This is separate from the Schema 3.0 camera block.",
         references: ["90deg = quarter turn", "Use camera.azimuth for semantic view direction"],
     },
     "viewpoint-camera-azimuth": {
-        description: "Horizontal camera direction in degrees for Schema 2.5 viewpoints.",
+        description: "Horizontal camera direction in degrees for Schema 3.0 viewpoints.",
         references: ["0 = forward/default", "90 = quarter orbit around the scene"],
     },
     "viewpoint-camera-elevation": {
@@ -146,9 +147,17 @@ const FIELD_HELP = {
         description: "Viewpoint IDs that should list this event prominently.",
         references: ["naar-system", "overview inner-system"],
     },
+    "event-trajectory": {
+        description: "Links the event to a declarative trajectory or maneuver plan.",
+        references: ["courier-run", "swing-by-window"],
+    },
     "placement-target": {
         description: "Names the body or reference this object is attached to.",
         references: ["orbit Primary", "surface Homeworld", "at Naar:L4"],
+    },
+    "object-trajectory": {
+        description: "Links a craft to a declarative trajectory definition.",
+        references: ["courier-run", "transfer-orbit"],
     },
     "placement-free": {
         description: "Stores a free-placement offset or a descriptive label for loose placement.",
@@ -1451,6 +1460,13 @@ export function createWorldOrbitEditor(container, options = {}) {
             color: readOptionalTextInput(form, "event-color"),
             hidden: readCheckbox(form, "event-hidden"),
         };
+        const nextTrajectory = readOptionalTextInput(form, "event-trajectory");
+        if (nextTrajectory) {
+            replacement.trajectory = nextTrajectory;
+        }
+        else {
+            delete replacement.trajectory;
+        }
         nextDocument.events = nextDocument.events
             .filter((entry) => entry.id !== current.id)
             .concat(replacement)
@@ -1535,11 +1551,18 @@ export function createWorldOrbitEditor(container, options = {}) {
         const replacement = {
             ...current,
             id: nextId,
-            type: readTextInput(form, "object-type") || current.type,
+            type: (readTextInput(form, "object-type") || current.type),
             properties: { ...current.properties },
             info: { ...current.info },
             placement: buildPlacementFromForm(form, current),
         };
+        const nextTrajectory = readOptionalTextInput(form, "object-trajectory");
+        if (nextTrajectory) {
+            replacement.trajectory = nextTrajectory;
+        }
+        else {
+            delete replacement.trajectory;
+        }
         for (const field of OBJECT_STRING_FIELDS) {
             setOptionalProperty(replacement.properties, field, readOptionalTextInput(form, `prop-${field}`));
         }
@@ -1929,7 +1952,7 @@ function renderViewpointInspector(formState, id) {
       ${renderTextField("Elevation", "viewpoint-camera-elevation", viewpoint.camera?.elevation === null || viewpoint.camera?.elevation === undefined ? "" : String(viewpoint.camera.elevation))}
       ${renderTextField("Roll", "viewpoint-camera-roll", viewpoint.camera?.roll === null || viewpoint.camera?.roll === undefined ? "" : String(viewpoint.camera.roll))}
       ${renderTextField("Distance", "viewpoint-camera-distance", viewpoint.camera?.distance === null || viewpoint.camera?.distance === undefined ? "" : String(viewpoint.camera.distance))}
-      <p class="wo-editor-inline-note">Rotation stays a 2D screen-rotation hint. The camera block stores Schema 2.5 view direction and framing.</p>`)}
+      <p class="wo-editor-inline-note">Rotation stays a 2D screen-rotation hint. The camera block stores Schema 3.0 view direction and framing.</p>`)}
     ${renderInspectorSection("viewpoint", "layers", "Layers", `<fieldset class="wo-editor-fieldset">
         <legend>Layers</legend>
         ${renderCheckboxField("Background", "layer-background", viewpoint.layers.background !== false)}
@@ -1972,6 +1995,8 @@ function renderEventInspector(formState, id) {
       ${renderTextField("Tags", "event-tags", eventEntry.tags.join(" "))}
       ${renderTextField("Color", "event-color", eventEntry.color ?? "")}
       ${renderCheckboxField("Hidden", "event-hidden", eventEntry.hidden === true)}`, true)}
+    ${renderInspectorSection("event", "trajectory", "Trajectory", `${renderTextField("Trajectory", "event-trajectory", eventEntry.trajectory ?? "")}
+      <p class="wo-editor-inline-note">Declarative transfer windows, flybys, and maneuver phases can be attached here. The core remains non-numeric.</p>`)}
     ${renderInspectorSection("event", "viewpoints", "Viewpoints", `${renderTextField("Viewpoints", "event-viewpoints", linkedViewpoints)}`)}
     ${renderInspectorSection("event", "positions", "Positions", `${eventEntry.positions.length > 0
         ? `<div class="wo-editor-inline-list">${eventEntry.positions
@@ -2077,6 +2102,10 @@ function renderObjectInspector(formState, id) {
       ${renderTextField("Angle", "placement-angle", object.placement?.mode === "orbit" && object.placement.angle ? formatUnitValue(object.placement.angle) : "")}
       ${renderTextField("Inclination", "placement-inclination", object.placement?.mode === "orbit" && object.placement.inclination ? formatUnitValue(object.placement.inclination) : "")}
       ${renderTextField("Phase", "placement-phase", object.placement?.mode === "orbit" && object.placement.phase ? formatUnitValue(object.placement.phase) : "")}`, true)}
+    ${object.type === "craft"
+        ? renderInspectorSection("object", "trajectory", "Trajectory", `${renderTextField("Trajectory", "object-trajectory", object.trajectory ?? "")}
+            <p class="wo-editor-inline-note">Crafts can reference declarative trajectory definitions here. Swing-by and transfer details stay in the DSL, not the editor canvas.</p>`)
+        : ""}
     ${renderInspectorSection("object", "properties", "Properties", `<fieldset class="wo-editor-fieldset">
         <legend>Properties</legend>
         ${renderTextField("Kind", "prop-kind", readStringProperty(object.properties.kind))}
@@ -2249,8 +2278,20 @@ function createNewObject(type, id, document) {
     const orbitTarget = document.objects.find((object) => object.type === "star")?.id ??
         document.objects[0]?.id ??
         id;
+    if (type === "craft") {
+        return {
+            type: type,
+            id,
+            properties: {},
+            placement: {
+                mode: "free",
+                distance: { value: 1, unit: "au" },
+            },
+            info: {},
+        };
+    }
     return {
-        type,
+        type: type,
         id,
         properties: {},
         placement: type === "structure" || type === "phenomenon"
@@ -3002,6 +3043,10 @@ function mapDiagnosticFieldToInputNames(selection, field) {
                 default:
                     return [];
             }
+        case "trajectory":
+        case "trajectory-segment":
+        case "trajectory-maneuver":
+            return [];
         case "object":
             if (field === "id") {
                 return ["object-id"];
@@ -3028,6 +3073,8 @@ function mapDiagnosticFieldToInputNames(selection, field) {
                 return [`placement-${field}`];
             }
             return [`prop-${field}`];
+        default:
+            return [];
     }
 }
 function buildEmbedMarkup(source, document, viewMode) {
@@ -3051,6 +3098,12 @@ function describePath(path) {
             return `Event: ${path.id ?? ""}`;
         case "event-pose":
             return `Event Pose: ${path.id ?? ""} / ${path.key ?? ""}`;
+        case "trajectory":
+            return `Trajectory: ${path.id ?? ""}`;
+        case "trajectory-segment":
+            return `Trajectory Segment: ${path.id ?? ""} / ${path.key ?? ""}`;
+        case "trajectory-maneuver":
+            return `Trajectory Maneuver: ${path.id ?? ""} / ${path.key ?? ""}`;
         case "object":
             return `Object: ${path.id ?? ""}`;
         case "viewpoint":
@@ -3059,6 +3112,8 @@ function describePath(path) {
             return `Annotation: ${path.id ?? ""}`;
         case "relation":
             return `Relation: ${path.id ?? ""}`;
+        default:
+            return "Selection";
     }
 }
 function selectionKey(path) {

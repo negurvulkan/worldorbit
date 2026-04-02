@@ -12,6 +12,7 @@ export function collectAtlasDiagnostics(document, sourceSchemaVersion) {
     const objectMap = new Map(document.objects.map((object) => [object.id, object]));
     const groupIds = new Set(document.groups.map((group) => group.id));
     const eventIds = new Set(document.events.map((event) => event.id));
+    const trajectoryMap = new Map(document.trajectories.map((trajectory) => [trajectory.id, trajectory]));
     if (!document.system) {
         diagnostics.push(error("validate.system.required", "Atlas documents must declare exactly one system."));
     }
@@ -22,6 +23,7 @@ export function collectAtlasDiagnostics(document, sourceSchemaVersion) {
         ["annotation", document.system?.annotations.map((annotation) => annotation.id) ?? []],
         ["relation", document.relations.map((relation) => relation.id)],
         ["event", document.events.map((event) => event.id)],
+        ["trajectory", document.trajectories.map((trajectory) => trajectory.id)],
         ["object", document.objects.map((object) => object.id)],
     ]) {
         for (const id of ids) {
@@ -41,10 +43,13 @@ export function collectAtlasDiagnostics(document, sourceSchemaVersion) {
         validateViewpoint(viewpoint, groupIds, eventIds, sourceSchemaVersion, diagnostics, objectMap);
     }
     for (const object of document.objects) {
-        validateObject(object, document.system, objectMap, groupIds, diagnostics);
+        validateObject(object, document.system, objectMap, groupIds, trajectoryMap, diagnostics);
     }
     for (const event of document.events) {
-        validateEvent(event, document.system, objectMap, diagnostics);
+        validateEvent(event, document.system, objectMap, trajectoryMap, diagnostics);
+    }
+    for (const trajectory of document.trajectories) {
+        validateTrajectory(trajectory, objectMap, diagnostics);
     }
     return diagnostics;
 }
@@ -84,7 +89,7 @@ function validateViewpoint(viewpoint, groupIds, eventIds, sourceSchemaVersion, d
     validateProjection(viewpoint.projection, diagnostics, `viewpoint.${viewpoint.id}.projection`, viewpoint.id);
     validateCamera(viewpoint.camera, viewpoint.projection, viewpoint.rotationDeg, diagnostics, viewpoint.id, viewpoint.focusObjectId, viewpoint.selectedObjectId, filter, objectMap);
 }
-function validateObject(object, system, objectMap, groupIds, diagnostics) {
+function validateObject(object, system, objectMap, groupIds, trajectoryMap, diagnostics) {
     const placement = object.placement;
     const orbitPlacement = placement?.mode === "orbit" ? placement : null;
     const parentObject = placement?.mode === "orbit" ? objectMap.get(placement.target) ?? null : null;
@@ -100,6 +105,14 @@ function validateObject(object, system, objectMap, groupIds, diagnostics) {
     }
     if (typeof object.referencePlane === "string" && !object.referencePlane.trim()) {
         diagnostics.push(warn("validate.referencePlane.empty", `Object "${object.id}" defines an empty reference plane string.`, object.id, "referencePlane"));
+    }
+    if (object.trajectoryId) {
+        if (!trajectoryMap.has(object.trajectoryId)) {
+            diagnostics.push(error("validate.trajectory.object.unknown", `Unknown trajectory "${object.trajectoryId}" on "${object.id}".`, object.id, "trajectory"));
+        }
+        else if (!isTrajectoryCapableObject(object)) {
+            diagnostics.push(error("validate.trajectory.object.invalidType", `Only craft or legacy ship-like structures may reference trajectories; found "${object.type}" on "${object.id}".`, object.id, "trajectory"));
+        }
     }
     if (orbitPlacement) {
         if (!objectMap.has(orbitPlacement.target)) {
@@ -128,8 +141,8 @@ function validateObject(object, system, objectMap, groupIds, diagnostics) {
         }
     }
     if (placement?.mode === "at") {
-        if (object.type !== "structure" && object.type !== "phenomenon") {
-            diagnostics.push(error("validate.at.objectType", `Only structures and phenomena may use "at" placement; found "${object.type}" on "${object.id}".`, object.id, "at"));
+        if (object.type !== "craft" && object.type !== "structure" && object.type !== "phenomenon") {
+            diagnostics.push(error("validate.at.objectType", `Only craft, structures, and phenomena may use "at" placement; found "${object.type}" on "${object.id}".`, object.id, "at"));
         }
         if (!validateAtTarget(object, objectMap, diagnostics)) {
             diagnostics.push(error("validate.at.target.unknown", `Unknown at-reference target "${placement.target}" on "${object.id}".`, object.id, "at"));
@@ -176,7 +189,7 @@ function validateObject(object, system, objectMap, groupIds, diagnostics) {
         }
     }
 }
-function validateEvent(event, system, objectMap, diagnostics) {
+function validateEvent(event, system, objectMap, trajectoryMap, diagnostics) {
     const fieldPrefix = `event.${event.id}`;
     const referencedIds = new Set();
     if (!event.kind.trim()) {
@@ -187,6 +200,9 @@ function validateEvent(event, system, objectMap, diagnostics) {
     }
     if (typeof event.referencePlane === "string" && !event.referencePlane.trim()) {
         diagnostics.push(warn("validate.event.referencePlane.empty", `Event "${event.id}" defines an empty reference plane string.`, undefined, `${fieldPrefix}.referencePlane`));
+    }
+    if (event.trajectoryId && !trajectoryMap.has(event.trajectoryId)) {
+        diagnostics.push(error("validate.event.trajectory.unknown", `Unknown trajectory "${event.trajectoryId}" on event "${event.id}".`, undefined, `${fieldPrefix}.trajectory`));
     }
     if (!event.targetObjectId && event.participantObjectIds.length === 0) {
         diagnostics.push(error("validate.event.references.required", `Event "${event.id}" must define a "target" or at least one participant.`, undefined, `${fieldPrefix}.participants`));
@@ -236,18 +252,24 @@ function validateEvent(event, system, objectMap, diagnostics) {
         if (!referencedIds.has(pose.objectId)) {
             diagnostics.push(warn("validate.event.pose.unreferenced", `Event pose "${pose.objectId}" on "${event.id}" is not listed in target/participants.`, undefined, poseFieldPrefix));
         }
-        validateEventPose(pose, object, event, system, objectMap, diagnostics, poseFieldPrefix, event.id);
+        validateEventPose(pose, object, event, system, objectMap, trajectoryMap, diagnostics, poseFieldPrefix, event.id);
     }
     const missingPoseIds = [...referencedIds].filter((objectId) => !poseIds.has(objectId));
     if (event.positions.length > 0 && missingPoseIds.length > 0) {
         diagnostics.push(warn("validate.event.positions.partial", `Event "${event.id}" leaves ${missingPoseIds.length} referenced object(s) on their base placement.`, undefined, `${fieldPrefix}.positions`));
     }
 }
-function validateEventPose(pose, object, event, system, objectMap, diagnostics, fieldPrefix, eventId) {
+function validateEventPose(pose, object, event, system, objectMap, trajectoryMap, diagnostics, fieldPrefix, eventId) {
     const placement = pose.placement;
     if (!placement) {
         diagnostics.push(error("validate.event.pose.placement.required", `Event "${eventId}" pose "${pose.objectId}" is missing a placement mode.`, undefined, fieldPrefix));
         return;
+    }
+    if (pose.trajectorySegmentId && !findTrajectorySegment(trajectoryMap, pose.trajectorySegmentId)) {
+        diagnostics.push(error("validate.event.pose.segment.unknown", `Unknown trajectory segment "${pose.trajectorySegmentId}" on "${eventId}:${pose.objectId}".`, undefined, `${fieldPrefix}.segment`));
+    }
+    if (pose.trajectoryManeuverId && !findTrajectoryManeuver(trajectoryMap, pose.trajectoryManeuverId)) {
+        diagnostics.push(error("validate.event.pose.maneuver.unknown", `Unknown trajectory maneuver "${pose.trajectoryManeuverId}" on "${eventId}:${pose.objectId}".`, undefined, `${fieldPrefix}.maneuver`));
     }
     if (placement.mode === "orbit") {
         if (!objectMap.has(placement.target)) {
@@ -278,8 +300,8 @@ function validateEventPose(pose, object, event, system, objectMap, diagnostics, 
         return;
     }
     if (placement.mode === "at") {
-        if (object.type !== "structure" && object.type !== "phenomenon") {
-            diagnostics.push(error("validate.event.pose.at.objectType", `Only structures and phenomena may use "at" placement in events; found "${object.type}" on "${eventId}:${pose.objectId}".`, undefined, `${fieldPrefix}.at`));
+        if (object.type !== "craft" && object.type !== "structure" && object.type !== "phenomenon") {
+            diagnostics.push(error("validate.event.pose.at.objectType", `Only craft, structures, and phenomena may use "at" placement in events; found "${object.type}" on "${eventId}:${pose.objectId}".`, undefined, `${fieldPrefix}.at`));
         }
         const reference = placement.reference;
         if (reference.kind === "named" && !objectMap.has(reference.name)) {
@@ -297,6 +319,79 @@ function validateEventPose(pose, object, event, system, objectMap, diagnostics, 
             }
         }
     }
+}
+function validateTrajectory(trajectory, objectMap, diagnostics) {
+    if (trajectory.craftObjectId) {
+        const craft = objectMap.get(trajectory.craftObjectId);
+        if (!craft) {
+            diagnostics.push(error("validate.trajectory.craft.unknown", `Unknown craft "${trajectory.craftObjectId}" on trajectory "${trajectory.id}".`, undefined, `trajectory.${trajectory.id}.craft`));
+        }
+        else if (!isTrajectoryCapableObject(craft)) {
+            diagnostics.push(error("validate.trajectory.craft.invalidType", `Trajectory "${trajectory.id}" targets "${trajectory.craftObjectId}", which is not craft-like.`, undefined, `trajectory.${trajectory.id}.craft`));
+        }
+    }
+    for (const segment of trajectory.segments) {
+        validateTrajectorySegment(trajectory.id, segment, objectMap, diagnostics);
+    }
+}
+function validateTrajectorySegment(trajectoryId, segment, objectMap, diagnostics) {
+    const fieldPrefix = `trajectory.${trajectoryId}.segment.${segment.id}`;
+    for (const [field, objectId] of [
+        ["from", segment.fromObjectId],
+        ["to", segment.toObjectId],
+        ["around", segment.aroundObjectId],
+    ]) {
+        if (objectId && !objectMap.has(objectId)) {
+            diagnostics.push(error(`validate.trajectory.segment.${field}.unknown`, `Unknown ${field} object "${objectId}" on trajectory "${trajectoryId}" segment "${segment.id}".`, undefined, `${fieldPrefix}.${field}`));
+        }
+    }
+    if (segment.assist?.objectId && !objectMap.has(segment.assist.objectId)) {
+        diagnostics.push(error("validate.trajectory.segment.assist.unknown", `Unknown assist object "${segment.assist.objectId}" on trajectory "${trajectoryId}" segment "${segment.id}".`, undefined, `${fieldPrefix}.assist`));
+    }
+    if (segment.kind === "flyby" && !segment.assist?.objectId) {
+        diagnostics.push(error("validate.trajectory.segment.assist.required", `Trajectory "${trajectoryId}" segment "${segment.id}" is a flyby and requires an "assist" object.`, undefined, `${fieldPrefix}.assist`));
+    }
+    if ((segment.kind === "capture" || segment.kind === "departure") && !segment.toObjectId && !segment.aroundObjectId) {
+        diagnostics.push(error("validate.trajectory.segment.target.required", `Trajectory "${trajectoryId}" segment "${segment.id}" requires a target reference.`, undefined, `${fieldPrefix}.to`));
+    }
+    for (const maneuver of segment.maneuvers) {
+        validateTrajectoryManeuver(trajectoryId, segment.id, maneuver, diagnostics);
+    }
+}
+function validateTrajectoryManeuver(trajectoryId, segmentId, maneuver, diagnostics) {
+    if (!maneuver.kind.trim()) {
+        diagnostics.push(error("validate.trajectory.maneuver.kind.required", `Trajectory "${trajectoryId}" segment "${segmentId}" maneuver "${maneuver.id}" is missing a kind.`, undefined, `trajectory.${trajectoryId}.segment.${segmentId}.maneuver.${maneuver.id}.kind`));
+    }
+}
+function isTrajectoryCapableObject(object) {
+    if (object.type === "craft") {
+        return true;
+    }
+    if (object.type !== "structure") {
+        return false;
+    }
+    const kind = typeof object.properties.kind === "string" ? object.properties.kind.toLowerCase() : "";
+    return kind === "ship" || kind === "probe" || kind === "station";
+}
+function findTrajectorySegment(trajectories, segmentId) {
+    for (const trajectory of trajectories.values()) {
+        const match = trajectory.segments.find((segment) => segment.id === segmentId);
+        if (match) {
+            return match;
+        }
+    }
+    return null;
+}
+function findTrajectoryManeuver(trajectories, maneuverId) {
+    for (const trajectory of trajectories.values()) {
+        for (const segment of trajectory.segments) {
+            const match = segment.maneuvers.find((maneuver) => maneuver.id === maneuverId);
+            if (match) {
+                return match;
+            }
+        }
+    }
+    return null;
 }
 function validateAtTarget(object, objectMap, diagnostics) {
     const reference = object.placement?.mode === "at" ? object.placement.reference : null;

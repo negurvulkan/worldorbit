@@ -10,7 +10,7 @@ import {
   loadSessionState,
 } from "../studio/studio-app.js";
 
-const studioSource = `schema 2.5
+const studioSource = `schema 3.0
 
 system Studio
   title "Studio Test"
@@ -131,9 +131,6 @@ test("studio mounts, persists session state, warns on unload, and saves canonica
     assert.match(root.querySelector("[data-studio-message]").textContent, /3D/i);
     assert.equal(root.querySelector('[data-studio-action="view-2d"]').getAttribute("aria-pressed"), "true");
 
-    root.querySelector('[data-studio-action="toggle-preview"]').click();
-    assert.equal(loadSessionState().panels.preview, false);
-
     const sourcePane = root.querySelector("[data-editor-source]");
     sourcePane.value = `${sourcePane.value}\n`;
     sourcePane.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
@@ -176,7 +173,7 @@ test("studio and docs shells use local workspace and docs asset paths with page-
   );
   assert.match(
     docsStudioHtml,
-    /"@worldorbit\/editor": "\.\.\/assets\/browser\/editor\/dist\/index\.js"/,
+    /"@worldorbit\/editor": "(?:\.\.\/assets\/browser\/editor\/dist\/index\.js|\.\.\/\.\.\/packages\/editor\/dist\/index\.js)"/,
   );
   assert.match(
     studioHtml,

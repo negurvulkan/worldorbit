@@ -29,7 +29,7 @@ WorldOrbit is not intended to be a real-world astronomy simulator or a high-prec
 ## Quick Example
 
 ```worldorbit
-schema 2.5
+schema 3.0
 
 system Iyath
   title "Iyath System"
@@ -138,10 +138,10 @@ For direct browser usage, use the browser bundle:
       import {
         createInteractiveViewer,
         loadWorldOrbitSource
-      } from "https://unpkg.com/worldorbit@3.0.7/dist/unpkg/worldorbit.esm.js";
+      } from "https://unpkg.com/worldorbit@4.0.0/dist/unpkg/worldorbit.esm.js";
 
       const source = `
-schema 2.5
+schema 3.0
 
 system Iyath
   epoch "JY-0001.0"
@@ -199,13 +199,13 @@ The editor is optional. The core format remains text-first.
 New atlas authoring should start with:
 
 ```worldorbit
-schema 2.5
+schema 3.0
 ```
 
 Example:
 
 ```worldorbit
-schema 2.5
+schema 3.0
 
 system Iyath
   title "Iyath System"
@@ -279,21 +279,22 @@ event naar-eclipse
       phase 90deg
 ```
 
-## What's New In Schema 2.5
+## What's New In Schema 3.0
 
-Schema `2.5` keeps Schema `2.1` fully readable and adds a clearer 3D-ready authoring surface without turning WorldOrbit into a full 3D engine.
+Schema `3.0` keeps Schema `2.6` fully readable and expands WorldOrbit from orbit-only worldbuilding into declarative mission and trajectory authoring.
 
 It adds:
 
-* new viewpoint projections: `orthographic` and `perspective`
-* a Schema-level `camera` block with `azimuth`, `elevation`, optional `roll`, and optional `distance`
-* clearer inheritance for `epoch` and `referencePlane` across system, object, event, and pose contexts
-* more stable event snapshots, where missing pose fields fall back to object, event, and system context instead of implying empty values
-* stronger validation around viewpoints, camera fields, event/pose consistency, and ambiguous authoring combinations
+* a canonical `craft` object type for ships, probes, and stations
+* a declarative `trajectory` top-level block for reusable mission paths
+* trajectory segments for transfers, departures, flybys, captures, escapes, and stationkeeping
+* swing-by and gravity-assist metadata such as `assist`, `turnAngle`, `periapsis`, `deltaV`, and `energy`
+* explicit links between `craft`, `trajectory`, `event`, and `pose` snapshots for curated mission states
+* a solver-friendly data model without forcing the core parser to perform numerical simulation
 
-Schema `2.5` still does **not** add full 3D coordinates, meshes, materials, quaternions, lighting, or simulation-heavy orbital solving.
+Schema `3.0` still does **not** add a built-in orbital solver, continuous XYZ path authoring, meshes, materials, quaternions, or lighting.
 
-Schema `2.1` already added comments, semantic `group` and `relation` sections, declarative `event` sections with per-event `positions`/`pose` snapshots, viewpoint-linked `events`, object-level `epoch` and `referencePlane`, declarative resonance and validation hints, and optional structured lore blocks such as `climate`, `habitability`, and `settlement`.
+Schema `2.6` remains the direct compatibility base, and older documents continue to load through the same parser and normalization pipeline.
 
 Stable `1.0` source is still accepted. Canonical `schema 2.0` source remains fully supported, and legacy `schema 2.0-draft` files stay readable as a compatibility path with a deprecation diagnostic.
 
@@ -314,7 +315,7 @@ planet Naar orbit Iyath distance 1.18au
 `.trim());
 
 const loaded = loadWorldOrbitSource(`
-schema 2.5
+schema 3.0
 
 system Iyath
 object star Iyath
@@ -418,7 +419,7 @@ const atlasDocument = upgradeDocumentToV2(stable.document, {
   preset: "atlas-card",
 });
 
-const atlasSource = formatDocument(atlasDocument, { schema: "2.5" });
+const atlasSource = formatDocument(atlasDocument, { schema: "3.0" });
 const loaded = loadWorldOrbitSource(atlasSource);
 const parsedAtlas = parseWorldOrbitAtlas(atlasSource);
 const scene = renderDocumentToScene(loaded.document, {
@@ -432,7 +433,7 @@ const scene = renderDocumentToScene(loaded.document, {
 
 ## Viewer Capabilities
 
-Viewer features in `v3.0.7` include:
+Viewer features in `v4.0.0` include:
 
 * scene-based SVG rendering
 * renderer-neutral spatial scenes through `renderDocumentToSpatialScene(...)`
@@ -446,7 +447,7 @@ Viewer features in `v3.0.7` include:
 * viewpoints, filters, search, and bookmark capture
 * deep-linkable atlas state
 * embeddable viewer custom elements
-* semantic group filters, relation and event overlays, active event scenes, Schema 2.5 camera metadata, and event/object reference-context detail metadata
+* semantic group filters, relation and event overlays, active event scenes, Schema 3.0 camera metadata, mission trajectory overlays, and event/object reference-context detail metadata
 
 ## Markdown Integration
 

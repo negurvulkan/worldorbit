@@ -1,4 +1,4 @@
-import type { SceneRenderOptions, WorldOrbitAtlasDocument, WorldOrbitEvent, WorldOrbitAtlasSystem, WorldOrbitDiagnostic, WorldOrbitDocument, WorldOrbitObject } from "./types.js";
+import type { SceneRenderOptions, WorldOrbitAtlasDocument, WorldOrbitEvent, WorldOrbitAtlasSystem, WorldOrbitDiagnostic, WorldOrbitDocument, WorldOrbitObject, WorldOrbitTrajectory } from "./types.js";
 interface UpgradeOptions extends Pick<SceneRenderOptions, "preset" | "projection"> {
 }
 export declare function upgradeDocumentToV2(document: WorldOrbitDocument, options?: UpgradeOptions): WorldOrbitAtlasDocument;
@@ -12,6 +12,7 @@ export declare function upgradeDocumentToDraftV2(document: WorldOrbitDocument, o
     groups: import("./types.js").WorldOrbitGroup[];
     relations: import("./types.js").WorldOrbitRelation[];
     events: WorldOrbitEvent[];
+    trajectories: WorldOrbitTrajectory[];
     objects: WorldOrbitObject[];
     diagnostics: WorldOrbitDiagnostic[];
 };

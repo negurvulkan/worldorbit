@@ -1,6 +1,6 @@
 {
   "name": "@worldorbit/core",
-  "version": "3.2.0",
+  "version": "4.0.0",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -16,6 +16,10 @@
     "./scene": {
       "types": "./dist/scene.d.ts",
       "import": "./dist/scene.js"
+    },
+    "./solver": {
+      "types": "./dist/solver.d.ts",
+      "import": "./dist/solver.js"
     },
     "./types": {
       "types": "./dist/types.d.ts",

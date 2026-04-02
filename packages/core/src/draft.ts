@@ -14,6 +14,7 @@ import type {
   WorldOrbitDiagnostic,
   WorldOrbitDocument,
   WorldOrbitObject,
+  WorldOrbitTrajectory,
 } from "./types.js";
 
 interface UpgradeOptions extends Pick<SceneRenderOptions, "preset" | "projection"> {}
@@ -57,15 +58,16 @@ export function upgradeDocumentToV2(
 
   return {
     format: "worldorbit",
-    version: "2.6",
-    schemaVersion: "2.6",
+    version: "3.0",
+    schemaVersion: "3.0",
     sourceVersion: document.version,
     theme: document.theme ?? null,
     system,
     groups: structuredClone(document.groups ?? []),
     relations: structuredClone(document.relations ?? []),
     events: structuredClone(document.events ?? []),
-    objects: document.objects.map(cloneWorldOrbitObject),
+    trajectories: [],
+    objects: document.objects.map(cloneWorldOrbitObject).map(normalizeLegacyCraftObject),
     diagnostics,
   };
 }
@@ -106,6 +108,7 @@ export function materializeAtlasDocument(
     groups: structuredClone(document.groups ?? []),
     relations: structuredClone(document.relations ?? []),
     events: document.events.map(cloneWorldOrbitEvent),
+    trajectories: document.trajectories.map(cloneWorldOrbitTrajectory),
     objects,
   };
 }
@@ -321,6 +324,7 @@ function mapSceneViewpointToDraftViewpoint(
 function cloneWorldOrbitObject(object: WorldOrbitObject): WorldOrbitObject {
   return {
     ...object,
+    trajectoryId: object.trajectoryId ?? null,
     groups: object.groups ? [...object.groups] : undefined,
     resonance: object.resonance ? { ...object.resonance } : object.resonance,
     renderHints: object.renderHints ? { ...object.renderHints } : object.renderHints,
@@ -354,6 +358,7 @@ function cloneWorldOrbitObject(object: WorldOrbitObject): WorldOrbitObject {
 function cloneWorldOrbitEvent(event: WorldOrbitEvent): WorldOrbitEvent {
   return {
     ...event,
+    trajectoryId: event.trajectoryId ?? null,
     participantObjectIds: [...event.participantObjectIds],
     tags: [...event.tags],
     positions: event.positions.map(cloneWorldOrbitEventPose),
@@ -364,10 +369,32 @@ function cloneWorldOrbitEventPose(pose: WorldOrbitEventPose): WorldOrbitEventPos
   return {
     objectId: pose.objectId,
     placement: clonePlacement(pose.placement),
+    trajectorySegmentId: pose.trajectorySegmentId ?? null,
+    trajectoryManeuverId: pose.trajectoryManeuverId ?? null,
     inner: pose.inner ? { ...pose.inner } : undefined,
     outer: pose.outer ? { ...pose.outer } : undefined,
     epoch: pose.epoch ?? null,
     referencePlane: pose.referencePlane ?? null,
+  };
+}
+
+function cloneWorldOrbitTrajectory(trajectory: WorldOrbitTrajectory): WorldOrbitTrajectory {
+  return structuredClone(trajectory);
+}
+
+function normalizeLegacyCraftObject(object: WorldOrbitObject): WorldOrbitObject {
+  if (object.type !== "structure") {
+    return object;
+  }
+
+  const kind = typeof object.properties.kind === "string" ? object.properties.kind.toLowerCase() : "";
+  if (!["ship", "probe", "station"].includes(kind)) {
+    return object;
+  }
+
+  return {
+    ...object,
+    type: "craft",
   };
 }
 
