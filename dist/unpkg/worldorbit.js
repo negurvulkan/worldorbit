@@ -30711,6 +30711,7 @@ void main() {
     createDiagnostic: () => createDiagnostic,
     createEmbedPayload: () => createEmbedPayload,
     createEmptyAtlasDocument: () => createEmptyAtlasDocument,
+    createHierarchyViewer: () => createHierarchyViewer,
     createInteractiveViewer: () => createInteractiveViewer,
     createInteractiveViewer2D: () => createInteractiveViewer2D,
     createTrajectorySolverSnapshot: () => createTrajectorySolverSnapshot,
@@ -30718,6 +30719,7 @@ void main() {
     defineWorldOrbitViewerElement: () => defineWorldOrbitViewerElement,
     deserializeViewerAtlasState: () => deserializeViewerAtlasState,
     deserializeWorldOrbitEmbedPayload: () => deserializeWorldOrbitEmbedPayload,
+    detectWorldOrbitHierarchySchemaVersion: () => detectWorldOrbitHierarchySchemaVersion,
     detectWorldOrbitSchemaVersion: () => detectWorldOrbitSchemaVersion,
     diagnosticFromError: () => diagnosticFromError,
     evaluateSpatialSceneAtTime: () => evaluateSpatialSceneAtTime,
@@ -30736,6 +30738,8 @@ void main() {
     isKnownFieldKey: () => isKnownFieldKey,
     listAtlasDocumentPaths: () => listAtlasDocumentPaths,
     load: () => load,
+    loadWorldOrbitHierarchySource: () => loadWorldOrbitHierarchySource,
+    loadWorldOrbitHierarchySourceWithDiagnostics: () => loadWorldOrbitHierarchySourceWithDiagnostics,
     loadWorldOrbitSource: () => loadWorldOrbitSource,
     loadWorldOrbitSourceWithDiagnostics: () => loadWorldOrbitSourceWithDiagnostics,
     materializeAtlasDocument: () => materializeAtlasDocument,
@@ -30752,11 +30756,14 @@ void main() {
     parseWorldOrbit: () => parseWorldOrbit,
     parseWorldOrbitAtlas: () => parseWorldOrbitAtlas,
     parseWorldOrbitDraft: () => parseWorldOrbitDraft,
+    parseWorldOrbitHierarchyDocument: () => parseWorldOrbitHierarchyDocument,
     removeAtlasDocumentNode: () => removeAtlasDocumentNode,
     render: () => render,
     renderDocumentToScene: () => renderDocumentToScene,
     renderDocumentToSpatialScene: () => renderDocumentToSpatialScene,
     renderDocumentToSvg: () => renderDocumentToSvg,
+    renderHierarchyDocumentToScene: () => renderHierarchyDocumentToScene,
+    renderHierarchySceneToSvg: () => renderHierarchySceneToSvg,
     renderSceneToSvg: () => renderSceneToSvg,
     renderSourceToSvg: () => renderSourceToSvg,
     resolveAtlasDiagnosticPath: () => resolveAtlasDiagnosticPath,
@@ -33897,6 +33904,202 @@ void main() {
   }
   function formatNumber(value) {
     return Number.isInteger(value) ? String(value) : value.toFixed(2);
+  }
+
+  // packages/core/dist/hierarchy-scene.js
+  var DEFAULT_WIDTH = 1280;
+  var DEFAULT_HEIGHT = 760;
+  var DEFAULT_PADDING = 72;
+  function renderHierarchyDocumentToScene(document2, options = {}) {
+    const width = options.width ?? DEFAULT_WIDTH;
+    const height = options.height ?? DEFAULT_HEIGHT;
+    const padding = options.padding ?? DEFAULT_PADDING;
+    const scope = options.scope ?? "system";
+    const zoom = options.zoom ?? 1;
+    const activeGalaxy = resolveGalaxy(document2, options.activeGalaxyId);
+    const activeSystem = resolveSystem(document2, activeGalaxy, options.activeSystemId);
+    if (scope === "system") {
+      return renderSystemScope(document2, activeGalaxy, activeSystem, width, height, padding, zoom);
+    }
+    if (scope === "galaxy") {
+      return renderGalaxyScope(document2, activeGalaxy, width, height, padding, zoom);
+    }
+    return renderUniverseScope(document2, width, height, padding, zoom, activeGalaxy, activeSystem);
+  }
+  function renderSystemScope(document2, galaxy, system, width, height, padding, zoom) {
+    const atlasScene = system?.materializedDocument ? renderDocumentToScene(system.materializedDocument, {
+      width,
+      height,
+      padding
+    }) : null;
+    return {
+      scope: "system",
+      width,
+      height,
+      padding,
+      title: system?.title ?? system?.id ?? document2.universe.title ?? document2.universe.id,
+      subtitle: galaxy ? `${galaxy.title ?? galaxy.id} galaxy system view` : "System view",
+      universeId: document2.universe.id,
+      activeGalaxyId: galaxy?.id ?? null,
+      activeSystemId: system?.id ?? null,
+      zoom,
+      nodes: [],
+      links: [],
+      atlasScene,
+      diagnostics: system?.diagnostics ?? document2.diagnostics
+    };
+  }
+  function renderGalaxyScope(document2, galaxy, width, height, padding, zoom) {
+    const targetGalaxy = galaxy ?? document2.universe.galaxies[0] ?? null;
+    const nodes = [];
+    const links = [];
+    if (!targetGalaxy) {
+      return emptyContainerScene(document2, "galaxy", width, height, padding, zoom);
+    }
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const galaxyRadius = Math.min(width, height) * 0.23;
+    nodes.push(createNode(targetGalaxy.id, "galaxy", targetGalaxy.title ?? targetGalaxy.id, targetGalaxy.description, null, centerX, centerY, galaxyRadius, targetGalaxy.color, targetGalaxy.image, targetGalaxy.hidden, false));
+    const systemRadius = Math.max(34, Math.min(72, 48 * zoom));
+    const orbitRadius = Math.min(width, height) * 0.31;
+    const systems = targetGalaxy.systems.filter((system) => !system.hidden);
+    systems.forEach((system, index) => {
+      const angle = -Math.PI / 2 + index * (Math.PI * 2) / Math.max(systems.length, 1);
+      const x = centerX + Math.cos(angle) * orbitRadius;
+      const y = centerY + Math.sin(angle) * orbitRadius;
+      nodes.push(createNode(system.id, "system", system.title ?? system.id, system.description, targetGalaxy.id, x, y, systemRadius, system.color ?? "#7bd0ff", system.image, system.hidden, false));
+      links.push(createLink(targetGalaxy.id, system.id));
+      if (zoom >= 1.4) {
+        nodes.push(...createSystemPreviewNodes(system, x, y, systemRadius, targetGalaxy.id));
+      }
+    });
+    return {
+      scope: "galaxy",
+      width,
+      height,
+      padding,
+      title: targetGalaxy.title ?? targetGalaxy.id,
+      subtitle: `${systems.length} systems visible`,
+      universeId: document2.universe.id,
+      activeGalaxyId: targetGalaxy.id,
+      activeSystemId: null,
+      zoom,
+      nodes,
+      links,
+      atlasScene: null,
+      diagnostics: targetGalaxy.systems.flatMap((system) => system.diagnostics)
+    };
+  }
+  function renderUniverseScope(document2, width, height, padding, zoom, activeGalaxy, activeSystem) {
+    const nodes = [];
+    const links = [];
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const universeRadius = Math.min(width, height) * 0.24;
+    nodes.push(createNode(document2.universe.id, "universe", document2.universe.title ?? document2.universe.id, document2.universe.description, null, centerX, centerY, universeRadius, document2.universe.color, document2.universe.image, document2.universe.hidden, false));
+    const galaxies = document2.universe.galaxies.filter((galaxy) => !galaxy.hidden);
+    const galaxyOrbit = Math.min(width, height) * 0.34;
+    const galaxyRadius = Math.max(54, Math.min(88, 68 * zoom));
+    galaxies.forEach((galaxy, index) => {
+      const angle = -Math.PI / 2 + index * (Math.PI * 2) / Math.max(galaxies.length, 1);
+      const x = centerX + Math.cos(angle) * galaxyOrbit;
+      const y = centerY + Math.sin(angle) * galaxyOrbit;
+      nodes.push(createNode(galaxy.id, "galaxy", galaxy.title ?? galaxy.id, galaxy.description, document2.universe.id, x, y, galaxyRadius, galaxy.color ?? "#93a7ff", galaxy.image, galaxy.hidden, false));
+      links.push(createLink(document2.universe.id, galaxy.id));
+      if (zoom >= 1.25) {
+        nodes.push(...createGalaxyPreviewNodes(galaxy, x, y, galaxyRadius));
+      }
+    });
+    return {
+      scope: "universe",
+      width,
+      height,
+      padding,
+      title: document2.universe.title ?? document2.universe.id,
+      subtitle: `${galaxies.length} galaxies visible`,
+      universeId: document2.universe.id,
+      activeGalaxyId: activeGalaxy?.id ?? null,
+      activeSystemId: activeSystem?.id ?? null,
+      zoom,
+      nodes,
+      links,
+      atlasScene: null,
+      diagnostics: document2.diagnostics
+    };
+  }
+  function emptyContainerScene(document2, scope, width, height, padding, zoom) {
+    return {
+      scope,
+      width,
+      height,
+      padding,
+      title: document2.universe.title ?? document2.universe.id,
+      subtitle: "No visible containers",
+      universeId: document2.universe.id,
+      activeGalaxyId: null,
+      activeSystemId: null,
+      zoom,
+      nodes: [],
+      links: [],
+      atlasScene: null,
+      diagnostics: document2.diagnostics
+    };
+  }
+  function createGalaxyPreviewNodes(galaxy, centerX, centerY, radius) {
+    const systems = galaxy.systems.filter((system) => !system.hidden).slice(0, 8);
+    return systems.map((system, index) => {
+      const angle = -Math.PI / 2 + index * (Math.PI * 2) / Math.max(systems.length, 1);
+      return createNode(`${galaxy.id}/${system.id}`, "system", system.title ?? system.id, null, galaxy.id, centerX + Math.cos(angle) * radius * 0.58, centerY + Math.sin(angle) * radius * 0.58, Math.max(9, radius * 0.12), system.color ?? "#7bd0ff", system.image, false, true);
+    });
+  }
+  function createSystemPreviewNodes(system, centerX, centerY, radius, parentId) {
+    const objects = system.materializedDocument?.objects.slice(0, 8) ?? [];
+    return objects.map((object, index) => {
+      const angle = -Math.PI / 2 + index * (Math.PI * 2) / Math.max(objects.length, 1);
+      return createNode(`${system.id}/${object.id}`, "object", object.id, typeof object.properties.class === "string" ? object.properties.class : object.type, parentId, centerX + Math.cos(angle) * radius * 0.58, centerY + Math.sin(angle) * radius * 0.58, Math.max(7, radius * 0.1), typeof object.properties.color === "string" ? object.properties.color : "#c8d7ff", typeof object.properties.image === "string" ? object.properties.image : null, false, true);
+    });
+  }
+  function resolveGalaxy(document2, activeGalaxyId) {
+    if (activeGalaxyId) {
+      return document2.universe.galaxies.find((galaxy) => galaxy.id === activeGalaxyId) ?? null;
+    }
+    return document2.universe.galaxies[0] ?? null;
+  }
+  function resolveSystem(document2, galaxy, activeSystemId) {
+    if (activeSystemId) {
+      for (const item of document2.universe.galaxies) {
+        const found = item.systems.find((system) => system.id === activeSystemId);
+        if (found) {
+          return found;
+        }
+      }
+    }
+    return galaxy?.systems[0] ?? null;
+  }
+  function createNode(id, kind, label, subtitle, parentId, x, y, radius, fill, image, hidden, preview) {
+    return {
+      renderId: `hierarchy-${kind}-${id}`,
+      id,
+      kind,
+      label,
+      subtitle,
+      parentId,
+      x,
+      y,
+      radius,
+      fill,
+      image,
+      hidden,
+      preview
+    };
+  }
+  function createLink(fromId, toId) {
+    return {
+      renderId: `hierarchy-link-${fromId}-${toId}`,
+      fromId,
+      toId,
+      kind: "containment"
+    };
   }
 
   // packages/core/dist/spatial-scene.js
@@ -38265,6 +38468,415 @@ void main() {
     return next === void 0 || next === " " || next === "	" || next === "\r" || next === "\n";
   }
 
+  // packages/core/dist/hierarchy-parse.js
+  var SECTION_KEYWORDS = /* @__PURE__ */ new Set([
+    "defaults",
+    "atlas",
+    "viewpoint",
+    "annotation",
+    "group",
+    "relation",
+    "event",
+    "trajectory",
+    "object"
+  ]);
+  var SYSTEM_FORWARD_FIELDS = /* @__PURE__ */ new Set([
+    "title",
+    "description",
+    "epoch",
+    "referencePlane"
+  ]);
+  var BOOL_FIELDS = /* @__PURE__ */ new Set(["hidden"]);
+  var LIST_FIELDS = /* @__PURE__ */ new Set(["tags"]);
+  function parseWorldOrbitHierarchyDocument(source) {
+    const lines = source.split(/\r?\n/);
+    const first = firstMeaningfulLine(lines);
+    if (!first || first.tokens[0] !== "schema" || first.tokens[1] !== "4.0") {
+      throw createParseError('Expected required header "schema 4.0"', first?.line ?? 1, first?.column ?? 1);
+    }
+    const universeLine = nextMeaningfulLine(lines, first.index + 1);
+    if (!universeLine || universeLine.indent !== 0 || universeLine.tokens[0] !== "universe" || !universeLine.tokens[1]) {
+      throw createParseError('Expected top-level "universe <id>" declaration', universeLine?.line ?? 2, universeLine?.column ?? 1);
+    }
+    const parsedUniverse = parseUniverse(lines, universeLine.index, universeLine.indent);
+    const diagnostics = collectSystemDiagnostics(parsedUniverse.universe);
+    return {
+      format: "worldorbit",
+      version: "4.0",
+      schemaVersion: "4.0",
+      suiteVersion: "6.0.0",
+      universe: parsedUniverse.universe,
+      diagnostics
+    };
+  }
+  function parseUniverse(lines, startIndex, indent) {
+    const header = analyzeLine(lines[startIndex], startIndex);
+    if (!header) {
+      throw createParseError('Expected "universe <id>" declaration', startIndex + 1, 1);
+    }
+    const universe = createUniverse(header.tokens[1] ?? "");
+    let index = startIndex + 1;
+    while (index < lines.length) {
+      const entry = analyzeLine(lines[index], index);
+      if (!entry) {
+        index += 1;
+        continue;
+      }
+      if (entry.indent <= indent) {
+        break;
+      }
+      if (entry.indent !== indent + 2) {
+        throw createParseError("Universe children must be indented by two spaces.", entry.line, entry.column);
+      }
+      if (entry.tokens[0] === "galaxy" && entry.tokens[1]) {
+        const parsed = parseGalaxy(lines, index, entry.indent, universe.id);
+        universe.galaxies.push(parsed.galaxy);
+        index = parsed.nextIndex;
+        continue;
+      }
+      applyContainerField(universe, entry.tokens, entry.line, "universe");
+      index += 1;
+    }
+    return { universe, nextIndex: index };
+  }
+  function parseGalaxy(lines, startIndex, indent, universeId) {
+    const header = analyzeLine(lines[startIndex], startIndex);
+    if (!header) {
+      throw createParseError('Expected "galaxy <id>" declaration', startIndex + 1, 1);
+    }
+    const galaxy = {
+      ...createBaseFields("galaxy", header.tokens[1] ?? ""),
+      universeId,
+      systems: []
+    };
+    let index = startIndex + 1;
+    while (index < lines.length) {
+      const entry = analyzeLine(lines[index], index);
+      if (!entry) {
+        index += 1;
+        continue;
+      }
+      if (entry.indent <= indent) {
+        break;
+      }
+      if (entry.indent !== indent + 2) {
+        throw createParseError("Galaxy children must be indented by two spaces.", entry.line, entry.column);
+      }
+      if (entry.tokens[0] === "system" && entry.tokens[1]) {
+        const parsed = parseSystem(lines, index, entry.indent, universeId, galaxy.id);
+        galaxy.systems.push(parsed.system);
+        index = parsed.nextIndex;
+        continue;
+      }
+      applyContainerField(galaxy, entry.tokens, entry.line, "galaxy");
+      index += 1;
+    }
+    return { galaxy, nextIndex: index };
+  }
+  function parseSystem(lines, startIndex, indent, universeId, galaxyId) {
+    const header = analyzeLine(lines[startIndex], startIndex);
+    if (!header) {
+      throw createParseError('Expected "system <id>" declaration', startIndex + 1, 1);
+    }
+    const systemBase = {
+      ...createBaseFields("system", header.tokens[1] ?? ""),
+      universeId,
+      galaxyId,
+      systemSource: "",
+      atlasDocument: null,
+      materializedDocument: null,
+      diagnostics: []
+    };
+    const forwardedLines = [];
+    const sectionLines = [];
+    let activeSection = false;
+    let index = startIndex + 1;
+    while (index < lines.length) {
+      const raw = lines[index] ?? "";
+      const entry = analyzeLine(raw, index);
+      if (!entry) {
+        if (activeSection) {
+          sectionLines.push("");
+        }
+        index += 1;
+        continue;
+      }
+      if (entry.indent <= indent) {
+        break;
+      }
+      if (entry.indent === indent + 2) {
+        const keyword = entry.tokens[0];
+        if (SECTION_KEYWORDS.has(keyword)) {
+          activeSection = true;
+          sectionLines.push(raw.slice(indent + 2));
+        } else {
+          activeSection = false;
+          applyContainerField(systemBase, entry.tokens, entry.line, "system");
+          if (SYSTEM_FORWARD_FIELDS.has(keyword)) {
+            forwardedLines.push(`  ${tokensToLine(entry.tokens)}`);
+          }
+        }
+        index += 1;
+        continue;
+      }
+      if (!activeSection) {
+        throw createParseError("System metadata fields may not contain nested blocks.", entry.line, entry.column);
+      }
+      sectionLines.push(raw.slice(indent + 2));
+      index += 1;
+    }
+    const syntheticSource = [
+      "schema 3.1",
+      "",
+      `system ${systemBase.id}`,
+      ...forwardedLines,
+      ...forwardedLines.length > 0 ? [""] : [],
+      ...trimTrailingEmptyLines(sectionLines)
+    ].join("\n").trim();
+    systemBase.systemSource = syntheticSource;
+    try {
+      const atlasDocument = parseWorldOrbitAtlas(syntheticSource);
+      systemBase.atlasDocument = atlasDocument;
+      systemBase.diagnostics.push(...atlasDocument.diagnostics);
+      try {
+        systemBase.materializedDocument = materializeAtlasDocument(atlasDocument);
+      } catch (error2) {
+        systemBase.diagnostics.push(diagnosticFromError(error2, "normalize", "hierarchy.system.materialize.failed"));
+      }
+    } catch (error2) {
+      systemBase.diagnostics.push(diagnosticFromError(error2, "parse", "hierarchy.system.parse.failed"));
+    }
+    return { system: systemBase, nextIndex: index };
+  }
+  function createUniverse(id) {
+    return {
+      ...createBaseFields("universe", id),
+      galaxies: []
+    };
+  }
+  function createBaseFields(kind, id) {
+    if (!id) {
+      throw createParseError(`Expected identifier after "${kind}"`, 1, 1);
+    }
+    return {
+      kind,
+      id,
+      title: null,
+      description: null,
+      tags: [],
+      color: null,
+      image: null,
+      hidden: false,
+      epoch: null,
+      referencePlane: null,
+      properties: {}
+    };
+  }
+  function applyContainerField(container, tokens, line, scope) {
+    const key = tokens[0] ?? "";
+    if (!key || tokens.length < 2) {
+      throw createParseError(`Invalid ${scope} field line`, line, 1);
+    }
+    const valueTokens = tokens.slice(1);
+    if (key === "title" || key === "description" || key === "color" || key === "image" || key === "epoch" || key === "referencePlane") {
+      const value = valueTokens.join(" ").trim();
+      container[key] = value || null;
+      container.properties[key] = value || "";
+      return;
+    }
+    if (LIST_FIELDS.has(key)) {
+      container.tags = valueTokens;
+      container.properties[key] = [...valueTokens];
+      return;
+    }
+    if (BOOL_FIELDS.has(key)) {
+      const normalized = valueTokens[0]?.toLowerCase();
+      const boolValue = normalized === "true" || normalized === "yes" || normalized === "on";
+      container.hidden = boolValue;
+      container.properties[key] = boolValue;
+      return;
+    }
+    container.properties[key] = valueTokens.length > 1 ? [...valueTokens] : valueTokens[0] ?? "";
+  }
+  function collectSystemDiagnostics(universe) {
+    const diagnostics = [];
+    for (const galaxy of universe.galaxies) {
+      for (const system of galaxy.systems) {
+        diagnostics.push(...system.diagnostics);
+      }
+    }
+    return diagnostics;
+  }
+  function trimTrailingEmptyLines(lines) {
+    const next = [...lines];
+    while (next.length > 0 && !next.at(-1)?.trim()) {
+      next.pop();
+    }
+    return next;
+  }
+  function tokensToLine(tokens) {
+    return tokens.map((token) => /\s/.test(token) ? JSON.stringify(token) : token).join(" ");
+  }
+  function firstMeaningfulLine(lines) {
+    return nextMeaningfulLine(lines, 0);
+  }
+  function nextMeaningfulLine(lines, startIndex) {
+    for (let index = startIndex; index < lines.length; index += 1) {
+      const analyzed = analyzeLine(lines[index] ?? "", index);
+      if (analyzed) {
+        return analyzed;
+      }
+    }
+    return null;
+  }
+  function analyzeLine(line, index) {
+    const withoutComment = stripComment(line);
+    if (!withoutComment.trim()) {
+      return null;
+    }
+    const indent = withoutComment.match(/^ */)?.[0].length ?? 0;
+    const tokens = tokenize(withoutComment.trim());
+    if (tokens.length === 0) {
+      return null;
+    }
+    return {
+      index,
+      line: index + 1,
+      column: indent + 1,
+      indent,
+      tokens
+    };
+  }
+  function stripComment(line) {
+    let inQuote = false;
+    for (let index = 0; index < line.length; index += 1) {
+      const char = line[index];
+      if (char === '"' && line[index - 1] !== "\\") {
+        inQuote = !inQuote;
+      }
+      if (!inQuote && char === "#") {
+        return line.slice(0, index);
+      }
+    }
+    return line;
+  }
+  function tokenize(line) {
+    const tokens = [];
+    let current = "";
+    let inQuote = false;
+    for (let index = 0; index < line.length; index += 1) {
+      const char = line[index];
+      if (char === '"' && line[index - 1] !== "\\") {
+        if (inQuote) {
+          tokens.push(current);
+          current = "";
+          inQuote = false;
+        } else {
+          if (current.trim()) {
+            tokens.push(current.trim());
+            current = "";
+          }
+          inQuote = true;
+        }
+        continue;
+      }
+      if (!inQuote && /\s/.test(char)) {
+        if (current) {
+          tokens.push(current);
+          current = "";
+        }
+        continue;
+      }
+      current += char;
+    }
+    if (current) {
+      tokens.push(current);
+    }
+    if (inQuote) {
+      throw createParseError("Unclosed quoted string", 1, 1);
+    }
+    return tokens;
+  }
+  function createParseError(message, line, column) {
+    const error2 = new Error(message);
+    error2.line = line;
+    error2.column = column;
+    return error2;
+  }
+
+  // packages/core/dist/hierarchy-load.js
+  function detectWorldOrbitHierarchySchemaVersion(source) {
+    for (const line of source.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) {
+        continue;
+      }
+      return /^schema\s+4\.0$/i.test(trimmed) ? "4.0" : null;
+    }
+    return null;
+  }
+  function loadWorldOrbitHierarchySource(source) {
+    const result = loadWorldOrbitHierarchySourceWithDiagnostics(source);
+    if (!result.ok || !result.value) {
+      const diagnostic = result.diagnostics[0];
+      const error2 = new Error(diagnostic?.message ?? "Failed to load WorldOrbit hierarchy source");
+      error2.line = diagnostic?.line;
+      error2.column = diagnostic?.column;
+      throw error2;
+    }
+    return result.value;
+  }
+  function loadWorldOrbitHierarchySourceWithDiagnostics(source) {
+    const schemaVersion = detectWorldOrbitHierarchySchemaVersion(source);
+    if (!schemaVersion) {
+      const diagnostics = [
+        {
+          code: "hierarchy.schema.unsupported",
+          severity: "error",
+          source: "parse",
+          message: 'WorldOrbit hierarchy expects "schema 4.0".',
+          line: 1,
+          column: 1
+        }
+      ];
+      return { ok: false, value: null, diagnostics };
+    }
+    try {
+      const hierarchyDocument = parseWorldOrbitHierarchyDocument(source);
+      const firstSystem = hierarchyDocument.universe.galaxies[0]?.systems[0]?.materializedDocument ?? {
+        format: "worldorbit",
+        version: "1.0",
+        schemaVersion: "4.0",
+        theme: null,
+        system: null,
+        groups: [],
+        relations: [],
+        events: [],
+        trajectories: [],
+        objects: []
+      };
+      return {
+        ok: true,
+        value: {
+          schemaVersion,
+          ast: null,
+          document: firstSystem,
+          atlasDocument: null,
+          draftDocument: null,
+          hierarchyDocument,
+          diagnostics: hierarchyDocument.diagnostics
+        },
+        diagnostics: hierarchyDocument.diagnostics
+      };
+    } catch (error2) {
+      return {
+        ok: false,
+        value: null,
+        diagnostics: [diagnosticFromError(error2, "parse", "hierarchy.load.failed")]
+      };
+    }
+  }
+
   // packages/core/dist/atlas-edit.js
   function createEmptyAtlasDocument(systemId = "WorldOrbit", version = "3.0") {
     return {
@@ -38759,6 +39371,7 @@ void main() {
   }
 
   // packages/core/dist/load.js
+  var HIERARCHY_SCHEMA_40_PATTERN = /^schema\s+4\.0$/i;
   var ATLAS_SCHEMA_PATTERN = /^schema\s+(?:2(?:\.0|\.1|\.5|\.6)?|3(?:\.0|\.1)?)$/i;
   var ATLAS_SCHEMA_21_PATTERN = /^schema\s+2\.1$/i;
   var ATLAS_SCHEMA_25_PATTERN = /^schema\s+2\.5$/i;
@@ -38789,6 +39402,9 @@ void main() {
       }
       if (ATLAS_SCHEMA_31_PATTERN.test(trimmed)) {
         return "3.1";
+      }
+      if (HIERARCHY_SCHEMA_40_PATTERN.test(trimmed)) {
+        return "4.0";
       }
       if (ATLAS_SCHEMA_PATTERN.test(trimmed)) {
         return "2.0";
@@ -38850,7 +39466,10 @@ void main() {
   }
   function loadWorldOrbitSourceWithDiagnostics(source) {
     const schemaVersion = detectWorldOrbitSchemaVersion(source);
-    if (schemaVersion === "2.0" || schemaVersion === "2.0-draft" || schemaVersion === "2.1" || schemaVersion === "2.5" || schemaVersion === "2.6" || schemaVersion === "3.0" || schemaVersion === "3.1") {
+    if (schemaVersion === "4.0" || schemaVersion === "2.0" || schemaVersion === "2.0-draft" || schemaVersion === "2.1" || schemaVersion === "2.5" || schemaVersion === "2.6" || schemaVersion === "3.0" || schemaVersion === "3.1") {
+      if (schemaVersion === "4.0") {
+        return loadWorldOrbitHierarchySourceWithDiagnostics(source);
+      }
       return loadAtlasSourceWithDiagnostics(source, schemaVersion);
     }
     let ast;
@@ -38890,6 +39509,7 @@ void main() {
         document: document2,
         atlasDocument: null,
         draftDocument: null,
+        hierarchyDocument: null,
         diagnostics: []
       },
       diagnostics: []
@@ -38930,6 +39550,7 @@ void main() {
       document: document2,
       atlasDocument,
       draftDocument: atlasDocument,
+      hierarchyDocument: null,
       diagnostics: atlasDiagnostics
     };
     return {
@@ -40138,6 +40759,99 @@ void main() {
     return escapeXml(value);
   }
 
+  // packages/viewer/dist/hierarchy-render.js
+  function renderHierarchySceneToSvg(scene, options = {}) {
+    if (scene.scope === "system" && scene.atlasScene) {
+      return renderSceneToSvg(scene.atlasScene, {
+        selectedObjectId: options.selectedNodeId ?? null
+      });
+    }
+    const selectedNodeId = options.selectedNodeId ?? null;
+    const nodeIndex = new Map(scene.nodes.map((node) => [node.id, node]));
+    const links = scene.links.map((link) => {
+      const from = nodeIndex.get(link.fromId);
+      const to = nodeIndex.get(link.toId);
+      if (!from || !to) {
+        return "";
+      }
+      return `<line class="woc-link" x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" />`;
+    }).join("");
+    const nodes = scene.nodes.filter((node) => !node.hidden).map((node) => renderNode(node, selectedNodeId)).join("");
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${scene.width}" height="${scene.height}" viewBox="0 0 ${scene.width} ${scene.height}" role="img" aria-labelledby="woc-title woc-desc">
+  <title id="woc-title">${escapeXml2(scene.title)}</title>
+  <desc id="woc-desc">${escapeXml2(scene.subtitle)}</desc>
+  <defs>
+    <radialGradient id="woc-bg" cx="50%" cy="35%" r="85%">
+      <stop offset="0%" stop-color="#102448" />
+      <stop offset="100%" stop-color="#07101f" />
+    </radialGradient>
+  </defs>
+  <style>
+    .woc-bg { fill: url(#woc-bg); }
+    .woc-grid { stroke: rgba(123, 208, 255, 0.07); stroke-width: 1; }
+    .woc-link { stroke: rgba(123, 208, 255, 0.18); stroke-width: 1.6; }
+    .woc-node { cursor: pointer; }
+    .woc-node-body { fill: #7bd0ff; fill-opacity: 0.16; stroke: rgba(223, 228, 255, 0.86); stroke-width: 1.5; }
+    .woc-node-preview .woc-node-body { fill-opacity: 0.28; stroke-width: 1; }
+    .woc-node-selected .woc-node-body { stroke: #f0b464; stroke-width: 2.6; }
+    .woc-node-label { fill: #edf6ff; font: 700 13px/1.2 "Segoe UI Variable", "Segoe UI", sans-serif; letter-spacing: 0.03em; text-transform: uppercase; }
+    .woc-node-subtitle { fill: rgba(237, 246, 255, 0.7); font: 500 11px/1.3 "Segoe UI Variable", "Segoe UI", sans-serif; }
+    .woc-title { fill: #edf6ff; font: 700 26px/1 "Segoe UI Variable Display", "Segoe UI", sans-serif; letter-spacing: 0.04em; text-transform: uppercase; }
+    .woc-subtitle { fill: rgba(237, 246, 255, 0.7); font: 500 12px/1.2 "Segoe UI Variable", "Segoe UI", sans-serif; letter-spacing: 0.08em; text-transform: uppercase; }
+    .woc-meta { fill: rgba(237, 246, 255, 0.58); font: 500 11px/1.2 "Segoe UI Variable", "Segoe UI", sans-serif; }
+  </style>
+  <rect class="woc-bg" x="0" y="0" width="${scene.width}" height="${scene.height}" rx="28" ry="28" />
+  ${renderBackdrop2(scene.width, scene.height)}
+  <text class="woc-title" x="48" y="62">${escapeXml2(scene.title)}</text>
+  <text class="woc-subtitle" x="48" y="84">${escapeXml2(scene.subtitle)}</text>
+  <text class="woc-meta" x="48" y="${scene.height - 32}">${escapeXml2(`schema 4.0 - ${scene.scope} scope - zoom ${scene.zoom.toFixed(2)}`)}</text>
+  <g data-worldorbit-hierarchy-scope="${escapeAttribute2(scene.scope)}">
+    ${links}
+    ${nodes}
+  </g>
+</svg>`;
+  }
+  function renderNode(node, selectedNodeId) {
+    const selectedClass = selectedNodeId === node.id ? " woc-node-selected" : "";
+    const previewClass = node.preview ? " woc-node-preview" : "";
+    const fill = node.fill ?? defaultFillForKind(node.kind);
+    const subtitle = node.subtitle ? `<text class="woc-node-subtitle" x="${node.x}" y="${node.y + node.radius + 22}" text-anchor="middle">${escapeXml2(node.subtitle)}</text>` : "";
+    return `<g class="woc-node${selectedClass}${previewClass}" data-worldorbit-hierarchy-node-id="${escapeAttribute2(node.id)}" data-worldorbit-hierarchy-kind="${escapeAttribute2(node.kind)}">
+    <circle class="woc-node-body" cx="${node.x}" cy="${node.y}" r="${node.radius}" fill="${escapeAttribute2(fill)}" />
+    <text class="woc-node-label" x="${node.x}" y="${node.y + 4}" text-anchor="middle">${escapeXml2(node.label)}</text>
+    ${!node.preview ? subtitle : ""}
+  </g>`;
+  }
+  function defaultFillForKind(kind) {
+    switch (kind) {
+      case "universe":
+        return "#95b8ff";
+      case "galaxy":
+        return "#a07fff";
+      case "system":
+        return "#7bd0ff";
+      default:
+        return "#c8d7ff";
+    }
+  }
+  function renderBackdrop2(width, height) {
+    const vertical = Array.from({ length: 8 }, (_, index) => {
+      const x = 70 + index * ((width - 140) / 7);
+      return `<line class="woc-grid" x1="${x}" y1="120" x2="${x}" y2="${height - 70}" />`;
+    }).join("");
+    const horizontal = Array.from({ length: 5 }, (_, index) => {
+      const y = 150 + index * ((height - 220) / 4);
+      return `<line class="woc-grid" x1="48" y1="${y}" x2="${width - 48}" y2="${y}" />`;
+    }).join("");
+    return `${vertical}${horizontal}`;
+  }
+  function escapeXml2(value) {
+    return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&apos;");
+  }
+  function escapeAttribute2(value) {
+    return escapeXml2(value);
+  }
+
   // packages/viewer/dist/minimap.js
   var MINIMAP_WIDTH = 180;
   var MINIMAP_HEIGHT = 120;
@@ -40967,7 +41681,7 @@ void main() {
     ].filter(Boolean);
     return `<article class="wo-tooltip-card" data-tooltip-object-id="${escapeHtml2(details.objectId)}">
     <div class="wo-tooltip-head">
-      ${details.imageHref ? `<img class="wo-tooltip-image" src="${escapeAttribute2(details.imageHref)}" alt="" />` : `<div class="wo-tooltip-image wo-tooltip-image-placeholder">${escapeHtml2(details.typeLabel.slice(0, 1))}</div>`}
+      ${details.imageHref ? `<img class="wo-tooltip-image" src="${escapeAttribute3(details.imageHref)}" alt="" />` : `<div class="wo-tooltip-image wo-tooltip-image-placeholder">${escapeHtml2(details.typeLabel.slice(0, 1))}</div>`}
       <div class="wo-tooltip-heading">
         <strong>${escapeHtml2(details.title)}</strong>
         <span>${escapeHtml2(details.typeLabel)}</span>
@@ -41097,7 +41811,7 @@ void main() {
   function escapeHtml2(value) {
     return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
   }
-  function escapeAttribute2(value) {
+  function escapeAttribute3(value) {
     return escapeHtml2(value);
   }
 
@@ -42978,7 +43692,7 @@ void main() {
       subtitle: mergedPayload.options?.subtitle,
       preset: mergedPayload.options?.preset
     });
-    return `<div class="${escapeAttribute3(options.className ?? "worldorbit-embed")}" data-worldorbit-embed="true" data-worldorbit-mode="${mergedPayload.mode}" data-worldorbit-preset="${escapeAttribute3(mergedPayload.options?.preset ?? payload.scene.renderPreset ?? "custom")}" data-worldorbit-viewpoint="${escapeAttribute3(mergedPayload.options?.initialViewpointId ?? "")}" data-worldorbit-payload="${escapeAttribute3(serializeWorldOrbitEmbedPayload(mergedPayload))}">${html}</div>`;
+    return `<div class="${escapeAttribute4(options.className ?? "worldorbit-embed")}" data-worldorbit-embed="true" data-worldorbit-mode="${mergedPayload.mode}" data-worldorbit-preset="${escapeAttribute4(mergedPayload.options?.preset ?? payload.scene.renderPreset ?? "custom")}" data-worldorbit-viewpoint="${escapeAttribute4(mergedPayload.options?.initialViewpointId ?? "")}" data-worldorbit-payload="${escapeAttribute4(serializeWorldOrbitEmbedPayload(mergedPayload))}">${html}</div>`;
   }
   function mountWorldOrbitEmbeds(root = document, options = {}) {
     const viewers = /* @__PURE__ */ new Map();
@@ -43127,7 +43841,7 @@ void main() {
     }
     return deserializeWorldOrbitEmbedPayload(serialized);
   }
-  function escapeAttribute3(value) {
+  function escapeAttribute4(value) {
     return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
   }
   function normalizeEmbedMode(mode) {
@@ -43140,7 +43854,7 @@ void main() {
     return mode === "interactive-3d" ? "3d" : "2d";
   }
   function render3DUnavailableMarkup(message) {
-    return `<div class="worldorbit-embed-unavailable" data-worldorbit-3d-unavailable="true"><strong>3D unavailable</strong><span>${escapeAttribute3(message)}</span></div>`;
+    return `<div class="worldorbit-embed-unavailable" data-worldorbit-3d-unavailable="true"><strong>3D unavailable</strong><span>${escapeAttribute4(message)}</span></div>`;
   }
 
   // packages/viewer/dist/atlas-viewer.js
@@ -43675,6 +44389,114 @@ void main() {
   }
   function parseSource(source) {
     return loadWorldOrbitSource(source).document;
+  }
+
+  // packages/viewer/dist/hierarchy-viewer.js
+  function createHierarchyViewer(container, options = {}) {
+    if (!(container instanceof HTMLElement)) {
+      throw new Error("WorldOrbit hierarchy viewer requires an HTMLElement container.");
+    }
+    let source = options.source ?? "";
+    let loaded = source ? loadWorldOrbitSource(source) : null;
+    let scope = options.scope ?? "system";
+    let zoom = options.zoom ?? 1;
+    let activeGalaxyId = options.activeGalaxyId ?? null;
+    let activeSystemId = options.activeSystemId ?? null;
+    let selectedNodeId = null;
+    let destroyed = false;
+    let scene = loaded ? loaded.hierarchyDocument ? renderHierarchyDocumentToScene(loaded.hierarchyDocument, {
+      width: options.width,
+      height: options.height,
+      padding: options.padding,
+      scope,
+      zoom,
+      activeGalaxyId,
+      activeSystemId
+    }) : null : null;
+    container.classList.add("woc-viewer");
+    container.addEventListener("click", handleClick);
+    render2();
+    return {
+      setSource(nextSource) {
+        source = nextSource;
+        loaded = nextSource ? loadWorldOrbitSource(nextSource) : null;
+        scene = loaded ? loaded.hierarchyDocument ? renderHierarchyDocumentToScene(loaded.hierarchyDocument, {
+          width: options.width,
+          height: options.height,
+          padding: options.padding,
+          scope,
+          zoom,
+          activeGalaxyId,
+          activeSystemId
+        }) : null : null;
+        render2();
+      },
+      setScope(nextScope) {
+        scope = nextScope;
+        rerender();
+      },
+      setZoom(nextZoom) {
+        zoom = nextZoom;
+        rerender();
+      },
+      setActiveGalaxy(galaxyId) {
+        activeGalaxyId = galaxyId;
+        rerender();
+      },
+      setActiveSystem(systemId) {
+        activeSystemId = systemId;
+        rerender();
+      },
+      setSelection(nodeId) {
+        selectedNodeId = nodeId;
+        render2();
+      },
+      getScene() {
+        return scene;
+      },
+      getLoadedSource() {
+        return loaded;
+      },
+      destroy() {
+        destroyed = true;
+        container.removeEventListener("click", handleClick);
+        container.innerHTML = "";
+      }
+    };
+    function rerender() {
+      scene = loaded ? loaded.hierarchyDocument ? renderHierarchyDocumentToScene(loaded.hierarchyDocument, {
+        width: options.width,
+        height: options.height,
+        padding: options.padding,
+        scope,
+        zoom,
+        activeGalaxyId,
+        activeSystemId
+      }) : null : null;
+      render2();
+    }
+    function render2() {
+      if (destroyed) {
+        return;
+      }
+      if (!scene) {
+        container.innerHTML = `<div style="padding:16px;color:#edf6ff;background:#07101f;border:1px solid rgba(123,208,255,.16)">WorldOrbit hierarchy viewer is waiting for a schema 4.0 source.</div>`;
+        return;
+      }
+      container.innerHTML = renderHierarchySceneToSvg(scene, {
+        selectedNodeId
+      });
+    }
+    function handleClick(event) {
+      const target = event.target;
+      const node = target?.closest?.("[data-worldorbit-hierarchy-node-id]");
+      if (!node) {
+        return;
+      }
+      selectedNodeId = node.dataset.worldorbitHierarchyNodeId ?? null;
+      render2();
+      options.onSelectionChange?.(selectedNodeId);
+    }
   }
 
   // packages/viewer/dist/interactive-2d.js

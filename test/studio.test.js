@@ -10,35 +10,30 @@ import {
   loadSessionState,
 } from "../studio/studio-app.js";
 
-const studioSource = `schema 3.0
+const studioSource = `schema 4.0
 
-system Studio
+universe Studio-Verse
   title "Studio Test"
-  epoch "JY-0001.0"
-  referencePlane ecliptic
 
-defaults
-  view orthographic
-  preset atlas-card
+  galaxy Dawn-Spindle
+    title "Dawn Spindle"
 
-viewpoint overview
-  projection perspective
-  camera
-    azimuth 30
-    elevation 18
-    distance 5
+    system Studio
+      title "Studio Test"
+      epoch "JY-0001.0"
+      referencePlane ecliptic
 
-group inner-system
-  label "Inner System"
+      defaults
+        view orthographic
+        preset atlas-card
 
-object star Primary
-  mass 1sol
+      object star Primary
+        mass 1sol
 
-object planet Home
-  orbit Primary
-  semiMajor 1au
-  phase 48deg
-  groups inner-system
+      object planet Home
+        orbit Primary
+        semiMajor 1au
+        phase 48deg
 `.trim();
 
 function installDomGlobals(window) {
@@ -165,8 +160,8 @@ test("studio and docs shells use local workspace and docs asset paths with page-
 
   assert.match(studioHtml, /"@worldorbit\/viewer": "\.\.\/packages\/viewer\/dist\/index\.js"/);
   assert.match(docsStudioHtml, /"@worldorbit\/viewer": "\.\.\/assets\/browser\/viewer\/dist\/index\.js"/);
-  assert.match(studioHtml, /data-example-url="\.\.\/examples\/studio\.(?:schema25|current)\.worldorbit"/);
-  assert.match(docsStudioHtml, /data-example-url="\.\.\/examples\/studio\.(?:schema25|current)\.worldorbit"/);
+  assert.match(studioHtml, /data-example-url="\.\.\/examples\/cosmos\.multiscale\.worldorbit"/);
+  assert.match(docsStudioHtml, /data-example-url="\.\.\/examples\/cosmos\.multiscale\.worldorbit"/);
   assert.match(
     studioHtml,
     /"@worldorbit\/editor": "\.\.\/packages\/editor\/dist\/index\.js"/,

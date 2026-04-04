@@ -1,4 +1,5 @@
 export type * from "./types.js";
+export type * from "./hierarchy-types.js";
 export { WorldOrbit3DUnavailableError, WorldOrbitViewerError } from "./errors.js";
 export { getThemePreset, resolveLayers, resolveTheme } from "./theme.js";
 export {
@@ -29,6 +30,7 @@ export {
   renderSceneToSvg,
   renderSourceToSvg,
 } from "./render.js";
+export { renderHierarchySceneToSvg } from "./hierarchy-render.js";
 export {
   createEmbedPayload,
   createWorldOrbitEmbedMarkup,
@@ -38,5 +40,6 @@ export {
 } from "./embed.js";
 export { defineWorldOrbitViewerElement } from "./custom-element.js";
 export { createAtlasViewer } from "./atlas-viewer.js";
+export { createHierarchyViewer } from "./hierarchy-viewer.js";
 export { createInteractiveViewer } from "./viewer.js";
 export { createInteractiveViewer2D } from "./interactive-2d.js";

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { loadCosmosSource, renderCosmosDocumentToScene } from "@worldorbit-cosmos/core";
-import { renderCosmosSceneToSvg } from "@worldorbit-cosmos/viewer";
+import { loadWorldOrbitSource, renderHierarchyDocumentToScene } from "@worldorbit/core";
+import { renderHierarchySceneToSvg } from "@worldorbit/viewer";
 
 const source = `schema 4.0
 
@@ -33,18 +33,19 @@ universe Asterion
 `;
 
 test("cosmos viewer renders galaxies in universe scope and systems in galaxy scope", () => {
-  const loaded = loadCosmosSource(source);
+  const loaded = loadWorldOrbitSource(source);
+  assert.ok(loaded.hierarchyDocument);
 
-  const universeScene = renderCosmosDocumentToScene(loaded.document, {
+  const universeScene = renderHierarchyDocumentToScene(loaded.hierarchyDocument, {
     scope: "universe",
     zoom: 1.6,
   });
   assert.equal(universeScene.scope, "universe");
   assert.ok(universeScene.nodes.some((node) => node.kind === "galaxy" && node.preview === false));
   assert.ok(universeScene.nodes.some((node) => node.kind === "system" && node.preview === true));
-  assert.match(renderCosmosSceneToSvg(universeScene), /data-cosmos-node-id="Azure-Spindle"/);
+  assert.match(renderHierarchySceneToSvg(universeScene), /data-worldorbit-hierarchy-node-id="Azure-Spindle"/);
 
-  const galaxyScene = renderCosmosDocumentToScene(loaded.document, {
+  const galaxyScene = renderHierarchyDocumentToScene(loaded.hierarchyDocument, {
     scope: "galaxy",
     activeGalaxyId: "Azure-Spindle",
     zoom: 1.7,
@@ -53,11 +54,11 @@ test("cosmos viewer renders galaxies in universe scope and systems in galaxy sco
   assert.ok(galaxyScene.nodes.some((node) => node.kind === "system" && node.preview === false));
   assert.ok(galaxyScene.nodes.some((node) => node.kind === "object" && node.preview === true));
 
-  const systemScene = renderCosmosDocumentToScene(loaded.document, {
+  const systemScene = renderHierarchyDocumentToScene(loaded.hierarchyDocument, {
     scope: "system",
     activeSystemId: "Helion",
   });
   assert.equal(systemScene.scope, "system");
   assert.ok(systemScene.atlasScene);
-  assert.match(renderCosmosSceneToSvg(systemScene), /data-worldorbit-svg="true"/);
+  assert.match(renderHierarchySceneToSvg(systemScene), /data-worldorbit-svg="true"/);
 });

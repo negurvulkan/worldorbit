@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseCosmosDocument } from "@worldorbit-cosmos/core";
+import { parseWorldOrbitHierarchyDocument } from "@worldorbit/core";
 
 const source = `schema 4.0
 
@@ -28,7 +28,7 @@ universe Asterion
 `;
 
 test("schema 4.0 parses nested universe, galaxy, and system containers", () => {
-  const document = parseCosmosDocument(source);
+  const document = parseWorldOrbitHierarchyDocument(source);
 
   assert.equal(document.schemaVersion, "4.0");
   assert.equal(document.suiteVersion, "6.0.0");

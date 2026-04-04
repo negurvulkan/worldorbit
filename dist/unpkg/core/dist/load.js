@@ -2,9 +2,11 @@ import { diagnosticFromError } from "./diagnostics.js";
 import { materializeAtlasDocument } from "./draft.js";
 import { parseWorldOrbitAtlas } from "./draft-parse.js";
 import { WorldOrbitError } from "./errors.js";
+import { loadWorldOrbitHierarchySourceWithDiagnostics } from "./hierarchy-load.js";
 import { normalizeDocument } from "./normalize.js";
 import { parseWorldOrbit } from "./parse.js";
 import { validateDocument } from "./validate.js";
+const HIERARCHY_SCHEMA_40_PATTERN = /^schema\s+4\.0$/i;
 const ATLAS_SCHEMA_PATTERN = /^schema\s+(?:2(?:\.0|\.1|\.5|\.6)?|3(?:\.0|\.1)?)$/i;
 const ATLAS_SCHEMA_21_PATTERN = /^schema\s+2\.1$/i;
 const ATLAS_SCHEMA_25_PATTERN = /^schema\s+2\.5$/i;
@@ -35,6 +37,9 @@ export function detectWorldOrbitSchemaVersion(source) {
         }
         if (ATLAS_SCHEMA_31_PATTERN.test(trimmed)) {
             return "3.1";
+        }
+        if (HIERARCHY_SCHEMA_40_PATTERN.test(trimmed)) {
+            return "4.0";
         }
         if (ATLAS_SCHEMA_PATTERN.test(trimmed)) {
             return "2.0";
@@ -96,13 +101,17 @@ export function loadWorldOrbitSource(source) {
 }
 export function loadWorldOrbitSourceWithDiagnostics(source) {
     const schemaVersion = detectWorldOrbitSchemaVersion(source);
-    if (schemaVersion === "2.0" ||
+    if (schemaVersion === "4.0" ||
+        schemaVersion === "2.0" ||
         schemaVersion === "2.0-draft" ||
         schemaVersion === "2.1" ||
         schemaVersion === "2.5" ||
         schemaVersion === "2.6" ||
         schemaVersion === "3.0" ||
         schemaVersion === "3.1") {
+        if (schemaVersion === "4.0") {
+            return loadWorldOrbitHierarchySourceWithDiagnostics(source);
+        }
         return loadAtlasSourceWithDiagnostics(source, schemaVersion);
     }
     let ast;
@@ -145,6 +154,7 @@ export function loadWorldOrbitSourceWithDiagnostics(source) {
             document,
             atlasDocument: null,
             draftDocument: null,
+            hierarchyDocument: null,
             diagnostics: [],
         },
         diagnostics: [],
@@ -187,6 +197,7 @@ function loadAtlasSourceWithDiagnostics(source, schemaVersion) {
         document,
         atlasDocument,
         draftDocument: atlasDocument,
+        hierarchyDocument: null,
         diagnostics: atlasDiagnostics,
     };
     return {

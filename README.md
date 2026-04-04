@@ -29,53 +29,38 @@ WorldOrbit is not intended to be a real-world astronomy simulator or a high-prec
 ## Quick Example
 
 ```worldorbit
-schema 3.1
+schema 4.0
 
-system Iyath
-  title "Iyath System"
-  epoch "JY-0001.0"
-  referencePlane ecliptic
+universe Iyath-Verse
+  title "Iyath Verse"
 
-defaults
-  view orthographic
-  scale presentation
-  preset atlas-card
-  theme atlas
+  galaxy Dawn-Spindle
+    title "Dawn Spindle"
 
-group inner-system
-  label "Inner System"
-  color #d9b37a
+    system Iyath
+      title "Iyath System"
+      epoch "JY-0001.0"
+      referencePlane ecliptic
 
-viewpoint eclipse
-  label "Eclipse View"
-  projection perspective
-  camera
-    azimuth 36
-    elevation 22
-    distance 6
-  layers background guides orbits-back events objects labels metadata
-  events naar-eclipse
+      defaults
+        view orthographic
+        scale presentation
+        preset atlas-card
 
-object star Iyath
+      object star Iyath
 
-object planet Naar
-  orbit Iyath
-  semiMajor 1.18au
-  eccentricity 0.08
-  angle 28deg
-  inclination 24deg
-  phase 42deg
-  atmosphere nitrogen-oxygen
-  groups inner-system
+      object planet Naar
+        orbit Iyath
+        semiMajor 1.18au
+        eccentricity 0.08
+        angle 28deg
+        inclination 24deg
+        phase 42deg
+        atmosphere nitrogen-oxygen
 
-object moon Seyra
-  orbit Naar
-  distance 384400km
-
-event naar-eclipse
-  kind solar-eclipse
-  target Naar
-  participants Iyath Naar Seyra
+      object moon Seyra
+        orbit Naar
+        distance 384400km
 ````
 
 ## Installation
@@ -138,18 +123,20 @@ For direct browser usage, use the browser bundle:
       import {
         createInteractiveViewer,
         loadWorldOrbitSource
-      } from "https://unpkg.com/worldorbit@5.0.0/dist/unpkg/worldorbit.esm.js";
+      } from "https://unpkg.com/worldorbit@6.0.0/dist/unpkg/worldorbit.esm.js";
 
       const source = `
-schema 3.1
+schema 4.0
 
-system Iyath
-  epoch "JY-0001.0"
+universe Iyath-Verse
+  galaxy Dawn-Spindle
+    system Iyath
+      epoch "JY-0001.0"
 
-object star Iyath
-object planet Naar
-  orbit Iyath
-  semiMajor 1.18au
+      object star Iyath
+      object planet Naar
+        orbit Iyath
+        semiMajor 1.18au
 `.trim();
 
       const loaded = loadWorldOrbitSource(source);
@@ -196,10 +183,10 @@ The editor is optional. The core format remains text-first.
 
 ## Canonical Schema
 
-New atlas authoring should start with:
+New hierarchy-first authoring should start with:
 
 ```worldorbit
-schema 3.1
+schema 4.0
 ```
 
 Example:
@@ -279,21 +266,18 @@ event naar-eclipse
       phase 90deg
 ```
 
-## What's New In Schema 3.1
+## What's New In Schema 4.0
 
-Schema `3.1` keeps Schema `3.0` and Schema `2.6` fully readable and expands WorldOrbit from declarative mission authoring into visible mission-curve rendering.
+Schema `4.0` makes `universe -> galaxy -> system` the canonical authoring hierarchy in the main WorldOrbit suite and absorbs the former Cosmos fork into the core packages.
 
 It adds:
 
-* visible `trajectory` rendering in 2D and 3D scenes
-* official `illustrative`, `solver`, and `auto` trajectory render modes
-* trajectory waypoint labels, dates, marker controls, and per-segment render hints
-* official trajectory sampling APIs through `worldorbit/core/solver`
-* continued support for declarative `craft`, `trajectory`, `event`, and `pose` mission authoring
+* renderable `universe`, `galaxy`, and `system` container nodes
+* integrated multi-scope viewing with `universe`, `galaxy`, and `system` scopes
+* continued support for visible `trajectory` rendering, `craft`, `event`, and `pose` mission authoring
+* continued readability for `schema 3.1` and older atlas documents through the loader and upgrade path
 
-Schema `3.1` still does **not** add a built-in N-body simulator, NASA-grade ephemerides, continuous freeform XYZ authoring, or hard astrophysics requirements.
-
-Schema `2.6` remains the direct compatibility base, and older documents continue to load through the same parser and normalization pipeline.
+Schema `4.0` still does **not** add a built-in N-body simulator, NASA-grade ephemerides, continuous freeform XYZ authoring, or hard astrophysics requirements.
 
 Stable `1.0` source is still accepted. Canonical `schema 2.0` source remains fully supported, and legacy `schema 2.0-draft` files stay readable as a compatibility path with a deprecation diagnostic.
 
@@ -432,7 +416,7 @@ const scene = renderDocumentToScene(loaded.document, {
 
 ## Viewer Capabilities
 
-Viewer features in `v5.0.0` include:
+Viewer features in `v6.0.0` include:
 
 * scene-based SVG rendering
 * renderer-neutral spatial scenes through `renderDocumentToSpatialScene(...)`
@@ -527,16 +511,6 @@ Useful notes:
 * `npm run build` compiles all packages and refreshes local package shims
 * `npm test` rebuilds first, then runs the regression suite
 * the repository remains parser-first: rendering and atlas interaction stay downstream of parse, normalize, and validate
-
-### Cosmos Fork
-
-This repository also contains an experimental forked suite for hierarchical `schema 4.0` documents:
-
-* `@worldorbit-cosmos/core`
-* `@worldorbit-cosmos/viewer`
-* `@worldorbit-cosmos/editor`
-
-The Cosmos fork introduces nested `universe -> galaxy -> system` authoring where both `galaxy` and `system` are renderable containers. Its viewer supports explicit `universe`, `galaxy`, and `system` scopes, and the local fork example lives in [examples/cosmos.multiscale.worldorbit](/H:/Projekte/worldorbit/examples/cosmos.multiscale.worldorbit). The local fork studio shell lives in [studio/cosmos.html](/H:/Projekte/worldorbit/studio/cosmos.html).
 
 ## Project Direction
 

@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { JSDOM } from "jsdom";
 
-import { createWorldOrbitCosmosEditor } from "@worldorbit-cosmos/editor";
+import { createHierarchyEditor } from "@worldorbit/editor";
 
 const source = `schema 4.0
 
@@ -57,18 +57,18 @@ test("cosmos editor mounts and switches scope", () => {
   const root = dom.window.document.getElementById("editor");
 
   try {
-    const editor = createWorldOrbitCosmosEditor(root, {
+    const editor = createHierarchyEditor(root, {
       source,
       width: 960,
       height: 640,
     });
 
-    assert.ok(root.querySelector("[data-cosmos-source]"));
-    assert.ok(root.querySelector("[data-cosmos-viewer] svg"));
+    assert.ok(root.querySelector("[data-hierarchy-source]"));
+    assert.ok(root.querySelector("[data-hierarchy-viewer] svg"));
     assert.equal(editor.getDocument()?.universe.id, "Asterion");
 
     editor.setScope("universe");
-    assert.match(root.querySelector("[data-cosmos-status]")?.textContent ?? "", /universe scope/);
+    assert.match(root.querySelector("[data-hierarchy-status]")?.textContent ?? "", /universe scope/);
 
     editor.destroy();
     assert.equal(root.textContent?.trim() ?? "", "");

@@ -1,17 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-test("cosmos fork packages resolve", async () => {
-  const core = await import("@worldorbit-cosmos/core");
-  const coreLoad = await import("@worldorbit-cosmos/core/load");
-  const coreScene = await import("@worldorbit-cosmos/core/scene");
-  const viewer = await import("@worldorbit-cosmos/viewer");
-  const editor = await import("@worldorbit-cosmos/editor");
+test("integrated hierarchy APIs resolve from main worldorbit packages", async () => {
+  const core = await import("@worldorbit/core");
+  const viewer = await import("@worldorbit/viewer");
+  const editor = await import("@worldorbit/editor");
 
-  assert.equal(typeof core.parseCosmosDocument, "function");
-  assert.equal(typeof coreLoad.loadCosmosSource, "function");
-  assert.equal(typeof coreScene.renderCosmosDocumentToScene, "function");
-  assert.equal(typeof viewer.renderCosmosSceneToSvg, "function");
-  assert.equal(typeof viewer.createWorldOrbitCosmosViewer, "function");
-  assert.equal(typeof editor.createWorldOrbitCosmosEditor, "function");
+  assert.equal(typeof core.parseWorldOrbitHierarchyDocument, "function");
+  assert.equal(typeof core.loadWorldOrbitHierarchySource, "function");
+  assert.equal(typeof core.renderHierarchyDocumentToScene, "function");
+  assert.equal(typeof viewer.renderHierarchySceneToSvg, "function");
+  assert.equal(typeof viewer.createHierarchyViewer, "function");
+  assert.equal(typeof editor.createHierarchyEditor, "function");
 });

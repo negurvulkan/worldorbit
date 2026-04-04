@@ -14,10 +14,14 @@ test("package entry points and slim subpaths resolve for core, viewer, markdown,
   assert.equal(typeof core.renderDocumentToScene, "function");
   assert.equal(typeof core.renderDocumentToSpatialScene, "function");
   assert.equal(typeof core.parseWorldOrbitAtlas, "function");
+  assert.equal(typeof core.parseWorldOrbitHierarchyDocument, "function");
+  assert.equal(typeof core.renderHierarchyDocumentToScene, "function");
   assert.equal(typeof coreLoad.loadWorldOrbitSourceWithDiagnostics, "function");
   assert.equal(typeof coreScene.renderDocumentToScene, "function");
   assert.equal(typeof viewer.renderSceneToSvg, "function");
+  assert.equal(typeof viewer.renderHierarchySceneToSvg, "function");
   assert.equal(typeof viewer.createInteractiveViewer, "function");
+  assert.equal(typeof viewer.createHierarchyViewer, "function");
   assert.equal(typeof viewer2d.createInteractiveViewer2D, "function");
   assert.equal(typeof viewer2d.renderSceneToSvg, "function");
   assert.equal(typeof viewer.createAtlasViewer, "function");
@@ -25,4 +29,5 @@ test("package entry points and slim subpaths resolve for core, viewer, markdown,
   assert.equal(typeof markdown.remarkWorldOrbit, "function");
   assert.equal(typeof markdown.rehypeWorldOrbit, "function");
   assert.equal(typeof editor.createWorldOrbitEditor, "function");
+  assert.equal(typeof editor.createHierarchyEditor, "function");
 });

@@ -13,6 +13,7 @@ export {
   validateDocumentWithDiagnostics,
 } from "./diagnostics.js";
 export { renderDocumentToScene, rotatePoint } from "./scene.js";
+export { renderHierarchyDocumentToScene } from "./hierarchy-scene.js";
 export {
   evaluateSpatialSceneAtTime,
   renderDocumentToSpatialScene,
@@ -26,6 +27,12 @@ export {
   upgradeDocumentToV2,
 } from "./draft.js";
 export { parseWorldOrbitAtlas, parseWorldOrbitDraft } from "./draft-parse.js";
+export { parseWorldOrbitHierarchyDocument } from "./hierarchy-parse.js";
+export {
+  detectWorldOrbitHierarchySchemaVersion,
+  loadWorldOrbitHierarchySource,
+  loadWorldOrbitHierarchySourceWithDiagnostics,
+} from "./hierarchy-load.js";
 export {
   cloneAtlasDocument,
   createEmptyAtlasDocument,

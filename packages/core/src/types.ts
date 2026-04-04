@@ -44,10 +44,12 @@ export type Unit =
 
 export type WorldOrbitDocumentVersion = "1.0";
 export type WorldOrbitAtlasDocumentVersion = "2.0" | "2.1" | "2.5" | "2.6" | "3.0" | "3.1";
+export type WorldOrbitHierarchyDocumentVersion = "4.0";
 export type WorldOrbitDraftDocumentVersion = "2.0-draft";
 export type WorldOrbitAnyDocumentVersion =
   | WorldOrbitDocumentVersion
   | WorldOrbitAtlasDocumentVersion
+  | WorldOrbitHierarchyDocumentVersion
   | WorldOrbitDraftDocumentVersion;
 export type ViewProjection =
   | "topdown"
@@ -982,5 +984,104 @@ export interface LoadedWorldOrbitSource {
   document: WorldOrbitDocument;
   atlasDocument: WorldOrbitAtlasDocument | null;
   draftDocument: WorldOrbitAtlasDocument | WorldOrbitDraftDocument | null;
+  hierarchyDocument?: WorldOrbitHierarchyDocument | null;
   diagnostics: WorldOrbitDiagnostic[];
+}
+
+export type WorldOrbitHierarchyScope = "universe" | "galaxy" | "system";
+export type WorldOrbitHierarchyContainerKind = "universe" | "galaxy" | "system";
+
+export interface WorldOrbitHierarchyContainerFields {
+  title: string | null;
+  description: string | null;
+  tags: string[];
+  color: string | null;
+  image: string | null;
+  hidden: boolean;
+  epoch?: string | null;
+  referencePlane?: string | null;
+  properties: Record<string, string | boolean | string[]>;
+}
+
+export interface WorldOrbitUniverse extends WorldOrbitHierarchyContainerFields {
+  kind: "universe";
+  id: string;
+  galaxies: WorldOrbitGalaxy[];
+}
+
+export interface WorldOrbitGalaxy extends WorldOrbitHierarchyContainerFields {
+  kind: "galaxy";
+  id: string;
+  universeId: string;
+  systems: WorldOrbitHierarchySystem[];
+}
+
+export interface WorldOrbitHierarchySystem extends WorldOrbitHierarchyContainerFields {
+  kind: "system";
+  id: string;
+  universeId: string;
+  galaxyId: string;
+  systemSource: string;
+  atlasDocument: WorldOrbitAtlasDocument | null;
+  materializedDocument: WorldOrbitDocument | null;
+  diagnostics: WorldOrbitDiagnostic[];
+}
+
+export interface WorldOrbitHierarchyDocument {
+  format: "worldorbit";
+  version: WorldOrbitHierarchyDocumentVersion;
+  schemaVersion: WorldOrbitHierarchyDocumentVersion;
+  suiteVersion: string;
+  universe: WorldOrbitUniverse;
+  diagnostics: WorldOrbitDiagnostic[];
+}
+
+export interface RenderHierarchySceneNode {
+  renderId: string;
+  id: string;
+  kind: WorldOrbitHierarchyContainerKind | "object";
+  label: string;
+  subtitle: string | null;
+  parentId: string | null;
+  x: number;
+  y: number;
+  radius: number;
+  fill: string | null;
+  image: string | null;
+  hidden: boolean;
+  preview: boolean;
+}
+
+export interface RenderHierarchySceneLink {
+  renderId: string;
+  fromId: string;
+  toId: string;
+  kind: "containment";
+}
+
+export interface RenderHierarchyScene {
+  scope: WorldOrbitHierarchyScope;
+  width: number;
+  height: number;
+  padding: number;
+  title: string;
+  subtitle: string;
+  universeId: string;
+  activeGalaxyId: string | null;
+  activeSystemId: string | null;
+  zoom: number;
+  nodes: RenderHierarchySceneNode[];
+  links: RenderHierarchySceneLink[];
+  atlasScene: RenderScene | null;
+  diagnostics: WorldOrbitDiagnostic[];
+}
+
+export interface HierarchySceneRenderOptions {
+  width?: number;
+  height?: number;
+  padding?: number;
+  scope?: WorldOrbitHierarchyScope;
+  zoom?: number;
+  activeGalaxyId?: string | null;
+  activeSystemId?: string | null;
 }

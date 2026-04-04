@@ -1,8 +1,8 @@
-import { createWorldOrbitEditor } from "@worldorbit/editor";
+import { createHierarchyEditor } from "@worldorbit/editor";
 
-const RECOVERY_STORAGE_KEY = "worldorbit.studio.recovery.v3.0";
+const RECOVERY_STORAGE_KEY = "worldorbit.studio.recovery.v4.0";
 const LEGACY_RECOVERY_STORAGE_KEY = "worldorbit.studio.recovery.v2.6";
-const SESSION_STORAGE_KEY = "worldorbit.studio.session.v3.0";
+const SESSION_STORAGE_KEY = "worldorbit.studio.session.v4.0";
 const LEGACY_SESSION_STORAGE_KEY = "worldorbit.studio.session.v2.6";
 const DEFAULT_FILE_NAME = "untitled.worldorbit";
 const DEFAULT_SESSION_STATE = {
@@ -14,120 +14,39 @@ const DEFAULT_SESSION_STATE = {
     inspectorWidth: 360,
   },
 };
-const FALLBACK_SOURCE = `schema 3.0
+const FALLBACK_SOURCE = `schema 4.0
 
-system New-Atlas
-  title "New Atlas"
-  description "Starter atlas for Schema 3.0 authoring"
-  epoch "JY-0001.0"
-  referencePlane ecliptic
+universe Starter-Verse
+  title "Starter Verse"
 
-defaults
-  view orthographic
-  scale presentation
-  preset atlas-card
+  galaxy Dawn-Spindle
+    title "Dawn Spindle"
 
-group inner-system
-  label "Inner System"
-  summary "Starter worlds and infrastructure"
-  color #d9b37a
+    system New-Atlas
+      title "New Atlas"
+      description "Starter hierarchy for Schema 4.0 authoring"
+      epoch "JY-0001.0"
+      referencePlane ecliptic
 
-viewpoint overview
-  label "Overview"
-  projection orthographic
-  camera
-    azimuth 28
-    elevation 20
+      defaults
+        view orthographic
+        scale presentation
+        preset atlas-card
 
-viewpoint eclipse
-  label "Perspective Eclipse"
-  projection perspective
-  focus Homeworld
-  events homeworld-eclipse
-  camera
-    azimuth 42
-    elevation 24
-    distance 6
+      object star Primary
+        mass 1sol
 
-relation supply-route
-  from Homeworld
-  to Relay
-  kind logistics
-  label "Supply Route"
+      object planet Homeworld
+        orbit Primary
+        semiMajor 1au
+        eccentricity 0.03
+        phase 36deg
+        radius 1re
+        atmosphere nitrogen-oxygen
 
-object star Primary
-  mass 1sol
-
-object planet Homeworld
-  orbit Primary
-  semiMajor 1au
-  eccentricity 0.03
-  phase 36deg
-  radius 1re
-  atmosphere nitrogen-oxygen
-  groups inner-system
-  renderPriority 3
-  info
-    description "A fresh starting point for a new worldbuilding atlas."
-
-  climate
-    meanSurfaceTemperature 289K
-
-  habitability
-    inhabited true
-
-object craft Courier
-  trajectory courier-run
-  at Homeworld:L4
-  kind shuttle
-  groups inner-system
-
-trajectory courier-run
-  label "Courier Run"
-  craft Courier
-  summary "Declarative transfer with a single correction burn."
-
-  segment departure
-    kind departure
-    from Homeworld
-    to Relay
-    duration 6h
-
-  segment transfer
-    kind transfer
-    from Relay
-    to Moonlet
-    duration 18h
-    deltaV 0.9km
-    maneuver correction
-      kind correction-burn
-      deltaV 0.1km
-      duration 12min
-
-event homeworld-eclipse
-  kind solar-eclipse
-  label "Homeworld Eclipse"
-  target Homeworld
-  participants Primary Homeworld Moonlet
-  epoch "JY-0001.0"
-  referencePlane ecliptic
-
-  positions
-    pose Homeworld
-      orbit Primary
-      semiMajor 1au
-      phase 90deg
-
-    pose Moonlet
-      orbit Homeworld
-      distance 384400km
-      phase 90deg
-
-object moon Moonlet
-  orbit Homeworld
-  distance 384400km
-  phase 12deg
-  radius 0.27re
+      object moon Moonlet
+        orbit Homeworld
+        distance 384400km
 `;
 
 export async function createWorldOrbitStudio(root, options = {}) {
@@ -165,14 +84,10 @@ export async function createWorldOrbitStudio(root, options = {}) {
   editorRoot.dataset.woStickyStage = "true";
   editorRoot.style.setProperty("--wo-editor-stage-sticky-top", "12px");
   editorRoot.style.setProperty("--wo-editor-stage-sticky-max-height", "calc(100vh - 24px)");
-  editor = createWorldOrbitEditor(editorRoot, {
+  editor = createHierarchyEditor(editorRoot, {
     source: baseSource,
-    showInspector: sessionState.panels.inspector,
-    showPreview: false,
-    showTextPane: false,
-    shortcuts: true,
     onChange(snapshot) {
-      currentDiagnostics = snapshot.diagnostics;
+      currentDiagnostics = normalizeDiagnostics(snapshot.diagnostics);
       syncSourceDialogFromEditor();
       syncEmbedDialogFromEditor();
       renderSourceDialogDiagnostics();
@@ -182,7 +97,7 @@ export async function createWorldOrbitStudio(root, options = {}) {
       }
     },
     onDiagnosticsChange(nextDiagnostics) {
-      currentDiagnostics = nextDiagnostics;
+      currentDiagnostics = normalizeDiagnostics(nextDiagnostics);
       renderSourceDialogDiagnostics();
       syncToolbarState();
     },
@@ -197,7 +112,7 @@ export async function createWorldOrbitStudio(root, options = {}) {
     },
   });
   editor.markSaved();
-  currentDiagnostics = editor.getDiagnostics();
+  currentDiagnostics = normalizeDiagnostics(editor.getDiagnostics());
   currentDirty = editor.isDirty();
   currentViewMode = editor.getViewMode();
 
@@ -206,7 +121,7 @@ export async function createWorldOrbitStudio(root, options = {}) {
   if (recoveryDraft?.source) {
     currentFileName = recoveryDraft.fileName || currentFileName;
     editor.setSource(recoveryDraft.source);
-    currentDiagnostics = editor.getDiagnostics();
+    currentDiagnostics = normalizeDiagnostics(editor.getDiagnostics());
     currentDirty = editor.isDirty();
     setMessage("Recovered unsaved local draft from the browser.", "info");
   } else {
@@ -217,7 +132,7 @@ export async function createWorldOrbitStudio(root, options = {}) {
         : deriveFileNameFromUrl(exampleUrl));
     editor.markSaved();
     currentDirty = editor.isDirty();
-    setMessage("Studio ready. Working with schema 3.0 atlases.", "info");
+    setMessage("Studio ready. Working with schema 4.0 universes.", "info");
   }
 
   toolbar.addEventListener("click", handleToolbarClick);
@@ -266,7 +181,7 @@ export async function createWorldOrbitStudio(root, options = {}) {
       case "new":
         loadIntoEditor(FALLBACK_SOURCE, DEFAULT_FILE_NAME, {
           markSaved: true,
-          message: "Started a new schema 3.0 atlas workspace.",
+          message: "Started a new schema 4.0 universe workspace.",
         });
         return;
       case "open":
@@ -293,7 +208,7 @@ export async function createWorldOrbitStudio(root, options = {}) {
       case "view-2d":
         editor.setViewMode("2d");
         currentViewMode = editor.getViewMode();
-        setMessage("Studio preview switched to 2D.", "info");
+        setMessage("Studio preview is using the hierarchy 2D renderer.", "info");
         syncToolbarState();
         return;
       case "view-3d":
@@ -371,13 +286,13 @@ export async function createWorldOrbitStudio(root, options = {}) {
       markSaved: true,
       message: exampleUrl
         ? `Loaded example ${currentFileName}.`
-        : "Loaded the built-in starter atlas.",
+        : "Loaded the built-in starter universe.",
     });
   }
 
   function loadIntoEditor(source, fileName, config = {}) {
     editor.setSource(source);
-    currentDiagnostics = editor.getDiagnostics();
+    currentDiagnostics = normalizeDiagnostics(editor.getDiagnostics());
     currentFileName = fileName || DEFAULT_FILE_NAME;
     syncSourceDialogFromEditor(true);
     syncEmbedDialogFromEditor();
@@ -564,7 +479,7 @@ export async function createWorldOrbitStudio(root, options = {}) {
 
   function applySourceFromDialog() {
     editor.setSource(sourceInput.value);
-    currentDiagnostics = editor.getDiagnostics();
+    currentDiagnostics = normalizeDiagnostics(editor.getDiagnostics());
     syncSourceDialogFromEditor(true);
     syncEmbedDialogFromEditor();
     renderSourceDialogDiagnostics();
@@ -579,6 +494,9 @@ export async function createWorldOrbitStudio(root, options = {}) {
   }
 
   function syncSourceDialogFromEditor(force = false) {
+    if (!editor) {
+      return;
+    }
     if (!force && sourceModalDirty) {
       return;
     }
@@ -591,6 +509,9 @@ export async function createWorldOrbitStudio(root, options = {}) {
   }
 
   function syncEmbedDialogFromEditor() {
+    if (!editor) {
+      return;
+    }
     const nextMarkup = hasBlockingErrors(currentDiagnostics)
       ? "Resolve the current diagnostics to generate embed markup."
       : editor.exportEmbedMarkup();
@@ -745,6 +666,10 @@ function resolveConfiguredExampleUrl(root, options = {}) {
 
 function hasBlockingErrors(diagnostics) {
   return diagnostics.some((entry) => entry.diagnostic.severity === "error");
+}
+
+function normalizeDiagnostics(diagnostics) {
+  return diagnostics.map((entry) => ("diagnostic" in entry ? entry : { diagnostic: entry, path: null }));
 }
 
 function downloadText(text, fileName, mimeType) {
