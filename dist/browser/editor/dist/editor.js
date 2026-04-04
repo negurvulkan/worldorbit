@@ -1,6 +1,6 @@
-import { cloneAtlasDocument, createEmptyAtlasDocument, formatDocument, getAtlasDocumentNode, loadWorldOrbitSourceWithDiagnostics, materializeAtlasDocument, removeAtlasDocumentNode, renderDocumentToScene, resolveAtlasDiagnostics, rotatePoint, upgradeDocumentToV2, validateAtlasDocumentWithDiagnostics, } from "@worldorbit/core";
+import { cloneAtlasDocument, createEmptyAtlasDocument, formatDocument, getAtlasDocumentNode, loadWorldOrbitSourceWithDiagnostics, materializeAtlasDocument, removeAtlasDocumentNode, renderHierarchyDocumentToScene, renderDocumentToScene, resolveAtlasDiagnostics, rotatePoint, upgradeDocumentToV2, validateAtlasDocumentWithDiagnostics, } from "@worldorbit/core";
 import { renderWorldOrbitBlock } from "@worldorbit/markdown";
-import { createInteractiveViewer, } from "@worldorbit/viewer";
+import { createInteractiveViewer, renderHierarchySceneToSvg, } from "@worldorbit/viewer";
 import { getViewerVisibleBounds, invertViewerPoint } from "@worldorbit/viewer/viewer-state";
 const STYLE_ID = "worldorbit-editor-style";
 const SOURCE_INPUT_DEBOUNCE_MS = 120;
@@ -233,6 +233,10 @@ export function createWorldOrbitEditor(container, options = {}) {
     installEditorStyles();
     const initial = resolveInitialEditorState(options);
     let atlasDocument = initial.atlasDocument;
+    let hierarchyDocument = initial.hierarchyDocument;
+    let hierarchyScope = initial.hierarchyScope;
+    let activeGalaxyId = initial.activeGalaxyId;
+    let activeSystemId = initial.activeSystemId;
     let canonicalSource = initial.source;
     let sourceText = canonicalSource;
     let savedSource = canonicalSource;
@@ -240,6 +244,9 @@ export function createWorldOrbitEditor(container, options = {}) {
     let selection = atlasDocument.objects[0]
         ? { kind: "object", id: atlasDocument.objects[0].id }
         : { kind: "system" };
+    if (hierarchyDocument && hierarchyScope !== "system") {
+        selection = { kind: "system" };
+    }
     const history = [];
     const future = [];
     let dragState = null;
@@ -275,42 +282,9 @@ export function createWorldOrbitEditor(container, options = {}) {
     const previewVisual = queryRequired(container, "[data-editor-preview-visual]");
     const previewMarkup = queryRequired(container, "[data-editor-preview-markup]");
     let viewer = null;
-    viewer = createInteractiveViewer(stage, {
-        source: canonicalSource,
-        width: options.viewerWidth ?? 1120,
-        height: options.viewerHeight ?? 680,
-        preset: atlasDocument.system?.defaults.preset ?? "atlas-card",
-        projection: "document",
-        viewMode,
-        minimap: true,
-        tooltipMode: "hover",
-        onSelectionChange(selectedObject) {
-            const activeEventId = selection ? selectionEventId(selection) : null;
-            if (ignoreViewerSelection || !selectedObject) {
-                if (!ignoreViewerSelection) {
-                    if (selection?.kind === "event-pose" && selection.id) {
-                        setSelection({ kind: "event", id: selection.id }, false, true);
-                    }
-                    else if (selection?.kind === "object") {
-                        setSelection(activeEventId ? { kind: "event", id: activeEventId } : null, false, true);
-                    }
-                    else if (selection?.kind === "event" && selection.id) {
-                        setSelection({ kind: "event", id: selection.id }, false, true);
-                    }
-                }
-                return;
-            }
-            if (activeEventId && findEventPose(atlasDocument, activeEventId, selectedObject.objectId)) {
-                setSelection({ kind: "event-pose", id: activeEventId, key: selectedObject.objectId }, false, true);
-                return;
-            }
-            setSelection({ kind: "object", id: selectedObject.objectId }, false, true);
-        },
-        onViewChange() {
-            renderStageOverlay();
-        },
-    });
+    ensureStageRenderer();
     toolbar.addEventListener("click", handleToolbarClick);
+    toolbar.addEventListener("change", handleToolbarChange);
     outline.addEventListener("click", handleOutlineClick);
     overlay.addEventListener("pointerdown", handleOverlayPointerDown);
     inspector?.addEventListener("click", handleInspectorClick);
@@ -332,6 +306,7 @@ export function createWorldOrbitEditor(container, options = {}) {
             }
         },
         setAtlasDocument(document) {
+            hierarchyScope = "system";
             replaceAtlasDocument(document, false, selection, false);
             resetHistory();
             renderToolbar();
@@ -352,9 +327,12 @@ export function createWorldOrbitEditor(container, options = {}) {
             return viewMode;
         },
         setViewMode(mode) {
+            if (hierarchyDocument && hierarchyScope !== "system" && mode !== "2d") {
+                throw new Error("WorldOrbit 3D preview is only available in system scope.");
+            }
             const previousViewMode = viewMode;
             try {
-                viewer.setViewMode(mode);
+                viewer?.setViewMode(mode);
                 viewMode = mode;
                 renderStageOverlay();
                 renderPreviewNow();
@@ -485,9 +463,19 @@ export function createWorldOrbitEditor(container, options = {}) {
             return true;
         },
         exportSvg() {
+            if (hierarchyDocument && hierarchyScope !== "system") {
+                return renderHierarchySceneToSvg(renderHierarchyDocumentToScene(hierarchyDocument, {
+                    scope: hierarchyScope,
+                    activeGalaxyId,
+                    activeSystemId,
+                }));
+            }
             return viewer.exportSvg();
         },
         exportEmbedMarkup() {
+            if (hierarchyDocument && hierarchyScope !== "system") {
+                return buildHierarchyEmbedMarkup(getCurrentSourceForExport(), hierarchyScope);
+            }
             return buildEmbedMarkup(getCurrentSourceForExport(), atlasDocument, viewMode);
         },
         destroy() {
@@ -496,6 +484,7 @@ export function createWorldOrbitEditor(container, options = {}) {
             }
             destroyed = true;
             toolbar.removeEventListener("click", handleToolbarClick);
+            toolbar.removeEventListener("change", handleToolbarChange);
             outline.removeEventListener("click", handleOutlineClick);
             overlay.removeEventListener("pointerdown", handleOverlayPointerDown);
             inspector?.removeEventListener("click", handleInspectorClick);
@@ -510,7 +499,7 @@ export function createWorldOrbitEditor(container, options = {}) {
             window.removeEventListener("pointercancel", handleWindowPointerUp);
             clearSourceInputTimer();
             clearPreviewTimer();
-            viewer.destroy();
+            viewer?.destroy();
             container.innerHTML = "";
             container.classList.remove("wo-editor");
         },
@@ -521,6 +510,10 @@ export function createWorldOrbitEditor(container, options = {}) {
     function createHistoryEntry() {
         return {
             atlasDocument: cloneAtlasDocument(atlasDocument),
+            hierarchyDocument: hierarchyDocument ? structuredClone(hierarchyDocument) : null,
+            hierarchyScope,
+            activeGalaxyId,
+            activeSystemId,
             selection: selection ? { ...selection } : null,
             source: canonicalSource,
         };
@@ -544,6 +537,10 @@ export function createWorldOrbitEditor(container, options = {}) {
     }
     function getCurrentSourceForExport() {
         if (dragState?.changed) {
+            if (hierarchyDocument) {
+                commitCurrentAtlasIntoHierarchy();
+                return formatHierarchySource(hierarchyDocument);
+            }
             return formatAtlasSource(atlasDocument);
         }
         return canonicalSource;
@@ -566,9 +563,13 @@ export function createWorldOrbitEditor(container, options = {}) {
     function restoreHistoryEntry(entry) {
         clearSourceInputTimer();
         atlasDocument = cloneAtlasDocument(entry.atlasDocument);
+        hierarchyDocument = entry.hierarchyDocument ? structuredClone(entry.hierarchyDocument) : null;
+        hierarchyScope = entry.hierarchyScope;
+        activeGalaxyId = entry.activeGalaxyId;
+        activeSystemId = entry.activeSystemId;
         canonicalSource = entry.source;
         sourceText = canonicalSource;
-        diagnostics = collectDocumentDiagnostics(atlasDocument);
+        diagnostics = collectCurrentDiagnostics();
         selection = normalizeSelection(entry.selection);
         syncViewer({ preserveCamera: true, applyViewpointSelection: selection?.kind === "viewpoint" });
         setSelection(selection, false, false);
@@ -583,11 +584,12 @@ export function createWorldOrbitEditor(container, options = {}) {
         }
         clearSourceInputTimer();
         atlasDocument = cloneAtlasDocument(nextDocument);
-        canonicalSource = formatAtlasSource(atlasDocument);
+        commitCurrentAtlasIntoHierarchy();
+        canonicalSource = hierarchyDocument ? formatHierarchySource(hierarchyDocument) : formatAtlasSource(atlasDocument);
         if (!preserveSourceText) {
             sourceText = canonicalSource;
         }
-        diagnostics = collectDocumentDiagnostics(atlasDocument);
+        diagnostics = collectCurrentDiagnostics();
         selection = normalizeSelection(nextSelection);
         syncViewer({
             preserveCamera: selection?.kind !== "viewpoint",
@@ -619,16 +621,19 @@ export function createWorldOrbitEditor(container, options = {}) {
             options.onDiagnosticsChange?.(diagnostics.map(cloneResolvedDiagnostic));
             return false;
         }
-        const nextDocument = loaded.value.atlasDocument ?? upgradeDocumentToV2(loaded.value.document);
-        const loadedDiagnostics = resolveAtlasDiagnostics(nextDocument, loaded.diagnostics);
+        const nextState = resolveLoadedEditorState(loaded.value, nextSourceText);
         if (commitHistory) {
             history.push(createHistoryEntry());
             future.length = 0;
-            sourceText = formatAtlasSource(nextDocument);
+            sourceText = nextState.source;
         }
-        atlasDocument = cloneAtlasDocument(nextDocument);
-        canonicalSource = formatAtlasSource(atlasDocument);
-        diagnostics = mergeDiagnostics(loadedDiagnostics, collectDocumentDiagnostics(atlasDocument));
+        hierarchyDocument = nextState.hierarchyDocument;
+        hierarchyScope = nextState.hierarchyScope;
+        activeGalaxyId = nextState.activeGalaxyId;
+        activeSystemId = nextState.activeSystemId;
+        atlasDocument = cloneAtlasDocument(nextState.atlasDocument);
+        canonicalSource = nextState.source;
+        diagnostics = nextState.diagnostics;
         selection = normalizeSelection(selection);
         syncViewer({
             preserveCamera: selection?.kind !== "viewpoint",
@@ -640,6 +645,7 @@ export function createWorldOrbitEditor(container, options = {}) {
         return true;
     }
     function syncViewer(options = {}) {
+        ensureStageRenderer();
         if (!viewer) {
             return;
         }
@@ -683,6 +689,10 @@ export function createWorldOrbitEditor(container, options = {}) {
         const snapshot = {
             source: canonicalSource,
             atlasDocument: cloneAtlasDocument(atlasDocument),
+            hierarchyDocument: hierarchyDocument ? structuredClone(hierarchyDocument) : null,
+            scope: hierarchyScope,
+            activeGalaxyId,
+            activeSystemId,
             diagnostics: diagnostics.map(cloneResolvedDiagnostic),
             selection: selection ? { path: { ...selection } } : null,
         };
@@ -693,6 +703,20 @@ export function createWorldOrbitEditor(container, options = {}) {
     function setSelection(nextSelection, syncViewerSelection, emit = true) {
         selection = normalizeSelection(nextSelection);
         if (syncViewerSelection) {
+            if (!viewer) {
+                renderToolbar();
+                renderOutline();
+                if (!inspector?.contains(document.activeElement)) {
+                    renderInspector();
+                }
+                renderStageOverlay();
+                renderStatusBar();
+                updateLiveRegion();
+                if (emit) {
+                    emitSnapshot();
+                }
+                return;
+            }
             ignoreViewerSelection = true;
             viewer.setRenderOptions({ activeEventId: selection ? selectionEventId(selection) : null });
             if (selection?.kind === "object" && selection.id) {
@@ -746,22 +770,197 @@ export function createWorldOrbitEditor(container, options = {}) {
         renderStatusBar();
         updateLiveRegion();
     }
+    function ensureStageRenderer() {
+        if (hierarchyDocument && hierarchyScope !== "system") {
+            if (viewer) {
+                viewer.destroy();
+                viewer = null;
+            }
+            const hierarchyScene = renderHierarchyDocumentToScene(hierarchyDocument, {
+                scope: hierarchyScope,
+                activeGalaxyId,
+                activeSystemId,
+            });
+            stage.innerHTML = renderHierarchySceneToSvg(hierarchyScene);
+            overlay.innerHTML = "";
+            return;
+        }
+        if (!viewer) {
+            const scene = renderDocumentToScene(materializeAtlasDocument(atlasDocument), {
+                width: options.viewerWidth,
+                height: options.viewerHeight,
+            });
+            viewer = createInteractiveViewer(stage, {
+                scene,
+                width: options.viewerWidth,
+                height: options.viewerHeight,
+                viewMode,
+                onSelectionChange(selectedObject) {
+                    if (ignoreViewerSelection) {
+                        return;
+                    }
+                    setSelection(selectedObject ? { kind: "object", id: selectedObject.objectId } : { kind: "system" }, false, true);
+                },
+            });
+            viewer.fitToSystem();
+            return;
+        }
+        viewer.setScene(renderDocumentToScene(materializeAtlasDocument(atlasDocument), {
+            width: options.viewerWidth,
+            height: options.viewerHeight,
+        }));
+        viewer.setRenderOptions({ viewMode });
+        if (viewMode === "2d") {
+            viewer.fitToSystem();
+        }
+    }
+    function resolveLoadedEditorState(loaded, nextSourceText) {
+        if (loaded.hierarchyDocument) {
+            const nextHierarchyDocument = loaded.hierarchyDocument;
+            const nextGalaxy = nextHierarchyDocument.universe.galaxies[0] ?? null;
+            const nextSystem = nextGalaxy?.systems[0] ?? null;
+            const nextAtlasDocument = nextSystem?.atlasDocument
+                ? cloneAtlasDocument(nextSystem.atlasDocument)
+                : createEmptyAtlasDocument(nextSystem?.id ?? nextHierarchyDocument.universe.id);
+            return {
+                atlasDocument: nextAtlasDocument,
+                hierarchyDocument: nextHierarchyDocument,
+                hierarchyScope: "universe",
+                activeGalaxyId: nextGalaxy?.id ?? null,
+                activeSystemId: nextSystem?.id ?? null,
+                source: nextSourceText,
+                diagnostics: nextHierarchyDocument.diagnostics.map((diagnostic) => ({
+                    diagnostic,
+                    path: null,
+                })),
+            };
+        }
+        const nextAtlasDocument = loaded.atlasDocument ?? upgradeDocumentToV2(loaded.document);
+        return {
+            atlasDocument: nextAtlasDocument,
+            hierarchyDocument: null,
+            hierarchyScope: "system",
+            activeGalaxyId: null,
+            activeSystemId: null,
+            source: formatAtlasSource(nextAtlasDocument),
+            diagnostics: mergeDiagnostics(resolveAtlasDiagnostics(nextAtlasDocument, loaded.diagnostics), collectDocumentDiagnostics(nextAtlasDocument)),
+        };
+    }
+    function collectCurrentDiagnostics() {
+        if (hierarchyDocument && hierarchyScope !== "system") {
+            return hierarchyDocument.diagnostics.map((diagnostic) => ({
+                diagnostic,
+                path: null,
+            }));
+        }
+        return collectDocumentDiagnostics(atlasDocument);
+    }
+    function commitCurrentAtlasIntoHierarchy() {
+        if (!hierarchyDocument || !activeSystemId) {
+            return;
+        }
+        for (const galaxy of hierarchyDocument.universe.galaxies) {
+            const system = galaxy.systems.find((entry) => entry.id === activeSystemId);
+            if (!system) {
+                continue;
+            }
+            const nextAtlasDocument = cloneAtlasDocument(atlasDocument);
+            system.atlasDocument = nextAtlasDocument;
+            system.systemSource = formatAtlasSource(nextAtlasDocument);
+            system.title = nextAtlasDocument.system?.title ?? system.title;
+            system.description = nextAtlasDocument.system?.description ?? system.description;
+            system.epoch = nextAtlasDocument.system?.epoch ?? system.epoch ?? null;
+            system.referencePlane = nextAtlasDocument.system?.referencePlane ?? system.referencePlane ?? null;
+            try {
+                system.materializedDocument = materializeAtlasDocument(nextAtlasDocument);
+            }
+            catch {
+                system.materializedDocument = null;
+            }
+            system.diagnostics = validateAtlasDocumentWithDiagnostics(nextAtlasDocument).map((entry) => entry.diagnostic);
+            hierarchyDocument.diagnostics = hierarchyDocument.universe.galaxies.flatMap((entry) => entry.systems.flatMap((item) => item.diagnostics));
+            return;
+        }
+    }
+    function setHierarchyScope(nextScope) {
+        if (!hierarchyDocument) {
+            return;
+        }
+        commitCurrentAtlasIntoHierarchy();
+        canonicalSource = formatHierarchySource(hierarchyDocument);
+        sourceText = canonicalSource;
+        hierarchyScope = nextScope;
+        if (nextScope === "universe") {
+            selection = { kind: "system" };
+            diagnostics = collectCurrentDiagnostics();
+            renderAll(true);
+            emitSnapshot();
+            return;
+        }
+        const currentGalaxy = findHierarchyGalaxy(hierarchyDocument, activeGalaxyId) ?? hierarchyDocument.universe.galaxies[0] ?? null;
+        if (currentGalaxy) {
+            activeGalaxyId = currentGalaxy.id;
+        }
+        if (nextScope === "galaxy") {
+            selection = { kind: "system" };
+            diagnostics = collectCurrentDiagnostics();
+            renderAll(true);
+            emitSnapshot();
+            return;
+        }
+        const currentSystem = findHierarchySystem(hierarchyDocument, activeSystemId) ?? currentGalaxy?.systems[0] ?? null;
+        if (currentSystem?.atlasDocument) {
+            activeSystemId = currentSystem.id;
+            atlasDocument = cloneAtlasDocument(currentSystem.atlasDocument);
+            canonicalSource = formatHierarchySource(hierarchyDocument);
+            sourceText = canonicalSource;
+            diagnostics = collectDocumentDiagnostics(atlasDocument);
+            selection = normalizeSelection(selection) ?? { kind: "system" };
+            renderAll(true);
+            emitSnapshot();
+        }
+    }
+    function formatHierarchySource(document) {
+        const lines = ["schema 4.0", "", `universe ${document.universe.id}`];
+        appendHierarchyContainerFields(lines, document.universe, 2, false);
+        for (const galaxy of document.universe.galaxies) {
+            lines.push("");
+            lines.push(`  galaxy ${galaxy.id}`);
+            appendHierarchyContainerFields(lines, galaxy, 4, false);
+            for (const system of galaxy.systems) {
+                lines.push("");
+                lines.push(...indentLines(extractSystemBlockLines(system), 4));
+            }
+        }
+        return lines.join("\n").trim();
+    }
     function renderToolbar() {
         const objectType = toolbar.querySelector("[data-editor-add-object-type]")
             ?.value ?? "planet";
+        const editingSystemScope = !hierarchyDocument || hierarchyScope === "system";
         toolbar.innerHTML = `
       <div class="wo-editor-toolbar-group">
+        ${hierarchyDocument
+            ? `<label class="wo-editor-inline-field">
+                <span>Scope</span>
+                <select data-editor-scope>
+                  <option value="universe"${hierarchyScope === "universe" ? " selected" : ""}>Universe</option>
+                  <option value="galaxy"${hierarchyScope === "galaxy" ? " selected" : ""}>Galaxy</option>
+                  <option value="system"${hierarchyScope === "system" ? " selected" : ""}>System</option>
+                </select>
+              </label>`
+            : ""}
         <select data-editor-add-object-type>
           ${OBJECT_TYPES.map((type) => `<option value="${escapeHtml(type)}"${type === objectType ? " selected" : ""}>${escapeHtml(humanizeIdentifier(type))}</option>`).join("")}
         </select>
-        <button type="button" data-editor-action="add-object">Add object</button>
-        <button type="button" data-editor-action="add-event">Add event</button>
-        <button type="button" data-editor-action="add-viewpoint">Add viewpoint</button>
-        <button type="button" data-editor-action="add-annotation">Add annotation</button>
-        <button type="button" data-editor-action="add-metadata">Add metadata</button>
+        <button type="button" data-editor-action="add-object"${editingSystemScope ? "" : " disabled"}>Add object</button>
+        <button type="button" data-editor-action="add-event"${editingSystemScope ? "" : " disabled"}>Add event</button>
+        <button type="button" data-editor-action="add-viewpoint"${editingSystemScope ? "" : " disabled"}>Add viewpoint</button>
+        <button type="button" data-editor-action="add-annotation"${editingSystemScope ? "" : " disabled"}>Add annotation</button>
+        <button type="button" data-editor-action="add-metadata"${editingSystemScope ? "" : " disabled"}>Add metadata</button>
       </div>
       <div class="wo-editor-toolbar-group">
-        <button type="button" data-editor-action="remove"${!selection || selection.kind === "system" || selection.kind === "defaults" ? " disabled" : ""}>Remove</button>
+        <button type="button" data-editor-action="remove"${!editingSystemScope || !selection || selection.kind === "system" || selection.kind === "defaults" ? " disabled" : ""}>Remove</button>
         <button type="button" data-editor-action="undo"${history.length === 0 ? " disabled" : ""}>Undo</button>
         <button type="button" data-editor-action="redo"${future.length === 0 ? " disabled" : ""}>Redo</button>
         <button type="button" data-editor-action="format">Format source</button>
@@ -769,10 +968,14 @@ export function createWorldOrbitEditor(container, options = {}) {
     `;
     }
     function renderOutline() {
+        const hierarchySection = hierarchyDocument
+            ? renderHierarchyOutlineSection(hierarchyDocument, hierarchyScope, activeGalaxyId, activeSystemId)
+            : "";
         const activeKey = selectionKey(selection);
         const diagnosticBuckets = buildDiagnosticBuckets(diagnostics);
         const metadataEntries = Object.entries(atlasDocument.system?.atlasMetadata ?? {}).sort(([left], [right]) => left.localeCompare(right));
         outline.innerHTML = `
+      ${hierarchySection}
       <div class="wo-editor-outline-section">
         <h3>Atlas</h3>
         ${renderOutlineButton({ kind: "system" }, "System", activeKey, diagnosticBuckets)}
@@ -857,6 +1060,10 @@ export function createWorldOrbitEditor(container, options = {}) {
             return;
         }
         captureInspectorSectionState(inspector, inspectorSectionState);
+        if (hierarchyDocument && hierarchyScope !== "system") {
+            inspector.innerHTML = renderHierarchyInspector(hierarchyDocument, hierarchyScope, activeGalaxyId, activeSystemId);
+            return;
+        }
         const formState = {
             selection: selection ? { path: { ...selection } } : null,
             system: atlasDocument.system,
@@ -1089,7 +1296,37 @@ export function createWorldOrbitEditor(container, options = {}) {
                 return;
         }
     }
+    function handleToolbarChange(event) {
+        const target = event.target;
+        if (!(target instanceof HTMLSelectElement)) {
+            return;
+        }
+        if (target.dataset.editorScope) {
+            setHierarchyScope(target.value);
+        }
+    }
     function handleOutlineClick(event) {
+        const hierarchyButton = event.target?.closest("[data-hierarchy-kind]");
+        if (hierarchyButton && hierarchyDocument) {
+            const kind = hierarchyButton.dataset.hierarchyKind;
+            const id = hierarchyButton.dataset.hierarchyId ?? "";
+            if (kind === "universe") {
+                setHierarchyScope("universe");
+                return;
+            }
+            if (kind === "galaxy") {
+                activeGalaxyId = id;
+                activeSystemId = findHierarchyGalaxy(hierarchyDocument, id)?.systems[0]?.id ?? activeSystemId;
+                setHierarchyScope("galaxy");
+                return;
+            }
+            if (kind === "system") {
+                activeSystemId = id;
+                activeGalaxyId = findHierarchySystem(hierarchyDocument, id)?.galaxyId ?? activeGalaxyId;
+                setHierarchyScope("system");
+                return;
+            }
+        }
         const button = event.target?.closest("[data-path-kind]");
         if (!button) {
             return;
@@ -1101,6 +1338,27 @@ export function createWorldOrbitEditor(container, options = {}) {
         }, true, true);
     }
     function handleInspectorClick(event) {
+        const hierarchyButton = event.target?.closest("[data-hierarchy-kind]");
+        if (hierarchyButton && hierarchyDocument) {
+            const kind = hierarchyButton.dataset.hierarchyKind;
+            const id = hierarchyButton.dataset.hierarchyId ?? "";
+            if (kind === "universe") {
+                setHierarchyScope("universe");
+                return;
+            }
+            if (kind === "galaxy") {
+                activeGalaxyId = id;
+                activeSystemId = findHierarchyGalaxy(hierarchyDocument, id)?.systems[0]?.id ?? activeSystemId;
+                setHierarchyScope("galaxy");
+                return;
+            }
+            if (kind === "system") {
+                activeSystemId = id;
+                activeGalaxyId = findHierarchySystem(hierarchyDocument, id)?.galaxyId ?? activeGalaxyId;
+                setHierarchyScope("system");
+                return;
+            }
+        }
         const pathButton = event.target?.closest("[data-path-kind]");
         if (pathButton) {
             setSelection({
@@ -1593,7 +1851,10 @@ export function createWorldOrbitEditor(container, options = {}) {
         const selectionLabel = selection ? describePath(selection) : "Nothing selected";
         statusBar.innerHTML = `
       <span class="wo-editor-status-pill${dirty ? " is-dirty" : " is-clean"}">${dirty ? "Unsaved changes" : "Saved"}</span>
-      <span class="wo-editor-status-pill">Schema ${escapeHtml(atlasDocument.version)}</span>
+      <span class="wo-editor-status-pill">Schema ${escapeHtml(hierarchyDocument ? hierarchyDocument.schemaVersion : atlasDocument.version)}</span>
+      ${hierarchyDocument
+            ? `<span class="wo-editor-status-pill">${escapeHtml(humanizeIdentifier(hierarchyScope))} scope</span>`
+            : ""}
       <span class="wo-editor-status-pill${errorCount > 0 ? " is-error" : warningCount > 0 ? " is-warning" : ""}">${errorCount} errors · ${warningCount} warnings</span>
       <span class="wo-editor-status-pill">${escapeHtml(selectionLabel)}</span>
     `;
@@ -1613,6 +1874,24 @@ export function createWorldOrbitEditor(container, options = {}) {
         }, PREVIEW_BATCH_DELAY_MS);
     }
     function renderPreviewNow() {
+        if (hierarchyDocument && hierarchyScope !== "system") {
+            const hierarchyScene = renderHierarchyDocumentToScene(hierarchyDocument, {
+                scope: hierarchyScope,
+                activeGalaxyId,
+                activeSystemId,
+            });
+            const nextSvg = renderHierarchySceneToSvg(hierarchyScene);
+            if (previewVisual && nextSvg !== lastPreviewSvg) {
+                previewVisual.innerHTML = nextSvg;
+                lastPreviewSvg = nextSvg;
+            }
+            const nextMarkup = buildHierarchyEmbedMarkup(getCurrentSourceForExport(), hierarchyScope);
+            if (previewMarkup && nextMarkup !== lastPreviewMarkup) {
+                previewMarkup.textContent = nextMarkup;
+                lastPreviewMarkup = nextMarkup;
+            }
+            return;
+        }
         if (!viewer) {
             return;
         }
@@ -1728,6 +2007,10 @@ function resolveInitialEditorState(options) {
         const atlasDocument = cloneAtlasDocument(options.atlasDocument);
         return {
             atlasDocument,
+            hierarchyDocument: null,
+            hierarchyScope: "system",
+            activeGalaxyId: null,
+            activeSystemId: null,
             source: formatAtlasSource(atlasDocument),
             diagnostics: collectDocumentDiagnostics(atlasDocument),
         };
@@ -1735,23 +2018,174 @@ function resolveInitialEditorState(options) {
     if (options.source) {
         const loaded = loadWorldOrbitSourceWithDiagnostics(options.source);
         if (loaded.ok && loaded.value) {
-            const atlasDocument = loaded.value.atlasDocument ?? upgradeDocumentToV2(loaded.value.document);
-            return {
-                atlasDocument,
-                source: formatAtlasSource(atlasDocument),
-                diagnostics: mergeDiagnostics(resolveAtlasDiagnostics(atlasDocument, loaded.diagnostics), collectDocumentDiagnostics(atlasDocument)),
-            };
+            return resolveInitialLoadedEditorState(loaded.value, options.source);
         }
     }
     const atlasDocument = createEmptyAtlasDocument("WorldOrbit");
     return {
         atlasDocument,
+        hierarchyDocument: null,
+        hierarchyScope: "system",
+        activeGalaxyId: null,
+        activeSystemId: null,
         source: formatAtlasSource(atlasDocument),
         diagnostics: collectDocumentDiagnostics(atlasDocument),
     };
 }
 function formatAtlasSource(document) {
     return formatDocument(document, { schema: document.version });
+}
+function resolveInitialLoadedEditorState(loaded, source) {
+    if (loaded.hierarchyDocument) {
+        const hierarchyDocument = loaded.hierarchyDocument;
+        const galaxy = hierarchyDocument.universe.galaxies[0] ?? null;
+        const system = galaxy?.systems[0] ?? null;
+        const atlasDocument = system?.atlasDocument
+            ? cloneAtlasDocument(system.atlasDocument)
+            : createEmptyAtlasDocument(system?.id ?? hierarchyDocument.universe.id);
+        return {
+            atlasDocument,
+            hierarchyDocument,
+            hierarchyScope: "universe",
+            activeGalaxyId: galaxy?.id ?? null,
+            activeSystemId: system?.id ?? null,
+            source,
+            diagnostics: hierarchyDocument.diagnostics.map((diagnostic) => ({
+                diagnostic,
+                path: null,
+            })),
+        };
+    }
+    const atlasDocument = loaded.atlasDocument ?? upgradeDocumentToV2(loaded.document);
+    return {
+        atlasDocument,
+        hierarchyDocument: null,
+        hierarchyScope: "system",
+        activeGalaxyId: null,
+        activeSystemId: null,
+        source: formatAtlasSource(atlasDocument),
+        diagnostics: mergeDiagnostics(resolveAtlasDiagnostics(atlasDocument, loaded.diagnostics), collectDocumentDiagnostics(atlasDocument)),
+    };
+}
+function findHierarchyGalaxy(document, galaxyId) {
+    if (!galaxyId) {
+        return null;
+    }
+    return document.universe.galaxies.find((galaxy) => galaxy.id === galaxyId) ?? null;
+}
+function findHierarchySystem(document, systemId) {
+    if (!systemId) {
+        return null;
+    }
+    for (const galaxy of document.universe.galaxies) {
+        const match = galaxy.systems.find((system) => system.id === systemId);
+        if (match) {
+            return match;
+        }
+    }
+    return null;
+}
+function renderHierarchyOutlineSection(document, scope, activeGalaxyId, activeSystemId) {
+    return `<div class="wo-editor-outline-section">
+    <h3>Hierarchy</h3>
+    ${renderHierarchyOutlineButton("universe", document.universe.id, document.universe.title ?? document.universe.id, scope === "universe")}
+    ${document.universe.galaxies
+        .map((galaxy) => `${renderHierarchyOutlineButton("galaxy", galaxy.id, galaxy.title ?? galaxy.id, scope === "galaxy" && galaxy.id === activeGalaxyId)}
+        ${galaxy.systems
+        .map((system) => renderHierarchyOutlineButton("system", system.id, system.title ?? system.id, scope === "system" && system.id === activeSystemId, "wo-editor-outline-button is-compact"))
+        .join("")}`)
+        .join("")}
+  </div>`;
+}
+function renderHierarchyOutlineButton(kind, id, label, active, className = "wo-editor-outline-button") {
+    return `<button
+      type="button"
+      class="${className}${active ? " is-active" : ""}"
+      data-hierarchy-kind="${escapeHtml(kind)}"
+      data-hierarchy-id="${escapeHtml(id)}"
+    >
+      <span>${escapeHtml(label)}</span>
+      <small>${escapeHtml(humanizeIdentifier(kind))}</small>
+    </button>`;
+}
+function renderHierarchyInspector(document, scope, activeGalaxyId, activeSystemId) {
+    if (scope === "universe") {
+        return `<article class="wo-editor-inspector-card">
+      <h3>${escapeHtml(document.universe.title ?? document.universe.id)}</h3>
+      <p>${escapeHtml(document.universe.description ?? "Top-level universe container for this schema 4.0 document.")}</p>
+      <p class="wo-editor-field-note">Galaxies: ${document.universe.galaxies.length}</p>
+    </article>`;
+    }
+    if (scope === "galaxy") {
+        const galaxy = findHierarchyGalaxy(document, activeGalaxyId);
+        if (!galaxy) {
+            return `<p class="wo-editor-empty">No active galaxy selected.</p>`;
+        }
+        return `<article class="wo-editor-inspector-card">
+      <h3>${escapeHtml(galaxy.title ?? galaxy.id)}</h3>
+      <p>${escapeHtml(galaxy.description ?? "Galaxy container and renderable object.")}</p>
+      <p class="wo-editor-field-note">Systems: ${galaxy.systems.length}</p>
+      ${galaxy.systems
+            .map((system) => renderHierarchyOutlineButton("system", system.id, system.title ?? system.id, system.id === activeSystemId))
+            .join("")}
+    </article>`;
+    }
+    const system = findHierarchySystem(document, activeSystemId);
+    return `<article class="wo-editor-inspector-card">
+    <h3>${escapeHtml(system?.title ?? system?.id ?? "System")}</h3>
+    <p>${escapeHtml(system?.description ?? "Switch into system scope to edit detailed atlas content.")}</p>
+  </article>`;
+}
+function buildHierarchyEmbedMarkup(source, scope) {
+    return `<div class="worldorbit-embed" data-schema="4.0" data-scope="${escapeHtml(scope)}"><pre>${escapeHtml(source)}</pre></div>`;
+}
+function appendHierarchyContainerFields(lines, container, indent, includeTemporalFields) {
+    const prefix = " ".repeat(indent);
+    if (container.title) {
+        lines.push(`${prefix}title ${formatHierarchyValue(container.title)}`);
+    }
+    if (container.description) {
+        lines.push(`${prefix}description ${formatHierarchyValue(container.description)}`);
+    }
+    if (container.tags.length > 0) {
+        lines.push(`${prefix}tags ${container.tags.map((value) => formatHierarchyValue(value)).join(" ")}`);
+    }
+    if (container.color) {
+        lines.push(`${prefix}color ${container.color}`);
+    }
+    if (container.image) {
+        lines.push(`${prefix}image ${formatHierarchyValue(container.image)}`);
+    }
+    if (container.hidden) {
+        lines.push(`${prefix}hidden true`);
+    }
+    if (includeTemporalFields && container.epoch) {
+        lines.push(`${prefix}epoch ${formatHierarchyValue(container.epoch)}`);
+    }
+    if (includeTemporalFields && container.referencePlane) {
+        lines.push(`${prefix}referencePlane ${formatHierarchyValue(container.referencePlane)}`);
+    }
+}
+function extractSystemBlockLines(system) {
+    const systemSource = system.systemSource.trim() || formatDocument(system.atlasDocument ?? createEmptyAtlasDocument(system.id), { schema: "3.1" });
+    const lines = systemSource.split(/\r?\n/);
+    const startIndex = lines.findIndex((line) => line.trimStart().startsWith("system "));
+    const blockLines = (startIndex >= 0 ? lines.slice(startIndex) : [`system ${system.id}`]).map((line, index) => index === 0 ? line.trimStart() : line ? `  ${line.trimStart()}` : "");
+    return trimTrailingEmptyEditorLines(blockLines);
+}
+function indentLines(lines, indent) {
+    const prefix = " ".repeat(indent);
+    return lines.map((line) => (line ? `${prefix}${line}` : ""));
+}
+function trimTrailingEmptyEditorLines(lines) {
+    const next = [...lines];
+    while (next.length > 0 && !next.at(-1)?.trim()) {
+        next.pop();
+    }
+    return next;
+}
+function formatHierarchyValue(value) {
+    return /\s/.test(value) ? JSON.stringify(value) : value;
 }
 function buildEditorMarkup() {
     const previewOpen = shouldPreviewSectionBeOpenByDefault();
@@ -2567,7 +3001,14 @@ function applyOrbitDistanceValue(placementOwner, value) {
     }
 }
 function updateAtReference(document, path, objectId, scene, pointer) {
-    const candidate = findNearestAtCandidate(scene, objectId, pointer);
+    const directTarget = findNearestSceneObjectWithThreshold(scene, objectId, pointer, 320);
+    const candidate = directTarget
+        ? {
+            reference: parseAtReferenceString(directTarget.objectId),
+            x: directTarget.x,
+            y: directTarget.y,
+        }
+        : findNearestAtCandidate(scene, objectId, pointer);
     if (!candidate) {
         return document;
     }
@@ -2576,12 +3017,15 @@ function updateAtReference(document, path, objectId, scene, pointer) {
     if (!placementOwner || placementOwner.placement.mode !== "at") {
         return document;
     }
-    placementOwner.placement.reference = candidate.reference;
-    placementOwner.placement.target = formatAtReference(candidate.reference);
+    const nextReference = candidate.reference.kind === "lagrange" && !candidate.reference.secondary
+        ? parseAtReferenceString(candidate.reference.primary)
+        : candidate.reference;
+    placementOwner.placement.reference = nextReference;
+    placementOwner.placement.target = formatAtReference(nextReference);
     return next;
 }
 function updateSurfaceTarget(document, path, objectId, scene, pointer) {
-    const target = findNearestSceneObject(scene, objectId, pointer, (entry) => SURFACE_TARGET_TYPES.has(entry.object.type));
+    const target = findNearestSurfaceTarget(scene, objectId, pointer);
     if (!target) {
         return document;
     }
@@ -2592,6 +3036,22 @@ function updateSurfaceTarget(document, path, objectId, scene, pointer) {
     }
     placementOwner.placement.target = target.objectId;
     return next;
+}
+function findNearestSurfaceTarget(scene, selectedObjectId, pointer) {
+    let nearest = null;
+    let nearestScore = Number.POSITIVE_INFINITY;
+    for (const entry of scene.objects) {
+        if (entry.hidden || entry.objectId === selectedObjectId || !SURFACE_TARGET_TYPES.has(entry.object.type)) {
+            continue;
+        }
+        const distance = Math.hypot(pointer.x - entry.x, pointer.y - entry.y);
+        const score = distance + (entry.object.type === "star" ? 180 : 0);
+        if (score < nearestScore) {
+            nearest = entry;
+            nearestScore = score;
+        }
+    }
+    return nearestScore <= 260 ? nearest : null;
 }
 function createOrbitRadiusDragContext(document, scene, details) {
     if (details.object.placement?.mode !== "orbit" || !details.orbit || !details.parent) {
@@ -2666,6 +3126,21 @@ function findNearestSceneObject(scene, selectedObjectId, pointer, predicate = ()
     }
     return nearestDistance <= 140 ? nearest : null;
 }
+function findNearestSceneObjectWithThreshold(scene, selectedObjectId, pointer, threshold, predicate = () => true) {
+    let nearest = null;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    for (const entry of scene.objects) {
+        if (entry.hidden || entry.objectId === selectedObjectId || !predicate(entry)) {
+            continue;
+        }
+        const distance = Math.hypot(pointer.x - entry.x, pointer.y - entry.y);
+        if (distance < nearestDistance) {
+            nearest = entry;
+            nearestDistance = distance;
+        }
+    }
+    return nearestDistance <= threshold ? nearest : null;
+}
 function findNearestAtCandidate(scene, selectedObjectId, pointer) {
     let directObjectCandidate = null;
     for (const entry of scene.objects) {
@@ -2673,7 +3148,7 @@ function findNearestAtCandidate(scene, selectedObjectId, pointer) {
             continue;
         }
         const distance = Math.hypot(pointer.x - entry.x, pointer.y - entry.y);
-        const snapRadius = Math.max(entry.visualRadius + 16, 28);
+        const snapRadius = 140;
         if (distance <= snapRadius) {
             if (!directObjectCandidate || distance < directObjectCandidate.distance) {
                 directObjectCandidate = {

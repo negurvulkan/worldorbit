@@ -1,4 +1,4 @@
-import type { AtlasDocumentPath, AtlasResolvedDiagnostic, WorldOrbitAtlasDocument, WorldOrbitEvent, WorldOrbitAtlasSystem, WorldOrbitAtlasViewpoint, WorldOrbitObject } from "@worldorbit/core";
+import type { AtlasDocumentPath, AtlasResolvedDiagnostic, WorldOrbitAtlasDocument, WorldOrbitEvent, WorldOrbitHierarchyDocument, WorldOrbitHierarchyScope, WorldOrbitAtlasSystem, WorldOrbitAtlasViewpoint, WorldOrbitObject } from "@worldorbit/core";
 import type { WorldOrbitViewMode } from "@worldorbit/viewer";
 export interface WorldOrbitEditorSelection {
     path: AtlasDocumentPath | null;
@@ -6,6 +6,10 @@ export interface WorldOrbitEditorSelection {
 export interface WorldOrbitEditorSnapshot {
     source: string;
     atlasDocument: WorldOrbitAtlasDocument;
+    hierarchyDocument?: WorldOrbitHierarchyDocument | null;
+    scope?: WorldOrbitHierarchyScope;
+    activeGalaxyId?: string | null;
+    activeSystemId?: string | null;
     diagnostics: AtlasResolvedDiagnostic[];
     selection: WorldOrbitEditorSelection | null;
 }

@@ -146,6 +146,31 @@ object planet Aster
   phase 20deg
 `.trim();
 
+const schema40Source = `schema 4.0
+
+universe Studio-Verse
+  title "Studio Verse"
+
+  galaxy Dawn-Spindle
+    title "Dawn Spindle"
+
+    system Helion
+      title "Helion"
+      description "Schema 4.0 editor coverage"
+
+      defaults
+        view isometric
+        preset atlas-card
+
+      object star Primary
+        mass 1sol
+
+      object planet Home
+        orbit Primary
+        semiMajor 1au
+        phase 24deg
+`.trim();
+
 function installDomGlobals(window) {
   const previous = {
     window: globalThis.window,
@@ -840,6 +865,49 @@ test("editor handles large atlas documents without preview regression", () => {
     assert.ok(root.querySelector("[data-editor-stage] svg"));
     assert.ok((root.querySelector("[data-editor-preview-markup]")?.textContent ?? "").length > 500);
     assert.ok(root.querySelectorAll(".wo-editor-outline-item").length > 350);
+  } finally {
+    editor?.destroy();
+    restoreRects();
+    restoreGlobals();
+    dom.window.close();
+  }
+});
+
+test("editor keeps the full studio shell while loading schema 4.0 hierarchy documents", () => {
+  const dom = new JSDOM(`<div id="editor"></div>`, {
+    pretendToBeVisual: true,
+  });
+  const restoreGlobals = installDomGlobals(dom.window);
+  const restoreRects = installFixedRects(dom.window, 1120, 680);
+  const root = dom.window.document.getElementById("editor");
+  let lastSnapshot = null;
+  let editor;
+
+  try {
+    editor = createWorldOrbitEditor(root, {
+      source: schema40Source,
+      onChange(snapshot) {
+        lastSnapshot = snapshot;
+      },
+    });
+
+    let scopeField = root.querySelector("[data-editor-scope]");
+    assert.ok(scopeField, "Expected hierarchy scope switcher in the full editor toolbar");
+    assert.equal(scopeField.value, "universe");
+    assert.ok(root.querySelector("[data-editor-stage] svg"), "Expected a hierarchy SVG preview");
+    assert.ok(root.querySelector("[data-editor-source]"), "Expected source pane to remain available");
+    assert.ok(root.querySelector("[data-editor-preview-markup]"), "Expected preview pane to remain available");
+    assert.match(root.querySelector("[data-editor-status]").textContent, /Universe scope/);
+
+    const systemButton = root.querySelector('[data-hierarchy-kind="system"][data-hierarchy-id="Helion"]');
+    assert.ok(systemButton, "Expected system entry in the hierarchy outline");
+    systemButton.click();
+
+    scopeField = root.querySelector("[data-editor-scope]");
+    assert.equal(scopeField.value, "system");
+    assert.ok(root.querySelector('[data-path-kind="object"][data-path-id="Home"]'));
+    assert.equal(lastSnapshot?.scope, "system");
+    assert.equal(lastSnapshot?.activeSystemId, "Helion");
   } finally {
     editor?.destroy();
     restoreRects();

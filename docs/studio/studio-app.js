@@ -1,4 +1,4 @@
-import { createHierarchyEditor } from "@worldorbit/editor";
+import { createWorldOrbitEditor } from "@worldorbit/editor";
 
 const RECOVERY_STORAGE_KEY = "worldorbit.studio.recovery.v4.0";
 const LEGACY_RECOVERY_STORAGE_KEY = "worldorbit.studio.recovery.v2.6";
@@ -84,7 +84,7 @@ export async function createWorldOrbitStudio(root, options = {}) {
   editorRoot.dataset.woStickyStage = "true";
   editorRoot.style.setProperty("--wo-editor-stage-sticky-top", "12px");
   editorRoot.style.setProperty("--wo-editor-stage-sticky-max-height", "calc(100vh - 24px)");
-  editor = createHierarchyEditor(editorRoot, {
+  editor = createWorldOrbitEditor(editorRoot, {
     source: baseSource,
     onChange(snapshot) {
       currentDiagnostics = normalizeDiagnostics(snapshot.diagnostics);
@@ -208,7 +208,7 @@ export async function createWorldOrbitStudio(root, options = {}) {
       case "view-2d":
         editor.setViewMode("2d");
         currentViewMode = editor.getViewMode();
-        setMessage("Studio preview is using the hierarchy 2D renderer.", "info");
+        setMessage("Studio preview switched to 2D.", "info");
         syncToolbarState();
         return;
       case "view-3d":

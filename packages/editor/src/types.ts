@@ -3,6 +3,8 @@ import type {
   AtlasResolvedDiagnostic,
   WorldOrbitAtlasDocument,
   WorldOrbitEvent,
+  WorldOrbitHierarchyDocument,
+  WorldOrbitHierarchyScope,
   WorldOrbitAtlasSystem,
   WorldOrbitAtlasViewpoint,
   WorldOrbitObject,
@@ -16,6 +18,10 @@ export interface WorldOrbitEditorSelection {
 export interface WorldOrbitEditorSnapshot {
   source: string;
   atlasDocument: WorldOrbitAtlasDocument;
+  hierarchyDocument?: WorldOrbitHierarchyDocument | null;
+  scope?: WorldOrbitHierarchyScope;
+  activeGalaxyId?: string | null;
+  activeSystemId?: string | null;
   diagnostics: AtlasResolvedDiagnostic[];
   selection: WorldOrbitEditorSelection | null;
 }
