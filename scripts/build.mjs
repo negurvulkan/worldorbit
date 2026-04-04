@@ -142,6 +142,92 @@ const projects = [
       dts: 'export * from "../../../packages/obsidian-plugin/dist/index.js";\n',
     },
   },
+  {
+    project: "packages/cosmos-core",
+    shim: {
+      name: "@worldorbit-cosmos/core",
+      dir: "core",
+      scope: "@worldorbit-cosmos",
+      exports: {
+        ".": {
+          import: "./index.js",
+          types: "./index.d.ts",
+        },
+        "./load": {
+          import: "./load.js",
+          types: "./load.d.ts",
+        },
+        "./scene": {
+          import: "./scene.js",
+          types: "./scene.d.ts",
+        },
+        "./types": {
+          import: "./types.js",
+          types: "./types.d.ts",
+        },
+      },
+      js: 'export * from "../../../packages/cosmos-core/dist/index.js";\n',
+      dts: 'export * from "../../../packages/cosmos-core/dist/index.js";\n',
+      extra: [
+        {
+          file: "load.js",
+          contents: 'export * from "../../../packages/cosmos-core/dist/load.js";\n',
+        },
+        {
+          file: "load.d.ts",
+          contents: 'export * from "../../../packages/cosmos-core/dist/load.js";\n',
+        },
+        {
+          file: "scene.js",
+          contents: 'export * from "../../../packages/cosmos-core/dist/scene.js";\n',
+        },
+        {
+          file: "scene.d.ts",
+          contents: 'export * from "../../../packages/cosmos-core/dist/scene.js";\n',
+        },
+        {
+          file: "types.js",
+          contents: 'export * from "../../../packages/cosmos-core/dist/types.js";\n',
+        },
+        {
+          file: "types.d.ts",
+          contents: 'export * from "../../../packages/cosmos-core/dist/types.js";\n',
+        },
+      ],
+    },
+  },
+  {
+    project: "packages/cosmos-viewer",
+    shim: {
+      name: "@worldorbit-cosmos/viewer",
+      dir: "viewer",
+      scope: "@worldorbit-cosmos",
+      exports: {
+        ".": {
+          import: "./index.js",
+          types: "./index.d.ts",
+        },
+      },
+      js: 'export * from "../../../packages/cosmos-viewer/dist/index.js";\n',
+      dts: 'export * from "../../../packages/cosmos-viewer/dist/index.js";\n',
+    },
+  },
+  {
+    project: "packages/cosmos-editor",
+    shim: {
+      name: "@worldorbit-cosmos/editor",
+      dir: "editor",
+      scope: "@worldorbit-cosmos",
+      exports: {
+        ".": {
+          import: "./index.js",
+          types: "./index.d.ts",
+        },
+      },
+      js: 'export * from "../../../packages/cosmos-editor/dist/index.js";\n',
+      dts: 'export * from "../../../packages/cosmos-editor/dist/index.js";\n',
+    },
+  },
 ];
 
 const browserBundles = [
@@ -164,6 +250,16 @@ const browserBundles = [
     entry: "packages/editor/dist/index.js",
     outfile: "dist/unpkg/worldorbit-editor.min.js",
     globalName: "WorldOrbitEditor",
+  },
+  {
+    entry: "packages/cosmos-viewer/dist/index.js",
+    outfile: "dist/unpkg/worldorbit-cosmos.min.js",
+    globalName: "WorldOrbitCosmos",
+  },
+  {
+    entry: "packages/cosmos-editor/dist/index.js",
+    outfile: "dist/unpkg/worldorbit-cosmos-editor.min.js",
+    globalName: "WorldOrbitCosmosEditor",
   },
 ];
 
@@ -189,7 +285,8 @@ for (const item of projects) {
 }
 
 function createLocalPackageShim(shim) {
-  const baseDir = `node_modules/@worldorbit/${shim.dir}`;
+  const scope = shim.scope ?? "@worldorbit";
+  const baseDir = `node_modules/${scope}/${shim.dir}`;
   mkdirSync(baseDir, { recursive: true });
   writeFileSync(
     `${baseDir}/package.json`,
@@ -312,8 +409,15 @@ try {
   copyDirectory("dist/browser/viewer", "docs/assets/browser/viewer");
   copyDirectory("dist/browser/markdown", "docs/assets/browser/markdown");
   copyDirectory("dist/browser/editor", "docs/assets/browser/editor");
+  copyDirectory("dist/browser/cosmos-core", "docs/assets/browser/cosmos-core");
+  copyDirectory("dist/browser/cosmos-viewer", "docs/assets/browser/cosmos-viewer");
+  copyDirectory("dist/browser/cosmos-editor", "docs/assets/browser/cosmos-editor");
   copyFile("studio/studio.js", "docs/studio/studio.js");
   copyFile("studio/studio-app.js", "docs/studio/studio-app.js");
+  copyFile("studio/cosmos.js", "docs/cosmos/cosmos.js");
+  copyFile("studio/cosmos-app.js", "docs/cosmos/cosmos-app.js");
+  copyFile("studio/cosmos.html", "docs/cosmos/index.html");
+  copyFile("dist/unpkg/worldorbit-cosmos.min.js", "docs/assets/worldorbit-cosmos/worldorbit-cosmos.min.js");
   copyFile("packages/obsidian-plugin/manifest.json", "dist/obsidian-plugin/manifest.json");
   copyFile("packages/obsidian-plugin/styles.css", "dist/obsidian-plugin/styles.css");
   await buildBundle("packages/obsidian-plugin/src/main.ts", "dist/obsidian-plugin/main.js", {

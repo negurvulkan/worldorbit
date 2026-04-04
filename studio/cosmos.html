@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WorldOrbit Cosmos Studio v6.0.0</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at top, rgba(123,208,255,0.18), transparent 32%), #060d19;
+      color: #edf6ff;
+      font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(1600px, calc(100vw - 24px));
+      margin: 16px auto 24px;
+      display: grid;
+      gap: 16px;
+    }
+    .hero, .frame {
+      background: rgba(8,20,40,0.82);
+      border: 1px solid rgba(123,208,255,0.12);
+      padding: 20px;
+    }
+    h1 { margin: 0 0 12px; font-size: clamp(2rem, 6vw, 3.8rem); }
+    p { margin: 0; color: rgba(237,246,255,0.74); line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <h1>WorldOrbit Cosmos</h1>
+      <p>The experimental fork for schema 4.0 introduces universe, galaxy, and system as renderable container objects with explicit multi-scope viewing.</p>
+    </section>
+    <section class="frame">
+      <div id="cosmos-studio" data-example-url="../examples/cosmos.multiscale.worldorbit"></div>
+    </section>
+  </main>
+  <script type="importmap">
+    {
+      "imports": {
+        "@worldorbit/core": "../packages/core/dist/index.js",
+        "@worldorbit/viewer": "../packages/viewer/dist/index.js",
+        "@worldorbit-cosmos/core": "../packages/cosmos-core/dist/index.js",
+        "@worldorbit-cosmos/viewer": "../packages/cosmos-viewer/dist/index.js",
+        "@worldorbit-cosmos/editor": "../packages/cosmos-editor/dist/index.js"
+      }
+    }
+  </script>
+  <script type="module" src="./cosmos.js"></script>
+</body>
+</html>

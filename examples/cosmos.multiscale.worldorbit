@@ -1,0 +1,74 @@
+schema 4.0
+
+universe Asterion
+  title "Asterion Verse"
+  description "A hierarchical atlas with renderable galaxies and systems."
+
+  galaxy Azure-Spindle
+    title "Azure Spindle"
+    color #7e8fff
+    tags trade rimward
+
+    system Helion
+      title "Helion"
+      description "A bright border system."
+
+      defaults
+        view isometric
+        preset atlas-card
+
+      object star Helion
+        class G2
+        radius 1sol
+
+      object planet Cinder
+        orbit Helion
+        semiMajor 0.74au
+        phase 38deg
+
+      object planet Lyra
+        orbit Helion
+        semiMajor 1.12au
+        phase 124deg
+
+    system Nacre
+      title "Nacre"
+      color #70d2ff
+
+      defaults
+        view topdown
+        preset atlas-card
+
+      object star Nacre
+        class F8
+        radius 1.2sol
+
+      object planet Pearl
+        orbit Nacre
+        semiMajor 1.36au
+        phase 220deg
+
+  galaxy Ember-Crown
+    title "Ember Crown"
+    color #ffb86a
+
+    system Vael
+      title "Vael"
+      description "An inner-crown industrial system."
+
+      defaults
+        view isometric
+        preset atlas-card
+
+      object star Vael
+        class K1
+
+      object planet Oris
+        orbit Vael
+        semiMajor 0.88au
+        phase 15deg
+
+      object craft Relay-Runner
+        orbit Vael
+        semiMajor 1.46au
+        phase 160deg

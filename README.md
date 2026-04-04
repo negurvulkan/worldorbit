@@ -528,6 +528,16 @@ Useful notes:
 * `npm test` rebuilds first, then runs the regression suite
 * the repository remains parser-first: rendering and atlas interaction stay downstream of parse, normalize, and validate
 
+### Cosmos Fork
+
+This repository also contains an experimental forked suite for hierarchical `schema 4.0` documents:
+
+* `@worldorbit-cosmos/core`
+* `@worldorbit-cosmos/viewer`
+* `@worldorbit-cosmos/editor`
+
+The Cosmos fork introduces nested `universe -> galaxy -> system` authoring where both `galaxy` and `system` are renderable containers. Its viewer supports explicit `universe`, `galaxy`, and `system` scopes, and the local fork example lives in [examples/cosmos.multiscale.worldorbit](/H:/Projekte/worldorbit/examples/cosmos.multiscale.worldorbit). The local fork studio shell lives in [studio/cosmos.html](/H:/Projekte/worldorbit/studio/cosmos.html).
+
 ## Project Direction
 
 WorldOrbit is intended as a specialized Mermaid-like solution for fictional orbital systems.
